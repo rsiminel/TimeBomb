@@ -93,9 +93,6 @@ def Play(players=["Alice", "Bob", "Clara", "Darryl"], initial_hand_size=5):
         probabilities_list.append(probabilities.copy())
         print(" p:", probabilities)
         print("tp:", CombineProbs(probabilities_list))
-        hopes = Hopes(declarations, probabilities, np.zeros(num_players),
-                      np.zeros(num_players), hand_size, active_wires)
-        print(" h:", hopes)
         # Cut wires
         found = np.zeros(num_players)
         revealed = np.zeros(num_players)
@@ -125,9 +122,6 @@ def Play(players=["Alice", "Bob", "Clara", "Darryl"], initial_hand_size=5):
             probabilities_list[-1] = probs.copy()
             print(" p:", probs)
             print("tp:", CombineProbs(probabilities_list))
-            hopes = Hopes(declarations, probabilities, revealed, found,
-                          hand_size, active_wires)
-            print(" h:", hopes)
             # Test for victory
             if active_wires <= 0:
                 print("Good guys win!")
@@ -223,32 +217,3 @@ def CombineProbs(probabilities_list):
             probabilities[i] *= probabilities_list[j][i]
     probabilities /= sum(probabilities)
     return probabilities
-
-
-def Hopes(decls, probs, revealed, found, hand_size, active_wires):
-    num_players = len(decls)
-    hopes = np.zeros(num_players)
-    for i in range(num_players):
-        if hand_size - revealed[i] <= 0:
-            hopes[i] = 0
-        else:
-            missing = active_wires + np.sum(found) - np.sum(decls) + decls[i]
-            if_bad = max(missing - found[i], 0) / (hand_size - revealed[i])
-            if_good = max(decls[i] - found[i], 0) / (hand_size - revealed[i])
-            hopes[i] = probs[i] * if_bad + (1 - probs[i]) * if_good
-    return hopes
-
-
-def HopesDad(decls, probs, revealed, found, hand_size, active_wires):
-    num_players = len(decls)
-    hopes = np.zeros(num_players)
-    for i in range(num_players):
-        if hand_size - revealed[i] <= 0:
-            hopes[i] = 0
-        else:
-            missing = active_wires + np.sum(found) - np.sum(decls) + decls[i]
-            if_bad = max(missing - found[i], 0)
-            if_good = max(decls[i] - found[i], 0)
-            hopes[i] = probs[i] * if_bad + (1 - probs[i]) * if_good
-    hopes *= active_wires / np.sum(hopes)
-    return hopes
