@@ -62,8 +62,7 @@ def PlayAuto(num_players=4, initial_hand_size=5, verbosity=2):
         print("r:", revealed)
         print("f:", found)
       # Update probabilities
-      probs = ProbCut(declarations, probabilities, revealed, found,
-              hand_size, active_wires)
+      probs = ProbCut(declarations, probabilities, revealed, found, hand_size, active_wires)
       probabilities_list[-1] = probs.copy()
       if verbosity > 1:
         print("  p:", probs)
@@ -95,8 +94,7 @@ def Play(players=["Alice", "Bob", "Clara", "Darryl"], initial_hand_size=5):
     # Declare your wires
     declarations = np.zeros(num_players)
     for i in range(num_players):
-      declarations[i] = int(input("How many wires does " +
-                    players[i] + " say they have? "))
+      declarations[i] = int(input("How many wires does " + players[i] + " say they have? "))
     print("d:", declarations)
     # Calculate probabilities
     probabilities = ProbDeclaration(declarations, hand_size, active_wires)
@@ -117,8 +115,7 @@ def Play(players=["Alice", "Bob", "Clara", "Darryl"], initial_hand_size=5):
           cutee = j
       revealed[cutee] += 1
       num_wires -= 1
-      shown = int(input("Did you reveal an\n" +
-                " 1- inactive wire\n 2- active wire\n"))
+      shown = int(input("Did you reveal an\n" + " 1- inactive wire\n 2- active wire\n"))
       while shown not in [1, 2, 3]:
         shown = int(input("Sorry, I'm looking for a 1 or a 2 here."))
       if shown == 2:
@@ -127,8 +124,7 @@ def Play(players=["Alice", "Bob", "Clara", "Darryl"], initial_hand_size=5):
       print("r:", revealed)
       print("f:", found)
       # Update probabilities
-      probs = ProbCut(declarations, probabilities, revealed, found,
-              hand_size, active_wires)
+      probs = ProbCut(declarations, probabilities, revealed, found, hand_size, active_wires)
       probabilities_list[-1] = probs.copy()
       print(" p:", probs)
       print("tp:", CombineProbs(probabilities_list))
@@ -182,8 +178,7 @@ def ProbCut(decls, probabilities, revealed, found, hand_size, active_wires):
 
 # This has empirically been show to give the same results as the other function
 # But this one comes with a slightly more rigorous derivation
-def MathematicallyJustifiedProbCut(decls, probabilities, revealed, found,
-                   hand_size, active_wires):
+def MathematicallyJustifiedProbCut(decls, probabilities, revealed, found, hand_size, active_wires):
   num_players = len(decls)
   probs = probabilities.copy()  # Don't modify the original array
   for i in range(num_players):

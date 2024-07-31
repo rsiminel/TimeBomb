@@ -11,8 +11,7 @@ from random import randint
 import UsefulFunctions as uf
 
 
-def Play(players=["Alice", "Bob", "Clara", "Darryl", "Erica", "Fred"],
-     initial_hand_size=5):
+def Play(players=["Alice", "Bob", "Clara", "Darryl", "Erica", "Fred"], initial_hand_size=5):
   num_players = len(players)
   hand_size = initial_hand_size
   num_wires = num_players * hand_size
@@ -25,8 +24,7 @@ def Play(players=["Alice", "Bob", "Clara", "Darryl", "Erica", "Fred"],
     # Declare your wires
     declarations = np.zeros(num_players)
     for i in range(num_players):
-      declarations[i] = int(input("How many wires does " +
-                    players[i] + " say they have? "))
+      declarations[i] = int(input("How many wires does " + players[i] + " say they have? "))
     print("d:", declarations)
     # Calculate probabilities
     probabilities = ProbDeclaration(declarations, active_wires, hand_size)
@@ -50,8 +48,7 @@ def Play(players=["Alice", "Bob", "Clara", "Darryl", "Erica", "Fred"],
           cutee = j
       revealed[cutee] += 1
       num_wires -= 1
-      shown = int(input("Did you reveal an\n" +
-                " 1- inactive wire\n 2- active wire\n"))
+      shown = int(input("Did you reveal an\n" + " 1- inactive wire\n 2- active wire\n"))
       while shown not in [1, 2]:
         shown = int(input("Sorry, I'm looking for a 1 or a 2 here."))
       if shown == 2:
@@ -60,8 +57,7 @@ def Play(players=["Alice", "Bob", "Clara", "Darryl", "Erica", "Fred"],
       print("r:", revealed)
       print("f:", found)
       # Update probabilities
-      probs = ProbCut(declarations, probabilities, revealed, found,
-              hand_size, active_wires)
+      probs = ProbCut(declarations, probabilities, revealed, found, hand_size, active_wires)
       prob_bad, prob_bomb = DeTensor(probs)
       probabilities_list[-1] = prob_bad.copy()
       comb_probs_line = DeMatrix(CombineProbs(probabilities_list))
@@ -143,7 +139,7 @@ def PlayAuto(num_players=6, initial_hand_size=5, verbosity=2):
     for i in range(num_players):
       if verbosity > 0:
         print("Cut number", i + 1)
-      cutee = randint(0, num_players - 1)  # cutee = max(prob, dclrtn)
+      cutee = randint(0, num_players - 1)
       while revealed[cutee] >= hand_size:
         cutee = randint(0, num_players - 1)
       randy = randint(1, hand_size - revealed[cutee])
@@ -160,8 +156,7 @@ def PlayAuto(num_players=6, initial_hand_size=5, verbosity=2):
         print("r:", revealed)
         print("f:", found)
       # Update probabilities
-      probs = ProbCut(declarations, probabilities, revealed, found,
-              hand_size, active_wires)
+      probs = ProbCut(declarations, probabilities, revealed, found, hand_size, active_wires)
       prob_bad, prob_bomb = DeTensor(probs)
       probabilities_list[-1] = prob_bad.copy()
       comb_probs_line = DeMatrix(CombineProbs(probabilities_list))
@@ -321,7 +316,7 @@ def ProbDeclaration2(decls, active_wires, hand_size):
   return probs
 
 
-def ProbCut(decls, prior, revealed, found, hand_size, actvs):
+def ProbCut(decls, prior, revealed, found, hand_size, active_wires):
   num_players = decls.size
   lklhd = np.zeros([num_players, num_players, num_players])
   for i in range(num_players):
@@ -334,15 +329,15 @@ def ProbCut(decls, prior, revealed, found, hand_size, actvs):
             lklhd[i][j][k] = 0
             continue
           # How many wires do i and j have if they are bad guys
-          m = actvs+np.sum(found) - np.sum(decls)+decls[i]+decls[j]
+          m = active_wires + np.sum(found) - np.sum(decls) + decls[i] + decls[j]
           if hand_size + decls[i] < m:
             lklhd[i][j][k] = 0
             continue
           # Likelihood of conf if i has a bomb + i and j are bad guys
           combinations = 0
           for a in range(int(m) + 1):  # Consider all distributions
-            lklhd_i = uf.Lklhd(hand_size-1, a, revealed[i], found[i])
-            lklhd_j = uf.Lklhd(hand_size, m-a, revealed[j], found[j])
+            lklhd_i = uf.Lklhd(hand_size - 1, a, revealed[i], found[i])
+            lklhd_j = uf.Lklhd(hand_size, m - a, revealed[j], found[j])
             combinations += uf.C(a, m)
             lklhd[i][j][k] += uf.C(a, m) * lklhd_i * lklhd_j
           if combinations != 0:
@@ -352,15 +347,15 @@ def ProbCut(decls, prior, revealed, found, hand_size, actvs):
             lklhd[i][j][k] = 0
             continue
           # How many wires do i and j have if they are bad guys
-          m = actvs+np.sum(found) - np.sum(decls)+decls[i]+decls[j]
+          m = active_wires + np.sum(found) - np.sum(decls) + decls[i] + decls[j]
           if hand_size + decls[j] < m:
             lklhd[i][j][k] = 0
             continue
           # Likelihood of conf if j has a bomb + i and j are bad guys
           combinations = 0
           for a in range(int(m) + 1):  # Consider all distributions
-            lklhd_i = uf.Lklhd(hand_size, m-a, revealed[i], found[i])
-            lklhd_j = uf.Lklhd(hand_size-1, a, revealed[j], found[j])
+            lklhd_i = uf.Lklhd(hand_size, m - a, revealed[i], found[i])
+            lklhd_j = uf.Lklhd(hand_size - 1, a, revealed[j], found[j])
             combinations += uf.C(a, m)
             lklhd[i][j][k] += uf.C(a, m) * lklhd_i * lklhd_j
           if combinations != 0:
@@ -369,17 +364,14 @@ def ProbCut(decls, prior, revealed, found, hand_size, actvs):
           if revealed[k] >= hand_size:  # All of k's hand is not bomb
             lklhd[i][j][k] = 0
             continue
-          m = actvs+np.sum(found) - np.sum(decls)+decls[i]+decls[j]
+          m = active_wires + np.sum(found) - np.sum(decls) + decls[i] + decls[j]
           # Likelihood of configuration if i, j and k are lying
           combinations = 0
           for a in range(int(m) + 1):  # Consider all distributions
             for b in range(int(m) + 1 - a):
-              lklhd_i = uf.Lklhd(hand_size, m - a - b,
-                         revealed[i], found[i])
-              lklhd_j = uf.Lklhd(hand_size, b,
-                         revealed[j], found[j])
-              lklhd_k = uf.Lklhd(hand_size - 1, decls[k] + a,
-                         revealed[k], found[k])
+              lklhd_i = uf.Lklhd(hand_size, m - a - b, revealed[i], found[i])
+              lklhd_j = uf.Lklhd(hand_size, b, revealed[j], found[j])
+              lklhd_k = uf.Lklhd(hand_size - 1, decls[k] + a, revealed[k], found[k])
               combinations += 1
               lklhd[i][k] += lklhd_i * lklhd_j * lklhd_k
           if combinations != 0:

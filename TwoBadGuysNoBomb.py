@@ -69,9 +69,8 @@ def PlayAuto(num_players=6, initial_hand_size=5, verbosity=2):
       if verbosity > 0:
         print("r:", revealed)
         print("f:", found)
-      # Update and dispaly probabilities
-      new_probs = ProbCut(declarations, probabilities,
-                revealed, found, num_players, active_wires)
+      # Update and display probabilities
+      new_probs = ProbCut(declarations, probabilities, revealed, found, num_players, active_wires)
       probabilities_list[-1] = new_probs.copy()
       if verbosity > 1:
         print(" p:", DeMatrix(new_probs))
@@ -163,7 +162,7 @@ def ProbDeclaration2(decls, hand_size, active_wires):
   return probs
 
 
-def ProbCut(decls, prior, revealed, found, hand_size, actvs):
+def ProbCut(decls, prior, revealed, found, hand_size, active_wires):
   num_players = len(decls)
   likelihood = np.zeros([num_players, num_players])
   for i in range(num_players):
@@ -172,7 +171,7 @@ def ProbCut(decls, prior, revealed, found, hand_size, actvs):
         return prior
       # How many wires do i and j have if they are bad
       other_decls = np.sum(decls) - decls[i] - decls[j]
-      bg_wrs = actvs + np.sum(found) - other_decls
+      bg_wrs = active_wires + np.sum(found) - other_decls
       # Calculate likelihood of configuration supposing i and j bad guys
       combinations = 0
       for k in range(int(bg_wrs) + 1):  # Consider all distributions

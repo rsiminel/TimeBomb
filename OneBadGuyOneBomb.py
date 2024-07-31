@@ -87,8 +87,7 @@ def PlayAuto(num_players=4, initial_hand_size=5, verbosity=2):
         print("r:", revealed)
         print("f:", found)
       # Update probabilities
-      probs = ProbCut(declarations, probabilities, revealed, found,
-              hand_size, active_wires)
+      probs = ProbCut(declarations, probabilities, revealed, found, hand_size, active_wires)
       prob_bad, prob_bomb = DeMatrix(probs)
       probabilities_list[-1] = prob_bad.copy()
       comb_probs = CombineProbs(probabilities_list)
@@ -175,8 +174,7 @@ def ProbDeclaration2(decls, active_wires, hand_size):
             probs_i = uf.C(i_wires, decls[i])
           else:  # i declared fewer wires than he has
             probs_i = uf.C(i_wires - decls[i], hide_wire)
-          # j can only declare fewer wires than he has
-          probs_j = uf.C(j_wires - decls[j], hide_bomb)
+          probs_j = uf.C(j_wires - decls[j], hide_bomb)  # j can only declare fewer wires than he has
           combinations += uf.C(k, bg_wires)
           probs[i][j] += uf.C(k, bg_wires) * probs_i * probs_j
         if combinations != 0:
@@ -186,7 +184,7 @@ def ProbDeclaration2(decls, active_wires, hand_size):
   return probs
 
 
-def ProbCut(decls, prior, revealed, found, hand_size, actvs):
+def ProbCut(decls, prior, revealed, found, hand_size, active_wires):
   num_players = decls.size
   lklhd = np.zeros([num_players, num_players])
   for i in range(num_players):
@@ -198,7 +196,7 @@ def ProbCut(decls, prior, revealed, found, hand_size, actvs):
           lklhd[i][j] = 0
           continue
         # How many wires does i have if he is a bad guy
-        m = actvs + np.sum(found) - np.sum(decls) + decls[i]
+        m = active_wires + np.sum(found) - np.sum(decls) + decls[i]
         if decls[i] < m:  # A bad guy with a bomb declares extra wires
           lklhd[i][j] = 0
           continue
@@ -209,15 +207,14 @@ def ProbCut(decls, prior, revealed, found, hand_size, actvs):
           lklhd[i][j] = 0
           continue
         # How many wires do i and j have if i is bg and j has a bomb
-        m = actvs + np.sum(found) - np.sum(decls) + decls[i]
+        m = active_wires + np.sum(found) - np.sum(decls) + decls[i]
         # Likelihood of configuration if i and j are lying
         combinations = 0
         for k in range(int(m) + 1):  # Consider all distributions
           if decls[j] + k >= hand_size:  # Impossible
             continue
           lklhd_i = uf.Lklhd(hand_size, m - k, revealed[i], found[i])
-          lklhd_j = uf.Lklhd(hand_size - 1, decls[j] + k,
-                     revealed[j], found[j])
+          lklhd_j = uf.Lklhd(hand_size - 1, decls[j] + k, revealed[j], found[j])
           combinations += uf.C(k, m)
           lklhd[i][j] += uf.C(k, m) * lklhd_i * lklhd_j
         if combinations != 0:
