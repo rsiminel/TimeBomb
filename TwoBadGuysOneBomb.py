@@ -216,67 +216,62 @@ def DeTensor(probabilities):
 
 def ProbDeclaration(decls, active_wires, hand_size):
   num_players = decls.shape[0]
-  probs = np.full([num_players, num_players], 1 / num_players**2)
+  probs = np.zeros([num_players, num_players, num_players])
   for i in range(num_players):
     for j in range(i):
-      bg_wires = active_wires - sum(decls) + decls[i] + decls[j]
+      bg_wires = int(active_wires - np.sum(decls) + decls[i] + decls[j])
       for k in range(num_players):
         if i == k:  # A bad guy (i) has the bomb
           combinations = 0
-          for a in range(int(bg_wires) + 1):
-            i_wires = a
-            j_wires = bg_wires - a
-            if decls[i] < i_wires:  # i has more wires than he declared
-              probs_i = uf.C(i_wires - decls[i], hand_size - decls[i])
-            else:  # i has fewer wires than he declared
-              probs_i = 0  # Bg with bomb declares extra wires
-            if j_wires < decls[j]:  # j has fewer wires than he declared
+          for i_wires in range(int(bg_wires) + 1):
+            j_wires = bg_wires - i_wires
+            if i_wires > decls[i]:  # i has more wires than declared
+              probs_i = 0  # i must have =fewer wires than declared (bg w. bomb)
+            else:  # i has =fewer wires than declared
+              probs_i = uf.C(i_wires, decls[i])
+            if j_wires < decls[j]:  # j has fewer wires than declared
               probs_j = uf.C(j_wires, decls[j])
-            else:  # j has more wires than he declared
+            else:  # j has =more wires than declared
               probs_j = uf.C(j_wires - decls[j], hand_size - decls[j])
-            probs[i][j][k] += uf.C(k, bg_wires) * probs_i * probs_j
-            combinations += uf.C(k, bg_wires)
+            probs[i][j][k] += uf.C(i_wires, bg_wires) * probs_i * probs_j
+            combinations += uf.C(i_wires, bg_wires)
           if combinations != 0:
             probs[i][j][k] /= combinations
         if j == k:  # A bad guy (j) has the bomb
           combinations = 0
-          for a in range(int(bg_wires) + 1):
-            i_wires = a
-            j_wires = bg_wires - a
-            if i_wires < decls[i]:  # i has fewer wires than he declared
+          for i_wires in range(bg_wires + 1):
+            j_wires = bg_wires - i_wires
+            if i_wires < decls[i]:  # i has fewer wires than declared
               probs_i = uf.C(i_wires, decls[i])
-            else:  # i has more wires than he declared
+            else:  # i has =more wires than declared
               probs_i = uf.C(i_wires - decls[i], hand_size - decls[i])
-            if decls[j] < j_wires:  # j has more wires than he declared
-              probs_j = uf.C(j_wires - decls[j], hand_size - decls[j])
-            else:  # j has fewer wires than he declared
-              probs_j = 0  # Bg with bomb declares extra wires
-            probs[i][j][k] += uf.C(k, bg_wires) * probs_i * probs_j
-            combinations += uf.C(k, bg_wires)
+            if j_wires > decls[j]:  # j has more wires than declared
+              probs_j = 0  # j must have =fewer wires than declared (bg w. bomb)
+            else:  # j has =fewer wires than declared
+              probs_j = uf.C(i_wires, decls[i])
+            probs[i][j][k] += uf.C(i_wires, bg_wires) * probs_i * probs_j
+            combinations += uf.C(i_wires, bg_wires)
           if combinations != 0:
             probs[i][j][k] /= combinations
         else:  # A good guy has the bomb
-          hide_bomb = hand_size - decls[k] - 1
-          if hide_bomb < 0:  # The bomb is not hidden in j's hand
+          if hand_size - decls[k] - 1 < 0:  # The bomb is not hidden in j's hand
             probs[i][j][k] = 0
           combinations = 0
-          for a in range(int(bg_wires) + 1):
-            for b in range(int(bg_wires) + 1 - a):
-              i_wires = a
-              j_wires = b
-              k_wires = bg_wires - a - b + decls[k]
-              if i_wires < decls[i]:  # i declared more wires than he has
+          for i_wires in range(bg_wires + 1):
+            for j_wires in range(bg_wires + 1 - i_wires):
+              k_wires = bg_wires - i_wires - j_wires + decls[k]
+              if i_wires < decls[i]:  # i has fewer wires than declared
                 probs_i = uf.C(i_wires, decls[i])
-              else:  # i declared fewer wires than he has
+              else:  # i has =more wires than declared
                 probs_i = uf.C(i_wires - decls[i], hand_size - decls[i])
-              if j_wires < decls[j]:  # j declared more wires than he has
+              if j_wires < decls[j]:  # j has fewer wires than declared
                 probs_j = uf.C(j_wires, decls[j])
-              else:  # j declared fewer wires than he has
+              else:  # i has =more wires than declared
                 probs_j = uf.C(j_wires - decls[j], hand_size - decls[j])
-              # k can only declare fewer wires than he has
-              probs_k = uf.C(k_wires - decls[k], hide_bomb)
-              combinations += 1
-              probs[i][j][k] += 1 * probs_i * probs_j * probs_k
+              # k must have =more wires than declared (gg w. bomb)
+              probs_k = uf.C(k_wires - decls[k], hand_size - decls[k] - 1)
+              combinations += uf.C3(i_wires, j_wires, bg_wires)
+              probs[i][j][k] += uf.C3(i_wires, j_wires, bg_wires) * probs_i * probs_j * probs_k
           if combinations != 0:
             probs[i][j][k] /= combinations
   if np.sum(probs) != 0:
@@ -289,61 +284,54 @@ def ProbCut(decls, prior, revealed, found, hand_size, active_wires):
   lklhd = np.zeros([num_players, num_players, num_players])
   for i in range(num_players):
     for j in range(i):
+      bg_wires = int(active_wires + np.sum(found) - np.sum(decls) + decls[i] + decls[j])
       for k in range(num_players):
         if prior[i][j][k] == 1:  # Bad guys and the bomb found
           return prior
-        if i == k:  # A bad guy (i) has the bomb
-          if revealed[i] >= hand_size:  # All of i's hand is not bomb
+        if revealed[k] >= hand_size:  # All of k's hand is not bomb
             lklhd[i][j][k] = 0
             continue
-          # How many wires do i and j have if they are bad guys
-          m = active_wires + np.sum(found) - np.sum(decls) + decls[i] + decls[j]
-          if hand_size + decls[i] < m:
+        if i == k:  # A bad guy (i) has the bomb
+          if hand_size + decls[i] < bg_wires:
             lklhd[i][j][k] = 0
             continue
           # Likelihood of conf if i has a bomb + i and j are bad guys
           combinations = 0
-          for a in range(int(m) + 1):  # Consider all distributions
-            lklhd_i = uf.Lklhd(hand_size - 1, a, revealed[i], found[i])
-            lklhd_j = uf.Lklhd(hand_size, m - a, revealed[j], found[j])
-            combinations += uf.C(a, m)
-            lklhd[i][j][k] += uf.C(a, m) * lklhd_i * lklhd_j
+          for i_wires in range(bg_wires + 1):  # Consider all distributions
+            j_wires = bg_wires - i_wires
+            lklhd_i = uf.Lklhd(hand_size - 1, i_wires, revealed[i], found[i])
+            lklhd_j = uf.Lklhd(hand_size, j_wires, revealed[j], found[j])
+            combinations += uf.C(i_wires, bg_wires)
+            lklhd[i][j][k] += uf.C(i_wires, bg_wires) * lklhd_i * lklhd_j
           if combinations != 0:
             lklhd[i][j][k] /= combinations
         elif j == k:  # A bad guy (j) has the bomb
-          if revealed[j] >= hand_size:  # All of j's hand is not bomb
-            lklhd[i][j][k] = 0
-            continue
-          # How many wires do i and j have if they are bad guys
-          m = active_wires + np.sum(found) - np.sum(decls) + decls[i] + decls[j]
-          if hand_size + decls[j] < m:
+          if hand_size + decls[j] < bg_wires:
             lklhd[i][j][k] = 0
             continue
           # Likelihood of conf if j has a bomb + i and j are bad guys
           combinations = 0
-          for a in range(int(m) + 1):  # Consider all distributions
-            lklhd_i = uf.Lklhd(hand_size, m - a, revealed[i], found[i])
-            lklhd_j = uf.Lklhd(hand_size - 1, a, revealed[j], found[j])
-            combinations += uf.C(a, m)
-            lklhd[i][j][k] += uf.C(a, m) * lklhd_i * lklhd_j
+          for i_wires in range(bg_wires + 1):  # Consider all distributions
+            j_wires = bg_wires - i_wires
+            lklhd_i = uf.Lklhd(hand_size, i_wires, revealed[i], found[i])
+            lklhd_j = uf.Lklhd(hand_size - 1, j_wires, revealed[j], found[j])
+            combinations += uf.C(i_wires, bg_wires)
+            lklhd[i][j][k] += uf.C(i_wires, bg_wires) * lklhd_i * lklhd_j
           if combinations != 0:
             lklhd[i][j][k] /= combinations
         else:  # A good guy has the bomb
-          if revealed[k] >= hand_size:  # All of k's hand is not bomb
-            lklhd[i][j][k] = 0
-            continue
-          m = active_wires + np.sum(found) - np.sum(decls) + decls[i] + decls[j]
           # Likelihood of configuration if i, j and k are lying
           combinations = 0
-          for a in range(int(m) + 1):  # Consider all distributions
-            for b in range(int(m) + 1 - a):
-              lklhd_i = uf.Lklhd(hand_size, m - a - b, revealed[i], found[i])
-              lklhd_j = uf.Lklhd(hand_size, b, revealed[j], found[j])
-              lklhd_k = uf.Lklhd(hand_size - 1, decls[k] + a, revealed[k], found[k])
-              combinations += 1
-              lklhd[i][k] += lklhd_i * lklhd_j * lklhd_k
+          for i_wires in range(bg_wires + 1):  # Consider all distributions
+            for j_wires in range(bg_wires + 1 - i_wires):
+              k_wires = bg_wires - i_wires - j_wires + decls[k]
+              lklhd_i = uf.Lklhd(hand_size, i_wires, revealed[i], found[i])
+              lklhd_j = uf.Lklhd(hand_size, j_wires, revealed[j], found[j])
+              lklhd_k = uf.Lklhd(hand_size - 1, k_wires, revealed[k], found[k])
+              combinations += uf.C3(i_wires, j_wires, bg_wires)
+              lklhd[i][j][k] += uf.C3(i_wires, j_wires, bg_wires) * lklhd_i * lklhd_j * lklhd_k
           if combinations != 0:
-            lklhd[i][k] /= combinations
+            lklhd[i][j][k] /= combinations
   marginal = 0
   for i in range(num_players):
     for j in range(i):

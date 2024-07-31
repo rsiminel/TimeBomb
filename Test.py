@@ -15,7 +15,7 @@ import TwoBadGuysOneBomb as tbib
 def Test1b0b(n=5, num_players=4, init_hand_size=5):
     win_rate = 0
     find_rate = 0
-    suspition = 0
+    suspicion = 0
     for i in range(n):
         (is_win, probs, roles) = ibob.PlayAuto(num_players, init_hand_size, 0)
         win_rate += is_win
@@ -30,13 +30,13 @@ def Test1b0b(n=5, num_players=4, init_hand_size=5):
                 culprit = i
         if suspect == culprit:
             find_rate += 1
-        suspition += probs[culprit]
-    return (win_rate/n, find_rate/n, suspition/n)
+        suspicion += probs[culprit]
+    return (win_rate/n, find_rate/n, suspicion/n)
 
 
 def Test(play_auto, num_players, num_games=5, init_hand_size=5):
     win_rate = 0
-    suspition = []
+    suspicion = []
     for i in range(num_games):
         (is_win, probs, roles) = play_auto(num_players, init_hand_size, 0)
         win_rate += is_win
@@ -44,11 +44,11 @@ def Test(play_auto, num_players, num_games=5, init_hand_size=5):
         for i in range(num_players):
             if roles[i] == 1:
                 culprits += [i]
-        suspition += [probs[culprits[j]] for j in range(len(culprits))]
-    return (win_rate/num_games, sum(suspition)/num_games/len(culprits))
+        suspicion += [probs[culprits[j]] for j in range(len(culprits))]
+    return (win_rate/num_games, sum(suspicion)/num_games/len(culprits))
 
 
-num_tests = 200
+num_tests = 100
 print(Test(ibob.PlayAuto, 4, num_tests))
 print(Test(tbob.PlayAuto, 6, num_tests))
 print(Test(ibib.PlayAuto, 4, num_tests))

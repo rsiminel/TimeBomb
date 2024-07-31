@@ -32,6 +32,12 @@ def C(k, n):
     return Fact(n) / (Fact(k) * Fact(n - k))
 
 
+def C3(a, b, n):
+    if n < a or n < b:
+        return 0
+    return Fact(n) / (Fact(a) * Fact(b) * Fact(n - a - b))
+
+
 def A(k, n):
     if n < k:
         return 0
