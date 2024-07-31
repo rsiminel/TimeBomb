@@ -10,6 +10,13 @@ import numpy as np
 from random import randint
 
 
+def Normalize(a):
+    n = np.sum(a)
+    if n == 0:
+        return a
+    return a / n
+
+
 def Fact(x):
     factorial = 1
     if x < 0:
