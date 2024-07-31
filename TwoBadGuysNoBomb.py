@@ -45,7 +45,7 @@ def PlayAuto(num_players=6, initial_hand_size=5, verbosity=2):
     if verbosity > 0:
       print("d : ", declarations)
     # Calculate and display probabilities
-    probabilities = ProbDeclaration2(declarations, active_wires, hand_size)
+    probabilities = ProbDeclaration(declarations, active_wires, hand_size)
     probabilities_list.append(probabilities.copy())
     prob_line = DeMatrix(CombineProbs(probabilities_list))
     if verbosity > 1:
@@ -114,28 +114,6 @@ def CombineProbs(probabilities_list):
 
 
 def ProbDeclaration(decls, hand_size, active_wires):
-  num_players = len(decls)
-  probs = np.zeros([num_players, num_players])
-  excess = - active_wires + sum(decls)
-  if excess == 0:  # With no excess, no information can be extracted
-    base_line = 1 / uf.C(2, num_players)
-    for i in range(num_players):
-      for j in range(i):
-        probs[i][j] = base_line
-  else:
-    cas_p = 0
-    for i in range(num_players):
-      for j in range(i):
-        if excess > 0:  # The extra decls are in i and j's declarations
-          probs[i][j] = uf.C(excess, decls[i] + decls[j])
-        else:  # The missing wires are in what i and j did not declare
-          probs[i][j] = uf.C(-excess, 2*hand_size-decls[i]-decls[j])
-        cas_p += probs[i][j]
-    probs /= cas_p  # Normalize
-  return probs
-
-
-def ProbDeclaration2(decls, hand_size, active_wires):
   num_players = len(decls)
   probs = np.zeros([num_players, num_players])
   for i in range(num_players):

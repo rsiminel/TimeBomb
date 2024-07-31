@@ -123,36 +123,6 @@ def DeMatrix(probabilities):
 def ProbDeclaration(decls, active_wires, hand_size):
   num_players = decls.shape[0]
   probs = np.full([num_players, num_players], 1 / num_players**2)
-  excess = - active_wires + sum(decls)
-  cas_p = 0
-  for i in range(num_players):
-    for j in range(num_players):
-      if i == j:  # The bad guy has the bomb
-        if excess > 0:  # The extra decls are in i's declarations
-          probs[i][j] = uf.C(excess, decls[i])
-        else:  # A bad guy with the bomb declares extra wires
-          probs[i][j] = 0
-      else:  # A good guy has the bomb
-        hide_bomb = hand_size - decls[j] - 1
-        hide_wire = hand_size - decls[i]
-        if hide_bomb < 0:  # The bomb is not hidden in j's hand
-          probs[i][j] = 0
-        elif excess > 0:  # The extra decls are in i's declarations
-          for k in range(int(hide_bomb) + 1):
-            lklhd_i = uf.C(excess + k, decls[i])
-            lklhd_j = uf.C(k, hide_bomb)
-            probs[i][j] += lklhd_i * lklhd_j
-          probs[i][j] /= hide_bomb + 1
-        else:  # The missing wires are in what i and j did not declare
-          probs[i][j] = uf.C(-excess, hide_wire + hide_bomb)
-      cas_p += probs[i][j]
-  probs /= cas_p
-  return probs
-
-
-def ProbDeclaration2(decls, active_wires, hand_size):
-  num_players = decls.shape[0]
-  probs = np.full([num_players, num_players], 1 / num_players**2)
   for i in range(num_players):
     bg_wires = active_wires - sum(decls) + decls[i]
     for j in range(num_players):

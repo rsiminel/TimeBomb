@@ -216,38 +216,6 @@ def DeTensor(probabilities):
 
 def ProbDeclaration(decls, active_wires, hand_size):
   num_players = decls.shape[0]
-  probs = np.zeros([num_players, num_players, num_players])
-  excess = - active_wires + sum(decls)
-  cas_p = 0
-  for i in range(num_players):
-    for j in range(i):
-      for k in range(num_players):
-        if i == k:  # A bad guy (i) has the bomb
-          if excess > 0:  # The excess is hiding in i and j's decls
-            probs[i][j][k] = uf.C(excess, decls[i] + decls[j])
-          else:  # The missing wires are in what j did not declare
-            probs[i][j][k] = uf.C(-excess, hand_size - decls[j])
-        elif j == k:  # A bad guy (j) has the bomb
-          if excess > 0:  # The excess hiding in i and j's decls
-            probs[i][j][k] = uf.C(excess, decls[i] + decls[j])
-          else:  # The missing wires are in what i did not declare
-            probs[i][j][k] = uf.C(-excess, hand_size - decls[i])
-        else:  # A good guy has the bomb
-          hide_bomb = hand_size - decls[k] - 1
-          if hide_bomb < 0:  # The bomb is not in k's hand
-            probs[i][j][k] = 0
-          elif excess > 0:  # The excess hiding in i and j's decls
-            probs[i][j][k] = uf.C(excess, decls[i] + decls[j])
-          else:  # The wires are in what i, j and k did not declare
-            empty = 2 * hand_size - decls[i] - decls[j]
-            probs[i][j][k] = uf.C(- excess, empty + hide_bomb)
-        cas_p += probs[i][j][k]
-  probs /= cas_p
-  return probs
-
-
-def ProbDeclaration2(decls, active_wires, hand_size):
-  num_players = decls.shape[0]
   probs = np.full([num_players, num_players], 1 / num_players**2)
   for i in range(num_players):
     for j in range(i):
