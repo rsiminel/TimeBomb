@@ -48,7 +48,7 @@ def Test(play_auto, num_players, num_games=5, init_hand_size=5):
     return (win_rate/num_games, sum(suspicion)/num_games/len(culprits))
 
 
-num_tests = 100
+num_tests = 1000
 print(Test(ibob.PlayAuto, 4, num_tests))
 print(Test(tbob.PlayAuto, 6, num_tests))
 print(Test(ibib.PlayAuto, 4, num_tests))

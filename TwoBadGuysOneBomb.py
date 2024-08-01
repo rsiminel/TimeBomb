@@ -31,9 +31,9 @@ def Play(players=["Alice", "Bob", "Clara", "Darryl", "Erica", "Fred"], initial_h
     prob_bad, prob_bomb = DeTensor(probabilities)
     probabilities_list.append(prob_bad.copy())
     comb_probs_line = DeMatrix(CombineProbs(probabilities_list))
-    print("bp:", prob_bomb, np.sum(prob_bomb))
-    print(" p:", DeMatrix(prob_bad), np.sum(prob_bad))
-    print("tp:", comb_probs_line, np.sum(comb_probs_line))
+    print("bp:", prob_bomb)
+    print(" p:", DeMatrix(prob_bad))
+    print("tp:", comb_probs_line)
     # Cut wires
     found = np.zeros(num_players)
     revealed = np.zeros(num_players)
@@ -61,9 +61,9 @@ def Play(players=["Alice", "Bob", "Clara", "Darryl", "Erica", "Fred"], initial_h
       prob_bad, prob_bomb = DeTensor(probs)
       probabilities_list[-1] = prob_bad.copy()
       comb_probs_line = DeMatrix(CombineProbs(probabilities_list))
-      print("bp:", prob_bomb, np.sum(prob_bomb))
-      print(" p:", DeMatrix(prob_bad), np.sum(prob_bad))
-      print("tp:", comb_probs_line, np.sum(comb_probs_line))
+      print("bp:", prob_bomb)
+      print(" p:", DeMatrix(prob_bad))
+      print("tp:", comb_probs_line)
       # Test for victory
       if active_wires <= 0:
         print("Good guys win!")
@@ -130,9 +130,9 @@ def PlayAuto(num_players=6, initial_hand_size=5, verbosity=2):
     probabilities_list.append(prob_bad.copy())
     comb_probs_line = DeMatrix(CombineProbs(probabilities_list))
     if verbosity > 1:
-      print("bp:", prob_bomb, np.sum(prob_bomb))
-      print(" p:", DeMatrix(prob_bad), np.sum(prob_bad))
-      print("tp:", comb_probs_line, np.sum(comb_probs_line))
+      print("bp:", prob_bomb)
+      print(" p:", DeMatrix(prob_bad))
+      print("tp:", comb_probs_line)
     # Cut wires
     found = np.zeros(num_players)
     revealed = np.zeros(num_players)
@@ -161,9 +161,9 @@ def PlayAuto(num_players=6, initial_hand_size=5, verbosity=2):
       probabilities_list[-1] = prob_bad.copy()
       comb_probs_line = DeMatrix(CombineProbs(probabilities_list))
       if verbosity > 1:
-        print("bp:", prob_bomb, np.sum(prob_bomb))
-        print(" p:", DeMatrix(prob_bad), np.sum(prob_bad))
-        print("tp:", comb_probs_line, np.sum(comb_probs_line))
+        print("bp:", prob_bomb)
+        print(" p:", DeMatrix(prob_bad))
+        print("tp:", comb_probs_line)
       # Test for victory
       if active_wires <= 0:
         if verbosity > 0:
@@ -221,9 +221,9 @@ def ProbDeclaration(decls, active_wires, hand_size):
     for j in range(i):
       bg_wires = int(active_wires - np.sum(decls) + decls[i] + decls[j])
       for k in range(num_players):
+        combinations = 0
         if i == k:  # A bad guy (i) has the bomb
-          combinations = 0
-          for i_wires in range(int(bg_wires) + 1):
+          for i_wires in range(bg_wires + 1):
             j_wires = bg_wires - i_wires
             if i_wires > decls[i]:  # i has more wires than declared
               probs_i = 0  # i must have =fewer wires than declared (bg w. bomb)
@@ -235,10 +235,7 @@ def ProbDeclaration(decls, active_wires, hand_size):
               probs_j = uf.C(j_wires - decls[j], hand_size - decls[j])
             probs[i][j][k] += uf.C(i_wires, bg_wires) * probs_i * probs_j
             combinations += uf.C(i_wires, bg_wires)
-          if combinations != 0:
-            probs[i][j][k] /= combinations
-        if j == k:  # A bad guy (j) has the bomb
-          combinations = 0
+        elif j == k:  # A bad guy (j) has the bomb
           for i_wires in range(bg_wires + 1):
             j_wires = bg_wires - i_wires
             if i_wires < decls[i]:  # i has fewer wires than declared
@@ -248,17 +245,15 @@ def ProbDeclaration(decls, active_wires, hand_size):
             if j_wires > decls[j]:  # j has more wires than declared
               probs_j = 0  # j must have =fewer wires than declared (bg w. bomb)
             else:  # j has =fewer wires than declared
-              probs_j = uf.C(i_wires, decls[i])
+              probs_j = uf.C(j_wires, decls[j])
             probs[i][j][k] += uf.C(i_wires, bg_wires) * probs_i * probs_j
             combinations += uf.C(i_wires, bg_wires)
-          if combinations != 0:
-            probs[i][j][k] /= combinations
         else:  # A good guy has the bomb
           if hand_size - decls[k] - 1 < 0:  # The bomb is not hidden in j's hand
             probs[i][j][k] = 0
-          combinations = 0
+            continue
           for i_wires in range(bg_wires + 1):
-            for j_wires in range(bg_wires + 1 - i_wires):
+            for j_wires in range(bg_wires - i_wires + 1):
               k_wires = bg_wires - i_wires - j_wires + decls[k]
               if i_wires < decls[i]:  # i has fewer wires than declared
                 probs_i = uf.C(i_wires, decls[i])
@@ -270,10 +265,10 @@ def ProbDeclaration(decls, active_wires, hand_size):
                 probs_j = uf.C(j_wires - decls[j], hand_size - decls[j])
               # k must have =more wires than declared (gg w. bomb)
               probs_k = uf.C(k_wires - decls[k], hand_size - decls[k] - 1)
-              combinations += uf.C3(i_wires, j_wires, bg_wires)
               probs[i][j][k] += uf.C3(i_wires, j_wires, bg_wires) * probs_i * probs_j * probs_k
-          if combinations != 0:
-            probs[i][j][k] /= combinations
+              combinations += uf.C3(i_wires, j_wires, bg_wires)
+        if combinations != 0:
+          probs[i][j][k] /= combinations
   if np.sum(probs) != 0:
     probs /= np.sum(probs)
   return probs
