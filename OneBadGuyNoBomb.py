@@ -9,6 +9,7 @@ Created on Sun Jun  5 14:21:49 2022
 import numpy as np
 from random import randint
 import UsefulFunctions as uf
+import Entropy as h
 
 
 # 1 bad guy, no bomb
@@ -40,9 +41,15 @@ def PlayAuto(num_players=4, initial_hand_size=5, verbosity=2):
     # Calculate probabilities
     probabilities = ProbDeclaration(declarations, hand_size, active_wires)
     probabilities_list.append(probabilities.copy())
+    total_probs = CombineProbs(probabilities_list)
     if verbosity > 1:
-      print(" p:", probabilities)
-      print("tp:", CombineProbs(probabilities_list))
+      print("  p:", probabilities, h.H(probabilities))
+      print(" tp:", total_probs, h.H(total_probs))
+      print(" pw:", P_wire(declarations, total_probs, np.zeros(num_players),
+                           hand_size, active_wires, P_wire, ProbCut))
+      print(" em:", h.H_Min(declarations, total_probs, np.zeros(num_players),
+                            np.zeros(num_players), hand_size, active_wires,
+                            num_players, P_wire, ProbCut))
     # Cut wires
     found = np.zeros(num_players)
     revealed = np.zeros(num_players)
@@ -64,9 +71,13 @@ def PlayAuto(num_players=4, initial_hand_size=5, verbosity=2):
       # Update probabilities
       probs = ProbCut(declarations, probabilities, revealed, found, hand_size, active_wires)
       probabilities_list[-1] = probs.copy()
+      total_probs = CombineProbs(probabilities_list)
       if verbosity > 1:
-        print("  p:", probs)
-        print(" tp:", CombineProbs(probabilities_list))
+        print("  p:", probs, h.H(probs))
+        print(" tp:", total_probs, h.H(total_probs))
+        print(" pw:", P_wire(declarations, total_probs, found, hand_size, active_wires))
+        print(" em:", h.H_Min(declarations, total_probs, revealed, found, hand_size,
+                              active_wires, num_players - i - 1, P_wire, ProbCut))
       # Test for victory
       if active_wires <= 0:
         if verbosity > 0:
@@ -167,7 +178,7 @@ def ProbDeclaration(declarations, hand_size, active_wires):
 
 
 def ProbCut(decls, probabilities, revealed, found, hand_size, active_wires):
-  num_players = len(decls)
+  num_players = decls.size
   probs = probabilities.copy()  # Don't modify the original array
   for i in range(num_players):
     if probs[i] == 1:  # The bad guy has already been found
@@ -191,7 +202,7 @@ def ProbCut(decls, probabilities, revealed, found, hand_size, active_wires):
 # This has empirically been show to give the same results as the other function
 # But this one comes with a slightly more rigorous derivation
 def MathematicallyJustifiedProbCut(decls, probabilities, revealed, found, hand_size, active_wires):
-  num_players = len(decls)
+  num_players = decls.size
   probs = probabilities.copy()  # Don't modify the original array
   for i in range(num_players):
     if probs[i] == 1:  # Bad guy has already been found
@@ -220,11 +231,11 @@ def MathematicallyJustifiedProbCut(decls, probabilities, revealed, found, hand_s
   return probs
 
 
-def P_wire(probs, decls, active_wires, hand_size):
+def P_wire(decls, probs, found, hand_size, active_wires):
   num_players = decls.size
   p_wire = np.zeros(num_players)
   for i in range(num_players):
-    bg_wires = active_wires - np.sum(decls) + decls[i]
-    p_wire[i] = probs[i] * bg_wires + (1 - probs[i]) * decls[i]
+    bg_wires = active_wires + np.sum(found) - np.sum(decls) + decls[i] - found[i]
+    p_wire[i] = probs[i] * bg_wires + (1 - probs[i]) * (decls[i] - found[i])
   p_wire /= hand_size
   return p_wire
