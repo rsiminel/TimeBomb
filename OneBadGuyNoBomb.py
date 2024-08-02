@@ -139,6 +139,18 @@ def Play(players=["Alice", "Bob", "Clara", "Darryl"], initial_hand_size=5):
   return
 
 
+# Arithmetic average preserves 0s and 1s. Don't ask any other questions.
+def CombineProbs(probabilities_list):
+  num_tests = len(probabilities_list)
+  num_players = len(probabilities_list[0])
+  probabilities = np.full(num_players, 1.)
+  for i in range(num_players):
+    for j in range(num_tests):
+      probabilities[i] *= probabilities_list[j][i]
+  probabilities /= sum(probabilities)
+  return probabilities
+
+
 def ProbDeclaration(declarations, hand_size, active_wires):
   num_players = declarations.size
   probabilities = np.full(num_players, 1 / num_players)
@@ -208,13 +220,11 @@ def MathematicallyJustifiedProbCut(decls, probabilities, revealed, found, hand_s
   return probs
 
 
-# Arithmetic average preserves 0s and 1s. Don't ask any other questions.
-def CombineProbs(probabilities_list):
-  num_tests = len(probabilities_list)
-  num_players = len(probabilities_list[0])
-  probabilities = np.full(num_players, 1.)
+def P_wire(probs, decls, active_wires, hand_size):
+  num_players = decls.size
+  p_wire = np.zeros(num_players)
   for i in range(num_players):
-    for j in range(num_tests):
-      probabilities[i] *= probabilities_list[j][i]
-  probabilities /= sum(probabilities)
-  return probabilities
+    bg_wires = active_wires - np.sum(decls) + decls[i]
+    p_wire[i] = probs[i] * bg_wires + (1 - probs[i]) * decls[i]
+  p_wire /= hand_size
+  return p_wire

@@ -20,7 +20,7 @@ def Play(players=["Alice", "Bob", "Clara", "Darryl", "Erica", "Fred"], initial_h
   probabilities_list = []
   # Starting turns
   while hand_size > 1:
-    print("Round ", initial_hand_size - hand_size + 1)
+    print("\n\n Round ", initial_hand_size - hand_size + 1)
     # Declare your wires
     declarations = np.zeros(num_players)
     for i in range(num_players):
@@ -38,7 +38,7 @@ def Play(players=["Alice", "Bob", "Clara", "Darryl", "Erica", "Fred"], initial_h
     found = np.zeros(num_players)
     revealed = np.zeros(num_players)
     for i in range(num_players):
-      print("Cut number", i + 1)
+      print("\n Cut number", i + 1)
       cutee_str = input("Who's wire has been cut? ")
       while cutee_str not in players:
         cutee_str = input("You must have made a typo. Who? ")
@@ -48,10 +48,13 @@ def Play(players=["Alice", "Bob", "Clara", "Darryl", "Erica", "Fred"], initial_h
           cutee = j
       revealed[cutee] += 1
       num_wires -= 1
-      shown = int(input("Did you reveal an\n" + " 1- inactive wire\n 2- active wire\n"))
-      while shown not in [1, 2]:
-        shown = int(input("Sorry, I'm looking for a 1 or a 2 here."))
+      shown = int(input("Did you reveal\n" + " 0- an inactive wire\n 1- an active wire\n 2- the bomb"))
+      while shown not in [0, 1, 2]:
+        shown = int(input("Sorry, I'm looking for a 0, a 1 or a 2 here."))
       if shown == 2:
+        print("The Bomb was detonated. Bad guys win!")
+        return
+      if shown == 1:
         found[cutee] += 1
         active_wires -= 1
       print("r:", revealed)
@@ -66,12 +69,11 @@ def Play(players=["Alice", "Bob", "Clara", "Darryl", "Erica", "Fred"], initial_h
       print("tp:", comb_probs_line)
       # Test for victory
       if active_wires <= 0:
-        print("Good guys win!")
+        print("All wires have been cut. Good guys win!")
         return
     # Next round
     hand_size -= 1
-    print("\n")
-  print("Bad guys win!")
+  print("Out of time. Bad guys win!")
   return
 
 
