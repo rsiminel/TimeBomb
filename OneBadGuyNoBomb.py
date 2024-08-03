@@ -9,7 +9,6 @@ Created on Sun Jun  5 14:21:49 2022
 import numpy as np
 from random import randint
 import UsefulFunctions as uf
-import Entropy as h
 
 
 # 1 bad guy, no bomb
@@ -34,22 +33,20 @@ def PlayAuto(num_players=4, initial_hand_size=5, verbosity=2):
     declarations = wires.copy()
     for i in range(num_players):
       if roles[i] == 1:
-        randy = randint(- wires[i], hand_size - wires[i])
-        declarations[i] += randy
+        declarations[i] = randint(0, min(hand_size, active_wires))
     if verbosity > 0:
       print("d:", declarations)
     # Calculate probabilities
     probabilities = ProbDeclaration(declarations, hand_size, active_wires)
     probabilities_list.append(probabilities.copy())
     total_probs = CombineProbs(probabilities_list)
+    p_wire = P_wire(declarations, total_probs, np.zeros(num_players), hand_size, active_wires)
     if verbosity > 1:
-      print("  p:", probabilities, h.H(probabilities))
-      print(" tp:", total_probs, h.H(total_probs))
-      print(" pw:", P_wire(declarations, total_probs, np.zeros(num_players),
-                           hand_size, active_wires, P_wire, ProbCut))
-      print(" em:", h.H_Min(declarations, total_probs, np.zeros(num_players),
-                            np.zeros(num_players), hand_size, active_wires,
-                            num_players, P_wire, ProbCut))
+      print("  p:", probabilities, H(probabilities))
+      print(" tp:", total_probs, H(total_probs))
+      print(" pw:", p_wire, np.sum(p_wire) / num_players - active_wires / (num_players * hand_size))
+      print(" em:", H_Min(declarations, total_probs, np.zeros(num_players),
+                          np.zeros(num_players), hand_size, active_wires, num_players))
     # Cut wires
     found = np.zeros(num_players)
     revealed = np.zeros(num_players)
@@ -72,12 +69,13 @@ def PlayAuto(num_players=4, initial_hand_size=5, verbosity=2):
       probs = ProbCut(declarations, probabilities, revealed, found, hand_size, active_wires)
       probabilities_list[-1] = probs.copy()
       total_probs = CombineProbs(probabilities_list)
+      p_wire = P_wire(declarations, total_probs, found, hand_size, active_wires)
       if verbosity > 1:
-        print("  p:", probs, h.H(probs))
-        print(" tp:", total_probs, h.H(total_probs))
-        print(" pw:", P_wire(declarations, total_probs, found, hand_size, active_wires))
-        print(" em:", h.H_Min(declarations, total_probs, revealed, found, hand_size,
-                              active_wires, num_players - i - 1, P_wire, ProbCut))
+        print("  p:", probs, H(probs))
+        print(" tp:", total_probs, H(total_probs))
+        print(" pw : ", p_wire, np.sum(p_wire) / num_players - active_wires / (num_players * hand_size - np.sum(revealed)))
+        print(" em:", H_Min(declarations, total_probs, revealed, found, hand_size,
+                            active_wires, num_players - i - 1))
       # Test for victory
       if active_wires <= 0:
         if verbosity > 0:
@@ -231,11 +229,114 @@ def MathematicallyJustifiedProbCut(decls, probabilities, revealed, found, hand_s
   return probs
 
 
+def ProbCut2(decls, prior, revealed, found, hand_size, active_wires):
+  num_players = decls.size
+  likelihood = np.full(num_players, 1)
+  marginal = 0
+  for i in range(num_players):
+    if prior[i] == 1:  # The bad guy has already been found
+      return prior
+    i_wires = active_wires + np.sum(found) - np.sum(decls) + decls[i]
+    for j in range(num_players):
+      likelihood[i] *= uf.Lklhd(hand_size, i_wires, revealed[i], found[i])
+      if j != i:
+        likelihood[i] *= uf.Lklhd(hand_size, decls[j], revealed[j], found[j])
+    marginal += prior[i] * likelihood[i]
+  if marginal == 0:
+    return prior
+  posterior = prior.copy()
+  for i in range(num_players):
+    posterior[i] *= likelihood[i] / marginal
+  return posterior
+
+
+def ProbCut3(decls, prior, revealed, found, hand_size, active_wires):
+  num_players = decls.size
+  likelihood = np.full(num_players, 1)
+  for i in range(num_players):
+    if prior[i] == 1:  # The bad guy has already been found
+      return prior
+    i_wires = active_wires + np.sum(found) - np.sum(decls) + decls[i]
+    likelihood[i] *= uf.Lklhd(hand_size, i_wires, revealed[i], found[i])
+  marginal = 0
+  for i in range(num_players):
+    marginal += prior[i] * likelihood[i]
+  if marginal == 0:
+    return prior
+  posterior = prior.copy()
+  for i in range(num_players):
+    posterior[i] *= likelihood[i] / marginal
+  return posterior
+
+
 def P_wire(decls, probs, found, hand_size, active_wires):
   num_players = decls.size
   p_wire = np.zeros(num_players)
   for i in range(num_players):
-    bg_wires = active_wires + np.sum(found) - np.sum(decls) + decls[i] - found[i]
-    p_wire[i] = probs[i] * bg_wires + (1 - probs[i]) * (decls[i] - found[i])
+    i_wires = active_wires + np.sum(found) - np.sum(decls) + decls[i] - found[i]
+    p_wire[i] = probs[i] * i_wires + (1 - probs[i]) * (decls[i] - found[i])
   p_wire /= hand_size
   return p_wire
+
+
+def H(probs):
+  h = 0
+  for p in probs:
+    if p > 0.0001:
+      h += p * np.log2(1/p)
+  return h
+
+
+def NextH(decls, probs, revealed, found, hand_size, active_wires):
+  num_players = decls.size
+  p_wire = P_wire(decls, probs, found, hand_size, active_wires)
+  h = np.zeros(num_players)
+  info_wire = 0
+  info_not_wire = 0
+  for cutee in range(num_players):
+    if revealed[cutee] >= hand_size:
+      continue
+    reveal = np.zeros(num_players)
+    reveal[cutee] += 1
+    find = np.zeros(num_players)
+    find[cutee] += 1
+    if p_wire[cutee] > 0.0001:
+      info_wire = H(ProbCut(decls, probs, revealed + reveal, found + find, hand_size, active_wires))
+    if p_wire[cutee] < 0.9999:
+      info_not_wire = H(ProbCut(decls, probs, revealed + reveal, found, hand_size, active_wires))
+    h[cutee] = p_wire[cutee] * info_wire + (1 - p_wire[cutee]) * info_not_wire
+  return h
+
+
+def H_Min(decls, probs, revealed, found, hand_size, active_wires, stop):
+  if stop <= 0:
+    return (H(probs), [])
+  num_players = decls.size
+  p_wire = P_wire(decls, probs, found, hand_size, active_wires)
+  h = np.zeros(num_players)
+  h_wire = 0
+  h_not_wire = 0
+  for cutee in range(num_players):
+    if revealed[cutee] >= hand_size:
+      continue
+    reveal = np.zeros(num_players)
+    reveal[cutee] += 1
+    find = np.zeros(num_players)
+    find[cutee] += 1
+    if p_wire[cutee] > 0.0001:
+      new_probs = ProbCut(decls, probs, revealed + reveal, found + find, hand_size, active_wires)
+      (h_wire, path) = H_Min(decls, new_probs, revealed + reveal, found + find, hand_size, active_wires, stop - 1)
+    if p_wire[cutee] < 0.9999:
+      new_probs = ProbCut(decls, probs, revealed + reveal, found, hand_size, active_wires)
+      (h_not_wire, path) = H_Min(decls, new_probs, revealed + reveal, found, hand_size, active_wires, stop - 1)
+    h[cutee] = p_wire[cutee] * h_wire + (1 - p_wire[cutee]) * h_not_wire
+  min_cutee = 0
+  min_h = h[0]
+  for cutee in range(num_players):
+    if path != []:
+      if cutee == path[-1]:
+        continue
+    if h[cutee] < min_h:
+      min_cutee = cutee
+      min_h = h[cutee]
+  return (min_h, path + [min_cutee])

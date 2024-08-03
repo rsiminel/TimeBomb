@@ -60,7 +60,7 @@ def IsProbability(prob):
     return is_prob
 
 
-def DistributeWires(num_players, active_wires, hand_size):
+def DistributeWires(num_players, hand_size, active_wires):
     wires = np.zeros(num_players)
     given = 0
     while given < active_wires:
