@@ -150,33 +150,36 @@ def ProbDeclaration(decls, hand_size, active_wires):
 
 def ProbCut(decls, prior, revealed, found, hand_size, active_wires):
   num_players = decls.size
-  likelihood = np.zeros([num_players, num_players])
-  for i in range(num_players):
-    for j in range(i):
-      if prior[i][j] == 1:  # The two bad guys have already been found
-        return prior
-      # How many wires do i and j have if they are bad
-      other_decls = np.sum(decls) - decls[i] - decls[j]
-      bg_wrs = active_wires + np.sum(found) - other_decls
-      # Calculate likelihood of configuration supposing i and j bad guys
-      combinations = 0
-      for k in range(int(bg_wrs) + 1):  # Consider all distributions
-        lklhd_i = uf.Lklhd(hand_size, k, revealed[i], found[i])
-        lklhd_j = uf.Lklhd(hand_size, bg_wrs-k, revealed[j], found[j])
-        combinations += uf.C(k, bg_wrs)
-        likelihood[i][j] += uf.C(k, bg_wrs) * lklhd_i * lklhd_j
-      if combinations != 0:
-        likelihood[i][j] /= combinations
+  lklhd = np.zeros([num_players, num_players])
   marginal = 0
-  for i in range(num_players):
-    for j in range(i):
-      marginal += prior[i][j] * likelihood[i][j]
+  for bad1 in range(num_players):
+    for bad2 in range(bad1):
+      if prior[bad1][bad2] == 1:  # The two bad guys have already been found
+        return prior
+      # How many wires do the supposed bad guys have
+      good_decls = np.sum(decls) - decls[bad1] - decls[bad2]
+      bg_wires = active_wires + np.sum(found) - good_decls
+      # Calculate likelihood of configuration with these bad guys
+      combinations = 0
+      for bad1_wires in range(int(bg_wires) + 1):  # Consider all distributions
+        bad2_wires = bg_wires - bad1_wires
+        lklhd_bad1 = uf.Lklhd(hand_size, bad1_wires, revealed[bad1], found[bad1])
+        lklhd_bad2 = uf.Lklhd(hand_size, bad2_wires, revealed[bad2], found[bad2])
+        comb = uf.C(bad1_wires, bg_wires)
+        combinations += comb
+        lklhd[bad1][bad2] += comb * lklhd_bad1 * lklhd_bad2
+      if combinations != 0:
+        lklhd[bad1][bad2] /= combinations
+      for good in range(num_players):  # Likelihood of everyone else's configurations
+        if good != bad1 and good != bad2:
+          lklhd[bad1][bad2] *= uf.Lklhd(hand_size, decls[good], revealed[good], found[good])
+      marginal += prior[bad1][bad2] * lklhd[bad1][bad2]
   if marginal == 0:
     return prior
   posterior = prior.copy()
-  for i in range(num_players):
-    for j in range(i):
-      posterior[i][j] *= likelihood[i][j] / marginal
+  for bad1 in range(num_players):
+    for bad2 in range(bad1):
+      posterior[bad1][bad2] *= lklhd[bad1][bad2] / marginal
   return posterior
 
 

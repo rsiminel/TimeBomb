@@ -229,38 +229,19 @@ def MathematicallyJustifiedProbCut(decls, probabilities, revealed, found, hand_s
   return probs
 
 
-def ProbCut2(decls, prior, revealed, found, hand_size, active_wires):
+def ProbCutHomo(decls, prior, revealed, found, hand_size, active_wires):
   num_players = decls.size
-  likelihood = np.full(num_players, 1)
+  likelihood = np.zeros(num_players)
   marginal = 0
-  for i in range(num_players):
-    if prior[i] == 1:  # The bad guy has already been found
+  for bad in range(num_players):
+    if prior[bad] == 1:  # The bad guy has already been found
       return prior
-    i_wires = active_wires + np.sum(found) - np.sum(decls) + decls[i]
-    for j in range(num_players):
-      likelihood[i] *= uf.Lklhd(hand_size, i_wires, revealed[i], found[i])
-      if j != i:
-        likelihood[i] *= uf.Lklhd(hand_size, decls[j], revealed[j], found[j])
-    marginal += prior[i] * likelihood[i]
-  if marginal == 0:
-    return prior
-  posterior = prior.copy()
-  for i in range(num_players):
-    posterior[i] *= likelihood[i] / marginal
-  return posterior
-
-
-def ProbCut3(decls, prior, revealed, found, hand_size, active_wires):
-  num_players = decls.size
-  likelihood = np.full(num_players, 1)
-  for i in range(num_players):
-    if prior[i] == 1:  # The bad guy has already been found
-      return prior
-    i_wires = active_wires + np.sum(found) - np.sum(decls) + decls[i]
-    likelihood[i] *= uf.Lklhd(hand_size, i_wires, revealed[i], found[i])
-  marginal = 0
-  for i in range(num_players):
-    marginal += prior[i] * likelihood[i]
+    bad_wires = active_wires + np.sum(found) - np.sum(decls) + decls[bad]
+    likelihood[bad] = uf.Lklhd(hand_size, bad_wires, revealed[bad], found[bad])
+    for good in range(num_players):  # Likelihood of everyone else's configurations
+      if good != bad:
+        likelihood[bad] *= uf.Lklhd(hand_size, decls[good], revealed[good], found[good])
+    marginal += prior[bad] * likelihood[bad]
   if marginal == 0:
     return prior
   posterior = prior.copy()

@@ -158,7 +158,7 @@ def PlayAuto(num_players=6, initial_hand_size=5, verbosity=2):
         print("r:", revealed)
         print("f:", found)
       # Update probabilities
-      probs = ProbCut(declarations, probabilities, revealed, found, hand_size, active_wires)
+      probs = ProbCut(declarations, probabilities, revealed, found, active_wires, hand_size)
       prob_bad, prob_bomb = DeTensor(probs)
       probabilities_list[-1] = prob_bad.copy()
       comb_probs_line = DeMatrix(CombineProbs(probabilities_list))
@@ -276,69 +276,69 @@ def ProbDeclaration(decls, active_wires, hand_size):
   return probs
 
 
-def ProbCut(decls, prior, revealed, found, hand_size, active_wires):
+def ProbCut(decls, prior, revealed, found, active_wires, hand_size):
   num_players = decls.size
   lklhd = np.zeros([num_players, num_players, num_players])
-  for i in range(num_players):
-    for j in range(i):
-      bg_wires = int(active_wires + np.sum(found) - np.sum(decls) + decls[i] + decls[j])
-      for k in range(num_players):
-        if prior[i][j][k] == 1:  # Bad guys and the bomb found
-          return prior
-        if revealed[k] >= hand_size:  # All of k's hand is not bomb
-            lklhd[i][j][k] = 0
-            continue
-        if i == k:  # A bad guy (i) has the bomb
-          if hand_size + decls[i] < bg_wires:
-            lklhd[i][j][k] = 0
-            continue
-          # Likelihood of conf if i has a bomb + i and j are bad guys
-          combinations = 0
-          for i_wires in range(bg_wires + 1):  # Consider all distributions
-            j_wires = bg_wires - i_wires
-            lklhd_i = uf.Lklhd(hand_size - 1, i_wires, revealed[i], found[i])
-            lklhd_j = uf.Lklhd(hand_size, j_wires, revealed[j], found[j])
-            combinations += uf.C(i_wires, bg_wires)
-            lklhd[i][j][k] += uf.C(i_wires, bg_wires) * lklhd_i * lklhd_j
-          if combinations != 0:
-            lklhd[i][j][k] /= combinations
-        elif j == k:  # A bad guy (j) has the bomb
-          if hand_size + decls[j] < bg_wires:
-            lklhd[i][j][k] = 0
-            continue
-          # Likelihood of conf if j has a bomb + i and j are bad guys
-          combinations = 0
-          for i_wires in range(bg_wires + 1):  # Consider all distributions
-            j_wires = bg_wires - i_wires
-            lklhd_i = uf.Lklhd(hand_size, i_wires, revealed[i], found[i])
-            lklhd_j = uf.Lklhd(hand_size - 1, j_wires, revealed[j], found[j])
-            combinations += uf.C(i_wires, bg_wires)
-            lklhd[i][j][k] += uf.C(i_wires, bg_wires) * lklhd_i * lklhd_j
-          if combinations != 0:
-            lklhd[i][j][k] /= combinations
-        else:  # A good guy has the bomb
-          # Likelihood of configuration if i, j and k are lying
-          combinations = 0
-          for i_wires in range(bg_wires + 1):  # Consider all distributions
-            for j_wires in range(bg_wires + 1 - i_wires):
-              k_wires = bg_wires - i_wires - j_wires + decls[k]
-              lklhd_i = uf.Lklhd(hand_size, i_wires, revealed[i], found[i])
-              lklhd_j = uf.Lklhd(hand_size, j_wires, revealed[j], found[j])
-              lklhd_k = uf.Lklhd(hand_size - 1, k_wires, revealed[k], found[k])
-              combinations += uf.C3(i_wires, j_wires, bg_wires)
-              lklhd[i][j][k] += uf.C3(i_wires, j_wires, bg_wires) * lklhd_i * lklhd_j * lklhd_k
-          if combinations != 0:
-            lklhd[i][j][k] /= combinations
   marginal = 0
-  for i in range(num_players):
-    for j in range(i):
-      for k in range(num_players):
-        marginal += prior[i][j][k] * lklhd[i][j][k]
+  for bad1 in range(num_players):
+    for bad2 in range(bad1):
+      bg_wires = int(active_wires + np.sum(found) - np.sum(decls) + decls[bad1] + decls[bad2])
+      for bom in range(num_players):
+        if prior[bad1][bad2][bom] == 1:  # Bad guys and the bomb found
+          return prior
+        if revealed[bom] >= hand_size:  # All of bomber's hand is not bomb
+            lklhd[bad1][bad2][bom] = 0
+            continue
+        if bad1 == bom:  # A bad guy (bad1) has the bomb
+          if hand_size + decls[bad1] < bg_wires:
+            lklhd[bad1][bad2][bom] = 0
+            continue
+          # Likelihood of conf with supposed bad guys if bad1 has a bomb
+          combinations = 0
+          for bad1_wires in range(bg_wires + 1):  # Consider all distributions
+            bad2_wires = bg_wires - bad1_wires
+            lklhd_bad1 = uf.Lklhd(hand_size - 1, bad1_wires, revealed[bad1], found[bad1])
+            lklhd_bad2 = uf.Lklhd(hand_size, bad2_wires, revealed[bad2], found[bad2])
+            combinations += uf.C(bad1_wires, bg_wires)
+            lklhd[bad1][bad2][bom] += uf.C(bad1_wires, bg_wires) * lklhd_bad1 * lklhd_bad2
+          if combinations != 0:
+            lklhd[bad1][bad2][bom] /= combinations
+        elif bad2 == bom:  # A bad guy (bad2) has the bomb
+          if hand_size + decls[bad2] < bg_wires:
+            lklhd[bad1][bad2][bom] = 0
+            continue
+          # Likelihood of conf with supposed bad guys if bad2 has a bomb
+          combinations = 0
+          for bad1_wires in range(bg_wires + 1):  # Consider all distributions
+            bad2_wires = bg_wires - bad1_wires
+            lklhd_bad1 = uf.Lklhd(hand_size, bad1_wires, revealed[bad1], found[bad1])
+            lklhd_bad2 = uf.Lklhd(hand_size - 1, bad2_wires, revealed[bad2], found[bad2])
+            combinations += uf.C(bad1_wires, bg_wires)
+            lklhd[bad1][bad2][bom] += uf.C(bad1_wires, bg_wires) * lklhd_bad1 * lklhd_bad2
+          if combinations != 0:
+            lklhd[bad1][bad2][bom] /= combinations
+        else:  # A good guy has the bomb
+          # Likelihood of configuration if bad1, bad2 and bomber are lying
+          combinations = 0
+          for bad1_wires in range(bg_wires + 1):  # Consider all distributions
+            for bad2_wires in range(bg_wires + 1 - bad1_wires):
+              bom_wires = bg_wires - bad1_wires - bad2_wires + decls[bom]
+              lklhd_bad1 = uf.Lklhd(hand_size, bad1_wires, revealed[bad1], found[bad1])
+              lklhd_bad2 = uf.Lklhd(hand_size, bad2_wires, revealed[bad2], found[bad2])
+              lklhd_k = uf.Lklhd(hand_size - 1, bom_wires, revealed[bom], found[bom])
+              combinations += uf.C3(bad1_wires, bad2_wires, bg_wires)
+              lklhd[bad1][bad2][bom] += uf.C3(bad1_wires, bad2_wires, bg_wires) * lklhd_bad1 * lklhd_bad2 * lklhd_k
+          if combinations != 0:
+            lklhd[bad1][bad2][bom] /= combinations
+        for good in range(num_players):  # Likelihood of everyone else's configurations
+          if good != bad1 and good != bad2 and good != bom:
+            lklhd[bad1][bad2][bom] *= uf.Lklhd(hand_size, decls[good], revealed[good], found[good])
+        marginal += prior[bad1][bad2][bom] * lklhd[bad1][bad2][bom]
   if marginal == 0:
     return prior
   posterior = prior.copy()
-  for i in range(num_players):
-    for j in range(i):
-      for k in range(num_players):
-        posterior[i][j][k] *= lklhd[i][j][k] / marginal
+  for bad1 in range(num_players):
+    for bad2 in range(bad1):
+      for bom in range(num_players):
+        posterior[bad1][bad2][bom] *= lklhd[bad1][bad2][bom] / marginal
   return posterior
