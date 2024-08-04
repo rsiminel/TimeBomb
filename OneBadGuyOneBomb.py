@@ -237,8 +237,10 @@ def P_wire(decls, probs, revealed, found, hand_size, active_wires):
     bg_wires = active_wires + np.sum(found) - np.sum(decls) + decls[bad]
     for bom in range(num_players):
       if bad == bom:  # A bad guy has the bomb
-        if bg_wires <= hand_size - revealed[bad] and bg_wires >= 0:
-          p_wire[bad] += probs[bad][bom] * bg_wires
+        if bg_wires <= decls[bad]:  # (bg w. bomb)
+          bad_wires = bg_wires - found[bad]
+          if bad_wires <= hand_size - revealed[bad] - 1 and bad_wires >= 0:
+            p_wire[bad] += probs[bad][bom] * bad_wires
       else:  # A good guy has the bomb
         bad_wires_avg = 0
         bom_wires_avg = 0
@@ -246,11 +248,12 @@ def P_wire(decls, probs, revealed, found, hand_size, active_wires):
         for k in range(int(bg_wires) + 1):  # Consider all distributions
           bad_wires = k - found[bad]
           bom_wires = bg_wires - bad_wires - found[bom] + decls[bom]
-          if bad_wires <= hand_size - revealed[bad] and bad_wires >= 0:
-            if bom_wires <= hand_size - revealed[bom] and bom_wires >= 0:
-              bad_wires_avg += bad_wires * uf.C(k, bg_wires)
-              bom_wires_avg += bom_wires * uf.C(k, bg_wires)
-              combinations += uf.C(k, bg_wires)
+          if bom_wires + found[bom] >= decls[bom]:  # (gg w. bomb)
+            if bad_wires <= hand_size - revealed[bad] and bad_wires >= 0:
+              if bom_wires <= hand_size - revealed[bom] and bom_wires >= 0:
+                bad_wires_avg += bad_wires * uf.C(k, bg_wires)
+                bom_wires_avg += bom_wires * uf.C(k, bg_wires)
+                combinations += uf.C(k, bg_wires)
         if combinations != 0:
           bad_wires_avg /= combinations
           bom_wires_avg /= combinations
