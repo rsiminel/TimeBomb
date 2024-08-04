@@ -52,7 +52,7 @@ def PlayAuto(num_players=6, initial_hand_size=5, verbosity=2):
     if verbosity > 1:
       print("  p : ", DeMatrix(probabilities), H(DeMatrix(probabilities)), H2(probabilities))
       print(" tp : ", DeMatrix(total_probs), H(DeMatrix(probabilities)), H2(probabilities))
-      print(" pw : ", p_wire, np.sum(p_wire) / num_players - active_wires / num_players / hand_size)
+      print(" pw : ", p_wire, np.sum(p_wire) / num_players - active_wires / (num_players * hand_size))
       print(" em :", H_Min(declarations, total_probs, np.zeros(num_players),
                           np.zeros(num_players), hand_size, active_wires, 3))
     # Cut wires
@@ -195,8 +195,8 @@ def P_wire(decls, probs, revealed, found, hand_size, active_wires):
       for k in range(int(bg_wires) + 1):  # Consider all distributions
         i_wires = k - found[i]
         j_wires = bg_wires - i_wires - found[j]
-        if i_wires <= hand_size - revealed[i] + found[i] and i_wires >= found[i]:
-          if j_wires <= hand_size - revealed[j] + found[j] and j_wires >= found[j]:
+        if i_wires <= hand_size - revealed[i] and i_wires >= 0:
+          if j_wires <= hand_size - revealed[j] and j_wires >= 0:
             i_wires_avg += i_wires * uf.C(k, bg_wires)
             j_wires_avg += j_wires * uf.C(k, bg_wires)
             combinations += uf.C(k, bg_wires)
@@ -252,8 +252,8 @@ def H_Min(decls, probs, revealed, found, hand_size, active_wires, stop):
       new_probs = ProbCut(decls, probs, revealed + reveal, found, hand_size, active_wires)
       (h_not_wire, path) = H_Min(decls, new_probs, revealed + reveal, found, hand_size, active_wires, stop - 1)
     h[cutee] = p_wire[cutee] * h_wire + (1 - p_wire[cutee]) * h_not_wire
-  min_cutee = 0
-  min_h = h[0]
+  min_cutee = -1
+  min_h = H2(np.full([num_players, num_players], 1 / num_players**2))
   for cutee in range(num_players):
     if path != []:
       if cutee == path[-1]:

@@ -40,7 +40,8 @@ def PlayAuto(num_players=4, initial_hand_size=5, verbosity=2):
     probabilities = ProbDeclaration(declarations, hand_size, active_wires)
     probabilities_list.append(probabilities.copy())
     total_probs = CombineProbs(probabilities_list)
-    p_wire = P_wire(declarations, total_probs, np.zeros(num_players), hand_size, active_wires)
+    p_wire = P_wire(declarations, total_probs, np.zeros(num_players),
+                    np.zeros(num_players), hand_size, active_wires)
     if verbosity > 1:
       print("  p:", probabilities, H(probabilities))
       print(" tp:", total_probs, H(total_probs))
@@ -69,7 +70,7 @@ def PlayAuto(num_players=4, initial_hand_size=5, verbosity=2):
       probs = ProbCut(declarations, probabilities, revealed, found, hand_size, active_wires)
       probabilities_list[-1] = probs.copy()
       total_probs = CombineProbs(probabilities_list)
-      p_wire = P_wire(declarations, total_probs, found, hand_size, active_wires)
+      p_wire = P_wire(declarations, total_probs, revealed, found, hand_size, active_wires)
       if verbosity > 1:
         print("  p:", probs, H(probs))
         print(" tp:", total_probs, H(total_probs))
@@ -250,12 +251,13 @@ def ProbCutHomo(decls, prior, revealed, found, hand_size, active_wires):
   return posterior
 
 
-def P_wire(decls, probs, found, hand_size, active_wires):
+def P_wire(decls, probs, revealed, found, hand_size, active_wires):
   num_players = decls.size
   p_wire = np.zeros(num_players)
   for i in range(num_players):
     i_wires = active_wires + np.sum(found) - np.sum(decls) + decls[i] - found[i]
-    p_wire[i] = probs[i] * i_wires + (1 - probs[i]) * (decls[i] - found[i])
+    if i_wires <= hand_size - revealed[i] and i_wires >= 0:
+      p_wire[i] = probs[i] * i_wires + (1 - probs[i]) * (decls[i] - found[i])
   p_wire /= hand_size
   return p_wire
 
@@ -270,7 +272,7 @@ def H(probs):
 
 def NextH(decls, probs, revealed, found, hand_size, active_wires):
   num_players = decls.size
-  p_wire = P_wire(decls, probs, found, hand_size, active_wires)
+  p_wire = P_wire(decls, probs, revealed, found, hand_size, active_wires)
   h = np.zeros(num_players)
   info_wire = 0
   info_not_wire = 0
@@ -293,7 +295,7 @@ def H_Min(decls, probs, revealed, found, hand_size, active_wires, stop):
   if stop <= 0:
     return (H(probs), [])
   num_players = decls.size
-  p_wire = P_wire(decls, probs, found, hand_size, active_wires)
+  p_wire = P_wire(decls, probs, revealed, found, hand_size, active_wires)
   h = np.zeros(num_players)
   h_wire = 0
   h_not_wire = 0

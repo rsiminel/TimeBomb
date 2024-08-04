@@ -32,7 +32,7 @@ def PlayAuto(num_players=4, initial_hand_size=5, verbosity=2):
     if verbosity > 0:
       print("Round ", initial_hand_size - hand_size + 1)
     # Distribute wires
-    wires = uf.DistributeWires(num_players, active_wires, hand_size)
+    wires = uf.DistributeWires(num_players, hand_size, active_wires)
     if verbosity > 0:
       print("w:", wires)
     bomb = np.zeros(num_players)
@@ -56,14 +56,17 @@ def PlayAuto(num_players=4, initial_hand_size=5, verbosity=2):
     if verbosity > 0:
       print("d:", declarations)
     # Calculate probabilities
-    probabilities = ProbDeclaration(declarations, active_wires, hand_size)
+    probabilities = ProbDeclaration(declarations, hand_size, active_wires)
     prob_bad, prob_bomb = DeMatrix(probabilities)
     probabilities_list.append(prob_bad.copy())
     comb_probs = CombineProbs(probabilities_list)
+    total_probs = CombineNonHomoProbs(comb_probs, probabilities)
+    p_wire = P_wire(declarations, total_probs, np.zeros(num_players), np.zeros(num_players), hand_size, active_wires)
     if verbosity > 1:
-      print("bp:", prob_bomb, np.sum(prob_bomb))
-      print(" p:", prob_bad, np.sum(prob_bad))
-      print("tp:", comb_probs, np.sum(comb_probs))
+      print(" p:", prob_bad, H(prob_bad))
+      print("tp:", comb_probs, H(comb_probs))
+      print("bp:", prob_bomb, H(prob_bomb))
+      print("pw:", p_wire, np.sum(p_wire) / num_players - active_wires / (num_players * hand_size))
     # Cut wires
     found = np.zeros(num_players)
     revealed = np.zeros(num_players)
@@ -87,14 +90,17 @@ def PlayAuto(num_players=4, initial_hand_size=5, verbosity=2):
         print("r:", revealed)
         print("f:", found)
       # Update probabilities
-      probs = ProbCut(declarations, probabilities, revealed, found, active_wires, hand_size)
+      probs = ProbCut(declarations, probabilities, revealed, found, hand_size, active_wires)
       prob_bad, prob_bomb = DeMatrix(probs)
       probabilities_list[-1] = prob_bad.copy()
       comb_probs = CombineProbs(probabilities_list)
+      total_probs = CombineNonHomoProbs(comb_probs, probabilities)
+      p_wire = P_wire(declarations, total_probs, revealed, found, hand_size, active_wires)
       if verbosity > 1:
-        print("bp:", prob_bomb, np.sum(prob_bomb))
-        print(" p:", prob_bad, np.sum(prob_bad))
-        print("tp:", comb_probs, np.sum(comb_probs))
+        print(" p:", prob_bad, H(prob_bad))
+        print("tp:", comb_probs, H(comb_probs))
+        print("bp:", prob_bomb, H(prob_bomb))
+        print("pw:", p_wire, np.sum(p_wire) / num_players - active_wires / (num_players * hand_size - np.sum(revealed)))
       # Test for victory
       if active_wires <= 0:
         if verbosity > 0:
@@ -125,45 +131,58 @@ def CombineProbs(probabilities_list):
   num_players = len(probabilities_list[0])
   probabilities = np.full([num_players], 1.)
   for i in range(num_players):
-    for j in range(num_tests):
-      probabilities[i] *= probabilities_list[j][i]
+    for test in range(num_tests):
+      probabilities[i] *= probabilities_list[test][i]
   probabilities /= np.sum(probabilities)
   return probabilities
 
 
-def ProbDeclaration(decls, active_wires, hand_size):
+def CombineNonHomoProbs(prob_bad, probs):
+  num_players = prob_bad.size
+  new_probs = probs.copy()
+  for bad in range(num_players):
+    for bom in range(num_players):
+      new_probs[bad][bom] *= prob_bad[bad]
+  new_probs /= np.sum(new_probs)
+  return new_probs
+
+
+def ProbDeclaration(decls, hand_size, active_wires):
   num_players = decls.shape[0]
   probs = np.full([num_players, num_players], 1 / num_players**2)
-  for i in range(num_players):
-    bg_wires = int(active_wires - np.sum(decls) + decls[i])
-    for j in range(num_players):
-      if i == j:  # The bad guy has the bomb
-        if bg_wires > decls[i]:  # i has more wires than declared
-          probs[i][j] = 0  # i must have =fewer wires than declared (bg w. bomb)
+  for bad in range(num_players):
+    bg_wires = active_wires - np.sum(decls) + decls[bad]
+    for bom in range(num_players):
+      if bg_wires < 0:
+        probs[bad][bom] = 0
+      elif bad == bom:  # The bad guy has the bomb
+        if bg_wires > decls[bad]:  # bad has more wires than declared
+          probs[bad][bom] = 0  # i must have =fewer wires than declared (bg w. bomb)
         else:  # i has =fewer wires than he declared
-          probs[i][j] = uf.C(bg_wires, decls[i])
+          probs[bad][bom] = uf.C(bg_wires, decls[bad])
       else:  # A good guy has the bomb
-        if hand_size - decls[j] - 1 < 0:  # The bomb is not hidden in j's hand
-          probs[i][j] = 0
+        if hand_size - decls[bom] - 1 < 0:  # The bomb is not hidden in j's hand
+          probs[bad][bom] = 0
+          continue
         combinations = 0
-        for i_wires in range(bg_wires + 1):
-          j_wires = bg_wires - i_wires + decls[j]
-          if i_wires < decls[i]:  # i has fewer wires than declared
-            probs_i = uf.C(i_wires, decls[i])
+        for bad_wires in range(int(bg_wires) + 1):
+          bom_wires = bg_wires - bad_wires + decls[bom]
+          if bad_wires < decls[bad]:  # i has fewer wires than declared
+            probs_bad = uf.C(bad_wires, decls[bad])
           else:  # i has =more wires than declared
-            probs_i = uf.C(i_wires - decls[i], hand_size - decls[i])
+            probs_bad = uf.C(bad_wires - decls[bad], hand_size - decls[bad])
           # j must have =more wires than declared (gg w. bomb)
-          probs_j = uf.C(j_wires - decls[j], hand_size - decls[j] - 1)
-          combinations += uf.C(i_wires, bg_wires)
-          probs[i][j] += uf.C(i_wires, bg_wires) * probs_i * probs_j
+          probs_bom = uf.C(bom_wires - decls[bom], hand_size - decls[bom] - 1)
+          combinations += uf.C(bad_wires, bg_wires)
+          probs[bad][bom] += uf.C(bad_wires, bg_wires) * probs_bad * probs_bom
         if combinations != 0:
-          probs[i][j] /= combinations
+          probs[bad][bom] /= combinations
   if np.sum(probs) != 0:
     probs /= np.sum(probs)
   return probs
 
 
-def ProbCut(decls, prior, revealed, found, active_wires, hand_size):
+def ProbCut(decls, prior, revealed, found, hand_size, active_wires):
   num_players = decls.size
   lklhd = np.zeros([num_players, num_players])
   marginal = 0
@@ -204,3 +223,44 @@ def ProbCut(decls, prior, revealed, found, active_wires, hand_size):
     for bom in range(num_players):
       posterior[bad][bom] *= lklhd[bad][bom] / marginal
   return posterior
+
+
+def P_wire(decls, probs, revealed, found, hand_size, active_wires):
+  num_players = decls.size
+  p_wire = np.zeros(num_players)
+  for bad in range(num_players):
+    for bom in range(num_players):
+      bg_wires = active_wires + np.sum(found) - np.sum(decls) + decls[bad]
+      if bad == bom:  # A bad guy has the bomb
+        p_wire[bad] += probs[bad][bom] * bg_wires
+      else:  # A good guy has the bomb
+        bad_wires_avg = 0
+        bom_wires_avg = 0
+        combinations = 0
+        for k in range(int(bg_wires) + 1):  # Consider all distributions
+          bad_wires = k - found[bad]
+          bom_wires = bg_wires - bad_wires - found[bom] + decls[bom]
+          if bad_wires <= hand_size - revealed[bad] and bad_wires >= 0:
+            if bom_wires <= hand_size - revealed[bom] and bom_wires >= 0:
+              bad_wires_avg += bad_wires * uf.C(k, bg_wires)
+              bom_wires_avg += bom_wires * uf.C(k, bg_wires)
+              combinations += uf.C(k, bg_wires)
+        if combinations != 0:
+          bad_wires_avg /= combinations
+          bom_wires_avg /= combinations
+        p_wire[bad] += probs[bad][bom] * bad_wires_avg
+        p_wire[bom] += probs[bad][bom] * bom_wires_avg
+  (p_bad, _) = DeMatrix(probs)
+  for good in range(num_players):
+    p_wire[good] += (1 - p_bad[good]) * (decls[good] - found[good])
+    if hand_size - revealed[good] > 0:
+      p_wire[good] /= hand_size - revealed[good]
+  return p_wire
+
+
+def H(probs):
+  h = 0
+  for p in probs:
+    if p > 0.0001:
+      h += p * np.log2(1/p)
+  return h
