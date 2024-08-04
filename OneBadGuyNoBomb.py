@@ -299,6 +299,7 @@ def H_Min(decls, probs, revealed, found, hand_size, active_wires, stop):
   h = np.zeros(num_players)
   h_wire = 0
   h_not_wire = 0
+  path = []
   for cutee in range(num_players):
     if revealed[cutee] >= hand_size:
       continue

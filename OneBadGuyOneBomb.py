@@ -60,13 +60,15 @@ def PlayAuto(num_players=4, initial_hand_size=5, verbosity=2):
     prob_bad, prob_bomb = DeMatrix(probabilities)
     probabilities_list.append(prob_bad.copy())
     comb_probs = CombineProbs(probabilities_list)
-    total_probs = CombineNonHomoProbs(comb_probs, probabilities)
+    total_probs = CombineNonHomoProbs(CombineProbs(probabilities_list[0:-1]), probabilities)
     p_wire = P_wire(declarations, total_probs, np.zeros(num_players), np.zeros(num_players), hand_size, active_wires)
     if verbosity > 1:
-      print(" p:", prob_bad, H(prob_bad))
-      print("tp:", comb_probs, H(comb_probs))
+      print(" p:", prob_bad, H(prob_bad), H2(probabilities))
+      print("tp:", comb_probs, H(comb_probs), H2(total_probs))
       print("bp:", prob_bomb, H(prob_bomb))
       print("pw:", p_wire, np.sum(p_wire) / num_players - active_wires / (num_players * hand_size))
+      print("em:", H_Min(declarations, total_probs, np.zeros(num_players),
+                         np.zeros(num_players), hand_size, active_wires, 3))
     # Cut wires
     found = np.zeros(num_players)
     revealed = np.zeros(num_players)
@@ -94,13 +96,14 @@ def PlayAuto(num_players=4, initial_hand_size=5, verbosity=2):
       prob_bad, prob_bomb = DeMatrix(probs)
       probabilities_list[-1] = prob_bad.copy()
       comb_probs = CombineProbs(probabilities_list)
-      total_probs = CombineNonHomoProbs(comb_probs, probabilities)
+      total_probs = CombineNonHomoProbs(CombineProbs(probabilities_list[0:-1]), probabilities)
       p_wire = P_wire(declarations, total_probs, revealed, found, hand_size, active_wires)
       if verbosity > 1:
-        print(" p:", prob_bad, H(prob_bad))
-        print("tp:", comb_probs, H(comb_probs))
+        print(" p:", prob_bad, H(prob_bad), H2(probabilities))
+        print("tp:", comb_probs, H(comb_probs), H2(total_probs))
         print("bp:", prob_bomb, H(prob_bomb))
         print("pw:", p_wire, np.sum(p_wire) / num_players - active_wires / (num_players * hand_size - np.sum(revealed)))
+        print("em:", H_Min(declarations, total_probs, revealed, found, hand_size, active_wires, min(3, num_players-i-1)))
       # Test for victory
       if active_wires <= 0:
         if verbosity > 0:
@@ -127,6 +130,8 @@ def DeMatrix(probabilities):
 
 
 def CombineProbs(probabilities_list):
+  if probabilities_list == []:
+    return np.array([])
   num_tests = len(probabilities_list)
   num_players = len(probabilities_list[0])
   probabilities = np.full([num_players], 1.)
@@ -229,10 +234,11 @@ def P_wire(decls, probs, revealed, found, hand_size, active_wires):
   num_players = decls.size
   p_wire = np.zeros(num_players)
   for bad in range(num_players):
+    bg_wires = active_wires + np.sum(found) - np.sum(decls) + decls[bad]
     for bom in range(num_players):
-      bg_wires = active_wires + np.sum(found) - np.sum(decls) + decls[bad]
       if bad == bom:  # A bad guy has the bomb
-        p_wire[bad] += probs[bad][bom] * bg_wires
+        if bg_wires <= hand_size - revealed[bad] and bg_wires >= 0:
+          p_wire[bad] += probs[bad][bom] * bg_wires
       else:  # A good guy has the bomb
         bad_wires_avg = 0
         bom_wires_avg = 0
@@ -264,3 +270,47 @@ def H(probs):
     if p > 0.0001:
       h += p * np.log2(1/p)
   return h
+
+
+def H2(probs):
+  h = 0
+  for line in probs:
+    for p in line:
+      if p > 0.0001:
+        h += p * np.log2(1/p)
+  return h
+
+
+def H_Min(decls, probs, revealed, found, hand_size, active_wires, stop):
+  if stop <= 0:
+    return (H2(probs), [])
+  num_players = decls.size
+  p_wire = P_wire(decls, probs, revealed, found, hand_size, active_wires)
+  h = np.zeros(num_players)
+  h_wire = 0
+  h_not_wire = 0
+  path = []
+  for cutee in range(num_players):
+    if revealed[cutee] >= hand_size:
+      continue
+    reveal = np.zeros(num_players)
+    reveal[cutee] += 1
+    find = np.zeros(num_players)
+    find[cutee] += 1
+    if p_wire[cutee] > 0.0001:
+      new_probs = ProbCut(decls, probs, revealed + reveal, found + find, hand_size, active_wires)
+      (h_wire, path) = H_Min(decls, new_probs, revealed + reveal, found + find, hand_size, active_wires, stop - 1)
+    if p_wire[cutee] < 0.9999:
+      new_probs = ProbCut(decls, probs, revealed + reveal, found, hand_size, active_wires)
+      (h_not_wire, path) = H_Min(decls, new_probs, revealed + reveal, found, hand_size, active_wires, stop - 1)
+    h[cutee] = p_wire[cutee] * h_wire + (1 - p_wire[cutee]) * h_not_wire
+  min_cutee = -1
+  min_h = H2(np.full([num_players, num_players], 1 / num_players**2))
+  for cutee in range(num_players):
+    if path != []:
+      if cutee == path[-1]:
+        continue
+    if h[cutee] < min_h:
+      min_cutee = cutee
+      min_h = h[cutee]
+  return (min_h, path + [min_cutee])
