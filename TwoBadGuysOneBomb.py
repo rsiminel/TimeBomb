@@ -12,14 +12,60 @@ import UsefulFunctions as uf
 from tabulate import tabulate
 
 
+def DisplayProbsEnt(players, probs, probs_list, decls, revealed, found, hand_size, active_wires):
+  num_players = decls.size
+  cases = (num_players**3 - num_players**2) / 2
+  max_h3 = H([1/cases for _ in range(int(cases))])
+  cases = (num_players**2 - num_players) / 2
+  max_h2 = H([1/cases for _ in range(int(cases))])
+  prob_bad, prob_bomb = DeTensor(probs)
+  p_bomb = np.zeros(num_players)
+  for i in range(num_players):
+    if hand_size - revealed[i] != 0:
+      p_bomb[i] = prob_bomb[i] / (hand_size - revealed[i])
+  comb_probs = CombineProbs(probs_list)
+  line_probs = DeMatrix(comb_probs)
+  total_probs = CombineNonHomoProbs(CombineProbs(probs_list[0:-1]), probs)
+  p_wire = P_wire(decls, total_probs, revealed, found, hand_size, active_wires)
+  h2 = NextH2(decls, total_probs, revealed, found, hand_size, active_wires)
+  h3 = NextH3(decls, total_probs, revealed, found, hand_size, active_wires)
+  p_wire_rand = active_wires / (num_players * hand_size - np.sum(revealed))
+  p_bomb_rand = 1 / (num_players * hand_size - np.sum(revealed))
+  table = [["Player", "P_wire", "P_bomb", "P_bad", "H2", "H3"]] + [
+            [players[i], p_wire[i]*100, p_bomb[i]*100, line_probs[i]*100, h2[i], h3[i]] for i in range(num_players)] + [
+            ["Average", p_wire_rand*100, p_bomb_rand*100, 2/num_players*100, max_h2, max_h3]] + [
+            ["Entropy", (np.sum(p_wire)/num_players - p_wire_rand)*100, H(prob_bomb), H(line_probs), H2(comb_probs), H3(total_probs)]]
+  print(tabulate(table, headers='firstrow', tablefmt='fancy_grid', floatfmt=(".1f", ".1f", ".1f", ".1f", ".3f", ".3f")))
+  return
+
+
+def DisplayProbs(players, probs, probs_list, decls, revealed, found, hand_size, active_wires):
+  num_players = decls.size
+  prob_bad, prob_bomb = DeTensor(probs)
+  p_bomb = np.zeros(num_players)
+  for i in range(num_players):
+    if hand_size - revealed[i] != 0:
+      p_bomb[i] = prob_bomb[i] / (hand_size - revealed[i])
+  comb_probs = DeMatrix(CombineProbs(probs_list))
+  total_probs = CombineNonHomoProbs(CombineProbs(probs_list[0:-1]), probs)
+  p_wire = P_wire(decls, total_probs, revealed, found, hand_size, active_wires)
+  curr_points = num_players - active_wires
+  score = (1 - p_bomb) * (p_wire * (curr_points + 1) + (1 - p_wire) * curr_points)
+  p_wire_rand = active_wires / (num_players * hand_size - np.sum(revealed))
+  p_bomb_rand = 1 / (num_players * hand_size - np.sum(revealed))
+  table = [["Player", "P_wire", "P_bomb", "P_bad", "Score"]] + [
+            [players[i], p_wire[i]*100, p_bomb[i]*100, comb_probs[i]*100, score[i]] for i in range(num_players)] + [
+            ["Average", p_wire_rand*100, p_bomb_rand*100, 2/num_players*100, np.sum(score)/num_players]]
+  print(tabulate(table, headers='firstrow', tablefmt='fancy_grid', floatfmt=(".1f", ".1f", ".1f", ".1f", ".3f")))
+  return
+
+
 def Play(players=["Alice", "Bob", "Clara", "Darryl", "Erica", "Fred"], initial_hand_size=5):
   num_players = len(players)
   hand_size = initial_hand_size
   num_wires = num_players * hand_size
   active_wires = num_players
   zeros = np.zeros(num_players)
-  cases = (num_players**3 - num_players**2) / 2
-  maximum_h = H([1/cases for _ in range(int(cases))])
   # Initialize probabilities
   probabilities_list = []
   # Starting turns
@@ -33,18 +79,8 @@ def Play(players=["Alice", "Bob", "Clara", "Darryl", "Erica", "Fred"], initial_h
     # Calculate probabilities
     probabilities = ProbDeclaration(declarations, hand_size, active_wires)
     prob_bad, prob_bomb = DeTensor(probabilities)
-    p_bomb = prob_bomb / hand_size
     probabilities_list.append(prob_bad.copy())
-    comb_probs = CombineProbs(probabilities_list)
-    total_probs = CombineNonHomoProbs(CombineProbs(probabilities_list[0:-1]), probabilities)
-    p_wire = P_wire(declarations, total_probs, zeros.copy(), zeros.copy(), hand_size, active_wires)
-    next_h = NextH(declarations, total_probs, zeros.copy(), zeros.copy(), hand_size, active_wires)
-    p_wire_rand = active_wires / (num_players * hand_size)
-    table = [["Player", "P_wire", "P_bomb", "P_bad", "Next_H"]] + [
-             [players[i], p_wire[i]*100, p_bomb[i]*100, DeMatrix(comb_probs)[i]*100, next_h[i]] for i in range(num_players)] + [
-             ["Average", p_wire_rand*100, 1/(num_players*hand_size)*100, 2/num_players*100, maximum_h]] + [
-             ["Entropy", (np.sum(p_wire)/num_players - p_wire_rand)*100, H(prob_bomb), H2(comb_probs), H3(total_probs)]]
-    print(tabulate(table, headers='firstrow', tablefmt='fancy_grid', floatfmt=(".1f", ".1f", ".1f", ".1f", ".3f")))
+    DisplayProbs(players, probabilities, probabilities_list, declarations, zeros.copy(), zeros.copy(), hand_size, active_wires)
     # Cut wires
     found = zeros.copy()
     revealed = zeros.copy()
@@ -73,22 +109,8 @@ def Play(players=["Alice", "Bob", "Clara", "Darryl", "Erica", "Fred"], initial_h
       # Update probabilities
       probs = ProbCut(declarations, probabilities, revealed, found, hand_size, active_wires)
       prob_bad, prob_bomb = DeTensor(probs)
-      p_bomb = prob_bomb.copy()
-      for i in range(num_players):
-        if hand_size - revealed[i] != 0:
-          p_bomb[i] /= hand_size - revealed[i]
       probabilities_list[-1] = prob_bad.copy()
-      comb_probs = CombineProbs(probabilities_list)
-      total_probs = CombineNonHomoProbs(CombineProbs(probabilities_list[0:-1]), probs)
-      p_wire = P_wire(declarations, total_probs, revealed, found, hand_size, active_wires)
-      next_h = NextH(declarations, total_probs, zeros.copy(), zeros.copy(), hand_size, active_wires)
-      p_wire_rand = active_wires / (num_players * hand_size - np.sum(revealed))
-      p_bomb_rand = 1 / (num_players * hand_size - np.sum(revealed))
-      table = [["Player", "P_wire", "P_bomb", "P_bad", "Next_H"]] + [
-               [players[i], p_wire[i]*100, p_bomb[i]*100, DeMatrix(comb_probs)[i]*100, next_h[i]] for i in range(num_players)] + [
-               ["Average", p_wire_rand*100, 1/(num_players*hand_size)*100, 2/num_players*100, maximum_h]] + [
-               ["Entropy", (np.sum(p_wire)/num_players - p_wire_rand)*100, H(prob_bomb), H2(comb_probs), H3(total_probs)]]
-      print(tabulate(table, headers='firstrow', tablefmt='fancy_grid', floatfmt=(".1f", ".1f", ".1f", ".1f", ".3f")))
+      DisplayProbs(players, probs, probabilities_list, declarations, revealed, found, hand_size, active_wires)
       # Test for victory
       if active_wires <= 0:
         print("All wires have been cut. Good guys win!")
@@ -104,7 +126,7 @@ def Play(players=["Alice", "Bob", "Clara", "Darryl", "Erica", "Fred"], initial_h
 #                if a good guy has the bomb, he declares fewer wires than he has
 #                bad guys lie randomly unless they have the bomb
 #                if a bad guy has the bomb, he declares more wires than he has
-def PlayAuto(num_players=6, initial_hand_size=5, verbosity=2):
+def PlayAuto(CutStrategy, num_players=6, initial_hand_size=5, verbosity=2):
   hand_size = initial_hand_size
   num_wires = num_players * hand_size
   active_wires = num_players
@@ -127,14 +149,13 @@ def PlayAuto(num_players=6, initial_hand_size=5, verbosity=2):
       print("Round ", initial_hand_size - hand_size + 1)
     # Distribute wires
     wires = uf.DistributeWires(num_players, hand_size, active_wires)
-    if verbosity > 0:
-      print("w:", wires)
     bomb = zeros.copy()
     randy = randint(0, num_players - 1)
     while wires[randy] >= hand_size:
       randy = randint(0, num_players - 1)
     bomb[randy] = 1
     if verbosity > 0:
+      print("w:", wires)
       print("b:", bomb)
     # Declare your wires
     declarations = wires.copy()
@@ -153,24 +174,28 @@ def PlayAuto(num_players=6, initial_hand_size=5, verbosity=2):
     probabilities = ProbDeclaration(declarations, hand_size, active_wires)
     prob_bad, prob_bomb = DeTensor(probabilities)
     probabilities_list.append(prob_bad.copy())
-    comb_probs = CombineProbs(probabilities_list)
-    total_probs = CombineNonHomoProbs(CombineProbs(probabilities_list[0:-1]), probabilities)
-    p_wire = P_wire(declarations, total_probs, zeros.copy(), zeros.copy(), hand_size, active_wires)
     if verbosity > 1:
-      print("bp:", prob_bomb, H(prob_bomb), H3(probabilities))
-      print(" p:", DeMatrix(prob_bad), H(DeMatrix(prob_bad)), H2(prob_bad))
-      print("tp:", DeMatrix(comb_probs), H(DeMatrix(comb_probs)), H2(comb_probs))
-      print("pw:", p_wire, np.sum(p_wire) / num_players - active_wires / (num_players * hand_size))
-      print("nh:", NextH(declarations, total_probs, zeros.copy(), zeros.copy(), hand_size, active_wires))
+      players = []
+      for i in range(num_players):
+        if roles[i] == 1:
+          if bomb[i] == 1:
+            players += ["bg w. bomb"]
+          else:
+            players += ["bad guy"]
+        elif bomb[i] == 1:
+          players += ["bomber"]
+        else:
+          players += ["good guy"]
+      DisplayProbs(players, probabilities, probabilities_list, declarations, zeros, zeros, hand_size, active_wires)
     # Cut wires
     found = np.zeros(num_players)
     revealed = np.zeros(num_players)
+    probs = probabilities.copy()
+    cutee = -1
     for i in range(num_players):
       if verbosity > 0:
         print("Cut number", i + 1)
-      cutee = randint(0, num_players - 1)
-      while revealed[cutee] >= hand_size:
-        cutee = randint(0, num_players - 1)
+      cutee = CutStrategy(declarations, probs, revealed, found, hand_size, active_wires, cutee)
       randy = randint(1, hand_size - revealed[cutee])
       if bomb[cutee] == 1 and randy == hand_size - revealed[cutee]:
         if verbosity > 0:
@@ -188,15 +213,8 @@ def PlayAuto(num_players=6, initial_hand_size=5, verbosity=2):
       probs = ProbCut(declarations, probabilities, revealed, found, hand_size, active_wires)
       prob_bad, prob_bomb = DeTensor(probs)
       probabilities_list[-1] = prob_bad.copy()
-      comb_probs = CombineProbs(probabilities_list)
-      total_probs = CombineNonHomoProbs(CombineProbs(probabilities_list[0:-1]), probs)
-      p_wire = P_wire(declarations, total_probs, revealed, found, hand_size, active_wires)
       if verbosity > 1:
-        print("bp:", prob_bomb, H(prob_bomb), H3(probs))
-        print(" p:", DeMatrix(prob_bad), H(DeMatrix(prob_bad)), H2(prob_bad))
-        print("tp:", DeMatrix(comb_probs), H(DeMatrix(comb_probs)), H2(comb_probs))
-        print("pw:", p_wire, np.sum(p_wire) / num_players - active_wires / (num_players * hand_size - np.sum(revealed)))
-        print("nh:", NextH(declarations, total_probs, revealed, found, hand_size, active_wires))
+        DisplayProbs(players, probs, probabilities_list, declarations, revealed, found, hand_size, active_wires)
       # Test for victory
       if active_wires <= 0:
         if verbosity > 0:
@@ -475,7 +493,7 @@ def H3(probs):
   return h
 
 
-def NextH(decls, probs, revealed, found, hand_size, active_wires):
+def NextH3(decls, probs, revealed, found, hand_size, active_wires):
   num_players = decls.size
   p_wire = P_wire(decls, probs, revealed, found, hand_size, active_wires)
   h = np.zeros(num_players)
@@ -492,5 +510,104 @@ def NextH(decls, probs, revealed, found, hand_size, active_wires):
       info_wire = H3(ProbCut(decls, probs, revealed + reveal, found + find, hand_size, active_wires))
     if p_wire[cutee] < 0.9999:
       info_not_wire = H3(ProbCut(decls, probs, revealed + reveal, found, hand_size, active_wires))
-    h[cutee] = p_wire[cutee] * info_wire + (1 - p_wire[cutee]) * info_not_wire
-  return np.full(num_players, H3(probs)) - h
+  h = p_wire * info_wire + (1 - p_wire) * info_not_wire
+  return H3(probs) - h
+
+
+def NextH2(decls, probs, revealed, found, hand_size, active_wires):
+  num_players = decls.size
+  p_wire = P_wire(decls, probs, revealed, found, hand_size, active_wires)
+  h = np.zeros(num_players)
+  info_wire = 0
+  info_not_wire = 0
+  for cutee in range(num_players):
+    if revealed[cutee] >= hand_size:
+      continue
+    reveal = np.zeros(num_players)
+    reveal[cutee] += 1
+    find = np.zeros(num_players)
+    find[cutee] += 1
+    if p_wire[cutee] > 0.0001:
+      (probs_bad, _) = DeTensor(ProbCut(decls, probs, revealed + reveal, found + find, hand_size, active_wires))
+      info_wire = H2(probs_bad)
+    if p_wire[cutee] < 0.9999:
+      (probs_bad, _) = DeTensor(ProbCut(decls, probs, revealed + reveal, found, hand_size, active_wires))
+      info_not_wire = H2(probs_bad)
+  h = p_wire * info_wire + (1 - p_wire) * info_not_wire
+  (probs_bad, _) = DeTensor(probs)
+  return H2(probs_bad) - h
+
+
+def CutRandom(revealed, hand_size):
+  num_players = revealed.size
+  cutee = randint(0, num_players - 1)
+  while revealed[cutee] >= hand_size:
+    cutee = randint(0, num_players - 1)
+  return cutee
+
+
+def CutMaxWires(decls, probs, revealed, found, hand_size, active_wires):
+  num_players = decls.size
+  p_wire = P_wire(decls, probs, revealed, found, hand_size, active_wires)
+  cutee = -1
+  max_prob = 0
+  for i in range(num_players):
+    if p_wire[i] > max_prob:
+      cutee = i
+      max_prob = p_wire[i]
+  return cutee
+
+
+def CutMaxBomb(probs, revealed, hand_size):
+  num_players = revealed.size
+  (prob_bad, prob_bomb) = DeTensor(probs)
+  cutee = -1
+  max_prob = 0
+  for i in range(num_players):
+    p_bomb = 0
+    if hand_size - revealed[i] != 0:
+      p_bomb = prob_bomb[i] / (hand_size - revealed[i])
+    if p_bomb > max_prob:
+      cutee = i
+      max_prob = p_bomb
+  return cutee
+
+
+def CutMaxScore(decls, probs, revealed, found, hand_size, active_wires, curr_cut):
+  num_players = decls.size
+  p_wire = P_wire(decls, probs, revealed, found, hand_size, active_wires)
+  (prob_bad, prob_bomb) = DeTensor(probs)
+  p_bomb = np.zeros(num_players)
+  for i in range(num_players):
+    if hand_size - revealed[i] != 0:
+      p_bomb[i] = prob_bomb[i] / (hand_size - revealed[i])
+  curr_points = num_players - active_wires
+  score = (1 - p_bomb) * (p_wire * (curr_points + 1) + (1 - p_wire) * curr_points)
+  cutee = -1
+  max_score = 0
+  for i in range(num_players):
+    if revealed[i] < hand_size and i != curr_cut:
+      if score[i] > max_score:
+        cutee = i
+        max_score = score[i]
+  return cutee
+
+
+def CutMinScore(decls, probs, revealed, found, hand_size, active_wires):
+  num_players = decls.size
+  p_wire = P_wire(decls, probs, revealed, found, hand_size, active_wires)
+  (prob_bad, prob_bomb) = DeTensor(probs)
+  p_bomb = np.zeros(num_players)
+  for i in range(num_players):
+    if hand_size - revealed[i] != 0:
+      p_bomb[i] = prob_bomb[i] / (hand_size - revealed[i])
+  curr_points = num_players - active_wires
+  score = (1 - p_bomb) * (p_wire * (curr_points + 1) + (1 - p_wire) * curr_points)
+  cutee = -1
+  min_score = curr_points + 2
+  for i in range(num_players):
+    if score[i] < min_score:
+      cutee = i
+      min_score = score[i]
+  return cutee
+  
