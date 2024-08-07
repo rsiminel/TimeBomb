@@ -12,33 +12,6 @@ import UsefulFunctions as uf
 from tabulate import tabulate
 
 
-def DisplayProbsEnt(players, probs, probs_list, decls, revealed, found, hand_size, active_wires):
-  num_players = decls.size
-  cases = (num_players**3 - num_players**2) / 2
-  max_h3 = H([1/cases for _ in range(int(cases))])
-  cases = (num_players**2 - num_players) / 2
-  max_h2 = H([1/cases for _ in range(int(cases))])
-  prob_bad, prob_bomb = DeTensor(probs)
-  p_bomb = np.zeros(num_players)
-  for i in range(num_players):
-    if hand_size - revealed[i] != 0:
-      p_bomb[i] = prob_bomb[i] / (hand_size - revealed[i])
-  comb_probs = CombineProbs(probs_list)
-  line_probs = DeMatrix(comb_probs)
-  total_probs = CombineNonHomoProbs(CombineProbs(probs_list[0:-1]), probs)
-  p_wire = P_wire(decls, total_probs, revealed, found, hand_size, active_wires)
-  h2 = NextH2(decls, total_probs, revealed, found, hand_size, active_wires)
-  h3 = NextH3(decls, total_probs, revealed, found, hand_size, active_wires)
-  p_wire_rand = active_wires / (num_players * hand_size - np.sum(revealed))
-  p_bomb_rand = 1 / (num_players * hand_size - np.sum(revealed))
-  table = [["Player", "P_wire", "P_bomb", "P_bad", "H2", "H3"]] + [
-            [players[i], p_wire[i]*100, p_bomb[i]*100, line_probs[i]*100, h2[i], h3[i]] for i in range(num_players)] + [
-            ["Average", p_wire_rand*100, p_bomb_rand*100, 2/num_players*100, max_h2, max_h3]] + [
-            ["Entropy", (np.sum(p_wire)/num_players - p_wire_rand)*100, H(prob_bomb), H(line_probs), H2(comb_probs), H3(total_probs)]]
-  print(tabulate(table, headers='firstrow', tablefmt='fancy_grid', floatfmt=(".1f", ".1f", ".1f", ".1f", ".3f", ".3f")))
-  return
-
-
 def DisplayProbs(players, probs, probs_list, decls, revealed, found, hand_size, active_wires):
   num_players = decls.size
   prob_bad, prob_bomb = DeTensor(probs)
@@ -80,11 +53,16 @@ def Play(players=["Alice", "Bob", "Clara", "Darryl", "Erica", "Fred"], initial_h
     probabilities = ProbDeclaration(declarations, hand_size, active_wires)
     prob_bad, prob_bomb = DeTensor(probabilities)
     probabilities_list.append(prob_bad.copy())
-    DisplayProbs(players, probabilities, probabilities_list, declarations, zeros.copy(), zeros.copy(), hand_size, active_wires)
+    DisplayProbs(players, probabilities, probabilities_list, declarations, zeros, zeros, hand_size, active_wires)
     # Cut wires
     found = zeros.copy()
     revealed = zeros.copy()
     for i in range(num_players):
+      event = -1
+      while event != 0:
+        event = int(input("What happened?\n 0- a wire got cut\n 1- something sus\n"))
+        if event == 1:
+          ProbSus(players, probabilities)
       print("\n Cut number", i + 1)
       cutee_str = input("Who's wire has been cut? ")
       while cutee_str not in players:
@@ -119,6 +97,36 @@ def Play(players=["Alice", "Bob", "Clara", "Darryl", "Erica", "Fred"], initial_h
     hand_size -= 1
   print("Out of time. Bad guys win!")
   return
+
+
+def ProbSus(players, probs):  # Modifies probs in-place
+  num_players = len(players)
+  sus_str = input("Who is sus? ")
+  sus = -1
+  while sus_str not in players:
+    sus_str = input("You must have made a typo. Who? ")
+  for player in range(num_players):
+    if players[player] == sus_str:
+      sus = player
+  (probs_bad, probs_bom) = DeTensor(probs)
+  probs_bad = DeMatrix(probs_bad)
+  prob_bib = np.sum(probs[sus, :, sus]) + np.sum(probs[:, sus, sus])
+  prob_bob = probs_bad[sus] - prob_bib
+  prob_gib = probs_bom[sus] - prob_bib
+  prob_gob = 1 - prob_bib - prob_bob - prob_gib
+  lklhd_gob = int(input("What is the likelihood that they would do this as a good guy without the bomb ?"))/100
+  lklhd_gib = int(input("What is the likelihood that they would do this as a good guy with the bomb ?"))/100
+  lklhd_bob = int(input("What is the likelihood that they would do this as a bad guy without the bomb?"))/100
+  lklhd_bib = int(input("What is the likelihood that they would do this as a bad guy with the bomb?"))/100
+  marginal = prob_bib * lklhd_bib + prob_bob * lklhd_bob + prob_gib * lklhd_gib + prob_gob * lklhd_gob
+  lklhd = np.full([num_players, num_players, num_players], lklhd_gob)
+  lklhd[sus, :, :] = lklhd_bob
+  lklhd[:, sus, :] = lklhd_bob
+  lklhd[:, :, sus] = lklhd_gib
+  lklhd[sus, :, sus] = lklhd_bib
+  lklhd[:, sus, sus] = lklhd_bib
+  probs *= lklhd / marginal
+  return probs
 
 
 # 2 bad guys, 1 bomb
@@ -179,11 +187,11 @@ def PlayAuto(CutStrategy, num_players=6, initial_hand_size=5, verbosity=2):
       for i in range(num_players):
         if roles[i] == 1:
           if bomb[i] == 1:
-            players += ["bg w. bomb"]
+            players += ["bad bomber"]
           else:
             players += ["bad guy"]
         elif bomb[i] == 1:
-          players += ["bomber"]
+          players += ["good bomber"]
         else:
           players += ["good guy"]
       DisplayProbs(players, probabilities, probabilities_list, declarations, zeros, zeros, hand_size, active_wires)
@@ -471,74 +479,8 @@ def P_wire(decls, probs, revealed, found, hand_size, active_wires):
   return p_wire
 
 
-def H(probs):
-  h = 0
-  for p in probs:
-    if p > 0.0001:
-      h += p * np.log2(1/p)
-  return h
-
-
-def H2(probs):
-  h = 0
-  for line in probs:
-    h += H(line)
-  return h
-
-
-def H3(probs):
-  h = 0
-  for plane in probs:
-    h += H2(plane)
-  return h
-
-
-def NextH3(decls, probs, revealed, found, hand_size, active_wires):
-  num_players = decls.size
-  p_wire = P_wire(decls, probs, revealed, found, hand_size, active_wires)
-  h = np.zeros(num_players)
-  info_wire = 0
-  info_not_wire = 0
-  for cutee in range(num_players):
-    if revealed[cutee] >= hand_size:
-      continue
-    reveal = np.zeros(num_players)
-    reveal[cutee] += 1
-    find = np.zeros(num_players)
-    find[cutee] += 1
-    if p_wire[cutee] > 0.0001:
-      info_wire = H3(ProbCut(decls, probs, revealed + reveal, found + find, hand_size, active_wires))
-    if p_wire[cutee] < 0.9999:
-      info_not_wire = H3(ProbCut(decls, probs, revealed + reveal, found, hand_size, active_wires))
-  h = p_wire * info_wire + (1 - p_wire) * info_not_wire
-  return H3(probs) - h
-
-
-def NextH2(decls, probs, revealed, found, hand_size, active_wires):
-  num_players = decls.size
-  p_wire = P_wire(decls, probs, revealed, found, hand_size, active_wires)
-  h = np.zeros(num_players)
-  info_wire = 0
-  info_not_wire = 0
-  for cutee in range(num_players):
-    if revealed[cutee] >= hand_size:
-      continue
-    reveal = np.zeros(num_players)
-    reveal[cutee] += 1
-    find = np.zeros(num_players)
-    find[cutee] += 1
-    if p_wire[cutee] > 0.0001:
-      (probs_bad, _) = DeTensor(ProbCut(decls, probs, revealed + reveal, found + find, hand_size, active_wires))
-      info_wire = H2(probs_bad)
-    if p_wire[cutee] < 0.9999:
-      (probs_bad, _) = DeTensor(ProbCut(decls, probs, revealed + reveal, found, hand_size, active_wires))
-      info_not_wire = H2(probs_bad)
-  h = p_wire * info_wire + (1 - p_wire) * info_not_wire
-  (probs_bad, _) = DeTensor(probs)
-  return H2(probs_bad) - h
-
-
-def CutRandom(revealed, hand_size):
+# Cut Strategies
+  def CutRandom(revealed, hand_size):
   num_players = revealed.size
   cutee = randint(0, num_players - 1)
   while revealed[cutee] >= hand_size:
@@ -610,4 +552,71 @@ def CutMinScore(decls, probs, revealed, found, hand_size, active_wires):
       cutee = i
       min_score = score[i]
   return cutee
-  
+
+
+# Entropy Calculations (deprecated)
+def H(probs):
+  h = 0
+  for p in probs:
+    if p > 0.0001:
+      h += p * np.log2(1/p)
+  return h
+
+
+def H2(probs):
+  h = 0
+  for line in probs:
+    h += H(line)
+  return h
+
+
+def H3(probs):
+  h = 0
+  for plane in probs:
+    h += H2(plane)
+  return h
+
+
+def NextH3(decls, probs, revealed, found, hand_size, active_wires):
+  num_players = decls.size
+  p_wire = P_wire(decls, probs, revealed, found, hand_size, active_wires)
+  h = np.zeros(num_players)
+  info_wire = 0
+  info_not_wire = 0
+  for cutee in range(num_players):
+    if revealed[cutee] >= hand_size:
+      continue
+    reveal = np.zeros(num_players)
+    reveal[cutee] += 1
+    find = np.zeros(num_players)
+    find[cutee] += 1
+    if p_wire[cutee] > 0.0001:
+      info_wire = H3(ProbCut(decls, probs, revealed + reveal, found + find, hand_size, active_wires))
+    if p_wire[cutee] < 0.9999:
+      info_not_wire = H3(ProbCut(decls, probs, revealed + reveal, found, hand_size, active_wires))
+  h = p_wire * info_wire + (1 - p_wire) * info_not_wire
+  return H3(probs) - h
+
+
+def NextH2(decls, probs, revealed, found, hand_size, active_wires):
+  num_players = decls.size
+  p_wire = P_wire(decls, probs, revealed, found, hand_size, active_wires)
+  h = np.zeros(num_players)
+  info_wire = 0
+  info_not_wire = 0
+  for cutee in range(num_players):
+    if revealed[cutee] >= hand_size:
+      continue
+    reveal = np.zeros(num_players)
+    reveal[cutee] += 1
+    find = np.zeros(num_players)
+    find[cutee] += 1
+    if p_wire[cutee] > 0.0001:
+      (probs_bad, _) = DeTensor(ProbCut(decls, probs, revealed + reveal, found + find, hand_size, active_wires))
+      info_wire = H2(probs_bad)
+    if p_wire[cutee] < 0.9999:
+      (probs_bad, _) = DeTensor(ProbCut(decls, probs, revealed + reveal, found, hand_size, active_wires))
+      info_not_wire = H2(probs_bad)
+  h = p_wire * info_wire + (1 - p_wire) * info_not_wire
+  (probs_bad, _) = DeTensor(probs)
+  return H2(probs_bad) - h

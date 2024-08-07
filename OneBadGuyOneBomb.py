@@ -11,6 +11,119 @@ from random import randint
 import UsefulFunctions as uf
 
 
+def DisplayProbs(players, probs, probs_list, decls, revealed, found, hand_size, active_wires):
+  num_players = decls.size
+  prob_bad, prob_bomb = DeMatrix(probs)
+  p_bomb = np.zeros(num_players)
+  for i in range(num_players):
+    if hand_size - revealed[i] != 0:
+      p_bomb[i] = prob_bomb[i] / (hand_size - revealed[i])
+  comb_probs = CombineProbs(probs_list)
+  total_probs = CombineNonHomoProbs(CombineProbs(probs_list[0:-1]), probs)
+  p_wire = P_wire(decls, total_probs, revealed, found, hand_size, active_wires)
+  curr_points = num_players - active_wires
+  score = (1 - p_bomb) * (p_wire * (curr_points + 1) + (1 - p_wire) * curr_points)
+  p_wire_rand = active_wires / (num_players * hand_size - np.sum(revealed))
+  p_bomb_rand = 1 / (num_players * hand_size - np.sum(revealed))
+  table = [["Player", "P_wire", "P_bomb", "P_bad", "Score"]] + [
+            [players[i], p_wire[i]*100, p_bomb[i]*100, comb_probs[i]*100, score[i]] for i in range(num_players)] + [
+            ["Average", p_wire_rand*100, p_bomb_rand*100, 2/num_players*100, np.sum(score)/num_players]]
+  print(tabulate(table, headers='firstrow', tablefmt='fancy_grid', floatfmt=(".1f", ".1f", ".1f", ".1f", ".3f")))
+  return
+
+
+def Play(players=["Alice", "Bob", "Clara", "Darryl", "Erica", "Fred"], initial_hand_size=5):
+  num_players = len(players)
+  hand_size = initial_hand_size
+  num_wires = num_players * hand_size
+  active_wires = num_players
+  zeros = np.zeros(num_players)
+  # Initialize probabilities
+  probabilities_list = []
+  # Starting turns
+  while hand_size > 1:
+    print("\n\n Round ", initial_hand_size - hand_size + 1)
+    # Declare your wires
+    declarations = zeros.copy()
+    for i in range(num_players):
+      declarations[i] = int(input("How many wires does " + players[i] + " say they have? "))
+    print("d:", declarations)
+    # Calculate probabilities
+    probabilities = ProbDeclaration(declarations, hand_size, active_wires)
+    prob_bad, prob_bomb = DeTensor(probabilities)
+    probabilities_list.append(prob_bad.copy())
+    DisplayProbs(players, probabilities, probabilities_list, declarations, zeros, zeros, hand_size, active_wires)
+    # Cut wires
+    found = zeros.copy()
+    revealed = zeros.copy()
+    for i in range(num_players):
+      event = -1
+      while event != 0:
+        event = int(input("What happened?\n 0- a wire got cut\n 1- something sus\n"))
+        if event == 1:
+          ProbSus(players, probabilities)
+      print("\n Cut number", i + 1)
+      cutee_str = input("Who's wire has been cut? ")
+      while cutee_str not in players:
+        cutee_str = input("You must have made a typo. Who? ")
+      cutee = 0
+      for j in range(num_players):
+        if players[j] == cutee_str:
+          cutee = j
+      revealed[cutee] += 1
+      num_wires -= 1
+      shown = int(input("Did you reveal:\n 0- an inactive wire\n 1- an active wire\n 2- the bomb\n"))
+      while shown not in [0, 1, 2]:
+        shown = int(input("Sorry, I'm looking for a 0, a 1 or a 2 here."))
+      if shown == 2:
+        print("The Bomb was detonated. Bad guys win!")
+        return
+      if shown == 1:
+        found[cutee] += 1
+        active_wires -= 1
+      print("r:", revealed)
+      print("f:", found)
+      # Update probabilities
+      probs = ProbCut(declarations, probabilities, revealed, found, hand_size, active_wires)
+      prob_bad, prob_bomb = DeTensor(probs)
+      probabilities_list[-1] = prob_bad.copy()
+      DisplayProbs(players, probs, probabilities_list, declarations, revealed, found, hand_size, active_wires)
+      # Test for victory
+      if active_wires <= 0:
+        print("All wires have been cut. Good guys win!")
+        return
+    # Next round
+    hand_size -= 1
+  print("Out of time. Bad guys win!")
+  return
+
+
+def ProbSus(players, probs):  # Modifies probs in-place
+  num_players = len(players)
+  sus_str = input("Who is sus? ")
+  sus = -1
+  while sus_str not in players:
+    sus_str = input("You must have made a typo. Who? ")
+  for player in range(num_players):
+    if players[player] == sus_str:
+      sus = player
+  (probs_bad, probs_bom) = DeMatrix(probs)
+  probs_bob = probs_bad[sus] - probs[sus][sus]
+  probs_gib = probs_bom[sus] - probs[sus][sus]
+  probs_gob = 1 - probs[sus][sus] - probs_bob - probs_gib
+  lklhd_gob = int(input("What is the likelihood that they would do this as a good guy without the bomb ?"))/100
+  lklhd_gib = int(input("What is the likelihood that they would do this as a good guy with the bomb ?"))/100
+  lklhd_bob = int(input("What is the likelihood that they would do this as a bad guy without the bomb?"))/100
+  lklhd_bib = int(input("What is the likelihood that they would do this as a bad guy with the bomb?"))/100
+  marginal = probs[sus][sus] * lklhd_bib + probs_bob * lklhd_bob + probs_gib * lklhd_gib + probs_gob * lklhd_gob
+  lklhd = np.full([num_players, num_players], lklhd_gob)
+  lklhd[sus, :] = lklhd_bob
+  lklhd[:, sus] = lklhd_gib
+  lklhd[sus, sus] = lklhd_bib
+  probs *= lklhd / marginal
+  return probs
+
+
 # 1 bad guy, 1 bomb
 # Suppositions : good guys tell the truth unless they have the bomb
 #                if a good guy has the bomb, he declares fewer wires than he has
@@ -20,8 +133,9 @@ def PlayAuto(num_players=4, initial_hand_size=5, verbosity=2):
   hand_size = initial_hand_size
   num_wires = num_players * hand_size
   active_wires = num_players
+  zeros = np.zeros(num_players)
   # Distributing roles
-  roles = np.zeros(num_players)
+  roles = zeros.copy()
   roles[randint(0, num_players - 1)] = 1
   if verbosity > 0:
     print("Roles : ",  roles)
@@ -35,7 +149,7 @@ def PlayAuto(num_players=4, initial_hand_size=5, verbosity=2):
     wires = uf.DistributeWires(num_players, hand_size, active_wires)
     if verbosity > 0:
       print("w:", wires)
-    bomb = np.zeros(num_players)
+    bomb = zeros.copy()
     randy = randint(0, num_players - 1)
     while wires[randy] >= hand_size:
       randy = randint(0, num_players - 1)
@@ -59,19 +173,22 @@ def PlayAuto(num_players=4, initial_hand_size=5, verbosity=2):
     probabilities = ProbDeclaration(declarations, hand_size, active_wires)
     prob_bad, prob_bomb = DeMatrix(probabilities)
     probabilities_list.append(prob_bad.copy())
-    comb_probs = CombineProbs(probabilities_list)
-    total_probs = CombineNonHomoProbs(CombineProbs(probabilities_list[0:-1]), probabilities)
-    p_wire = P_wire(declarations, total_probs, np.zeros(num_players), np.zeros(num_players), hand_size, active_wires)
     if verbosity > 1:
-      print(" p:", prob_bad, H(prob_bad), H2(probabilities))
-      print("tp:", comb_probs, H(comb_probs), H2(total_probs))
-      print("bp:", prob_bomb, H(prob_bomb))
-      print("pw:", p_wire, np.sum(p_wire) / num_players - active_wires / (num_players * hand_size))
-      print("em:", H_Min(declarations, total_probs, np.zeros(num_players),
-                         np.zeros(num_players), hand_size, active_wires, 3))
+      players = []
+      for i in range(num_players):
+        if roles[i] == 1:
+          if bomb[i] == 1:
+            players += ["bad bomber"]
+          else:
+            players += ["bad guy"]
+        elif bomb[i] == 1:
+          players += ["good bomber"]
+        else:
+          players += ["good guy"]
+      DisplayProbs(players, probabilities, probabilities_list, declarations, zeros, zeros, hand_size, active_wires)
     # Cut wires
-    found = np.zeros(num_players)
-    revealed = np.zeros(num_players)
+    found = zeros.copy()
+    revealed = zeros.copy()
     for i in range(num_players):
       if verbosity > 0:
         print("Cut number", i + 1)
@@ -95,15 +212,8 @@ def PlayAuto(num_players=4, initial_hand_size=5, verbosity=2):
       probs = ProbCut(declarations, probabilities, revealed, found, hand_size, active_wires)
       prob_bad, prob_bomb = DeMatrix(probs)
       probabilities_list[-1] = prob_bad.copy()
-      comb_probs = CombineProbs(probabilities_list)
-      total_probs = CombineNonHomoProbs(CombineProbs(probabilities_list[0:-1]), probabilities)
-      p_wire = P_wire(declarations, total_probs, revealed, found, hand_size, active_wires)
       if verbosity > 1:
-        print(" p:", prob_bad, H(prob_bad), H2(probabilities))
-        print("tp:", comb_probs, H(comb_probs), H2(total_probs))
-        print("bp:", prob_bomb, H(prob_bomb))
-        print("pw:", p_wire, np.sum(p_wire) / num_players - active_wires / (num_players * hand_size - np.sum(revealed)))
-        print("em:", H_Min(declarations, total_probs, revealed, found, hand_size, active_wires, min(3, num_players-i-1)))
+        DisplayProbs(players, probs, probabilities_list, declarations, revealed, found, hand_size, active_wires)
       # Test for victory
       if active_wires <= 0:
         if verbosity > 0:
@@ -267,6 +377,7 @@ def P_wire(decls, probs, revealed, found, hand_size, active_wires):
   return p_wire
 
 
+# Entropy Calculations (deprecated)
 def H(probs):
   h = 0
   for p in probs:

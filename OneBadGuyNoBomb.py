@@ -324,3 +324,22 @@ def H_Min(decls, probs, revealed, found, hand_size, active_wires, stop):
       min_cutee = cutee
       min_h = h[cutee]
   return (min_h, path + [min_cutee])
+
+
+def ProbSus(players, probs):
+  num_players = len(players)
+  sus_string = input("Who is sus? ")
+  while sus_str not in players:
+    sus_str = input("You must have made a typo. Who? ")
+  sus = 0
+  for player in range(num_players):
+    if players[player] == sus_str:
+      sus = player
+  lklhd_good = int(input("What is the likelihood that they would do this as a good guy?"))
+  lklhd_bad = int(input("What is the likelihood that they would do this as a bad guy?"))
+  new_prob = probs[sus] * lklhd_bad / (probs[sus] * lklhd_bad + (1 - probs[sus]) * lklhd_good)
+  for i in range(num_players):
+    if i != sus:
+      probs[i] *= 1 - (new_prob - probs[sus]) / (1 - probs[sus])
+  probs[sus] = new_prob
+  return
