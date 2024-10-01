@@ -480,7 +480,7 @@ def P_wire(decls, probs, revealed, found, hand_size, active_wires):
 
 
 # Cut Strategies
-def CutRandom(declarations, probs, revealed, found, hand_size, active_wires, cutee):
+  def CutRandom(revealed, hand_size):
   num_players = revealed.size
   cutee = randint(0, num_players - 1)
   while revealed[cutee] >= hand_size:
