@@ -9,6 +9,7 @@ Created on Sun May 26 20:24:34 2024
 import numpy as np
 from random import randint
 import UsefulFunctions as uf
+from tabulate import tabulate
 
 
 def DisplayProbs(players, probs, probs_list, decls, revealed, found, hand_size, active_wires):
@@ -50,7 +51,7 @@ def Play(players=["Alice", "Bob", "Clara", "Darryl", "Erica", "Fred"], initial_h
     print("d:", declarations)
     # Calculate probabilities
     probabilities = ProbDeclaration(declarations, hand_size, active_wires)
-    prob_bad, prob_bomb = DeTensor(probabilities)
+    prob_bad, prob_bomb = DeMatrix(probabilities)
     probabilities_list.append(prob_bad.copy())
     DisplayProbs(players, probabilities, probabilities_list, declarations, zeros, zeros, hand_size, active_wires)
     # Cut wires
@@ -85,7 +86,7 @@ def Play(players=["Alice", "Bob", "Clara", "Darryl", "Erica", "Fred"], initial_h
       print("f:", found)
       # Update probabilities
       probs = ProbCut(declarations, probabilities, revealed, found, hand_size, active_wires)
-      prob_bad, prob_bomb = DeTensor(probs)
+      prob_bad, prob_bomb = DeMatrix(probs)
       probabilities_list[-1] = prob_bad.copy()
       DisplayProbs(players, probs, probabilities_list, declarations, revealed, found, hand_size, active_wires)
       # Test for victory
