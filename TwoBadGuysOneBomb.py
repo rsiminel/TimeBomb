@@ -324,7 +324,7 @@ def ProbDeclaration(decls, hand_size, active_wires):
             probs[i][j][k] += uf.C(i_wires, bg_wires) * probs_i * probs_j
             combinations += uf.C(i_wires, bg_wires)
         else:  # A good guy has the bomb
-          if hand_size - decls[k] - 1 < 0:  # The bomb is not hidden in j's hand
+          if hand_size - decls[k] - 1 < 0:  # The bomb is not hidden in k's hand
             probs[i][j][k] = 0
             continue
           for i_wires in range(bg_wires + 1):
