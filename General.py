@@ -15,9 +15,9 @@ def Cn(distribution):
 
 def Flatten(probabilities):
   num_players = len(probabilities)
-  num_bad = len(probabilities.shape)
+  num_dims = len(probabilities.shape)
   probability_line = np.zeros(num_players)
-  for indices in combinations(range(num_players), num_bad):
+  for indices in combinations(range(num_players), num_dims):
     for index in indices:
       probability_line[index] += probabilities[indices]
   return probability_line
@@ -39,9 +39,9 @@ def CombineProbs(probabilities_list):
     return np.array([])
   num_tests = len(probabilities_list)
   num_players = probabilities_list[0].shape[0]
-  num_bad = len(probabilities_list[0].shape)
-  probabilities = np.zeros([num_players]*num_bad)
-  for bad_set in combinations(range(num_players), num_bad):
+  num_dims = len(probabilities_list[0].shape)
+  probabilities = np.zeros([num_players]*num_dims)
+  for bad_set in combinations(range(num_players), num_dims):
     probabilities[bad_set] = 1
     for test in range(num_tests):
       probabilities[bad_set] *= probabilities_list[test][bad_set]

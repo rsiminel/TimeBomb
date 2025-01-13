@@ -39,13 +39,13 @@ def Play(other_players=["Alice", "Bob", "Clara", "Darryl", "Erica"], initial_han
         probabilities = obnb.ProbDeclaration(decls, hand_size, active_wires - player_wires)
         probabilities_list.append(probabilities.copy())
         p_bad = obnb.CombineProbs(probabilities_list)
-        p_wire = obnb.P_wire(decls, p_bad, zeros.copy(), zeros.copy(), hand_size, active_wires - player_wires)
+        p_wire = obnb.P_wire(decls, p_bad, zeros, zeros, hand_size, active_wires - player_wires)
       else:
         probabilities = tbnb.ProbDeclaration(decls, hand_size, active_wires - player_wires)
         probabilities_list.append(probabilities.copy())
         total_probs = tbnb.CombineProbs(probabilities_list)
         p_bad = tbnb.DeMatrix(total_probs)
-        p_wire = tbnb.P_wire(decls, total_probs, zeros.copy(), zeros.copy(), hand_size, active_wires - player_wires)
+        p_wire = tbnb.P_wire(decls, total_probs, zeros, zeros, hand_size, active_wires - player_wires)
     else:
       if is_bad:
         probabilities = obob.ProbDeclaration(decls, hand_size, active_wires - player_wires)
@@ -53,14 +53,14 @@ def Play(other_players=["Alice", "Bob", "Clara", "Darryl", "Erica"], initial_han
         probabilities_list.append(p_bad.copy())
         p_bad = obob.CombineProbs(probabilities_list)
         total_probs = obob.CombineNonHomoProbs(obob.CombineProbs(probabilities_list[0:-1]), probabilities)
-        p_wire = obob.P_wire(decls, total_probs, zeros.copy(), zeros.copy(), hand_size, active_wires - player_wires)
+        p_wire = obob.P_wire(decls, total_probs, zeros, zeros, hand_size, active_wires - player_wires)
       else:
         probabilities = tbob.ProbDeclaration(decls, hand_size, active_wires - player_wires)
         p_bad, p_bomb = tbob.DeTensor(probabilities)
         probabilities_list.append(p_bad.copy())
         p_bad = tbob.DeMatrix(tbob.CombineProbs(probabilities_list))
         total_probs = tbob.CombineNonHomoProbs(tbob.CombineProbs(probabilities_list[0:-1]), probabilities)
-        p_wire = tbob.P_wire(decls, total_probs, zeros.copy(), zeros.copy(), hand_size, active_wires - player_wires)
+        p_wire = tbob.P_wire(decls, total_probs, zeros, zeros, hand_size, active_wires - player_wires)
     curr_points = num_players - active_wires
     p_bomb_rand = player_bomb / (num_players * hand_size)
     p_wire_rand = (active_wires - player_wires) / (num_players * hand_size)
