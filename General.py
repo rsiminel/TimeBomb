@@ -1,3 +1,4 @@
+#%%
 import numpy as np
 from copy import deepcopy
 from random import randint
@@ -558,6 +559,14 @@ def PlayAuto(CutStrategy, num_players, initial_hand_size=5, verbosity=2):
   return (0, final_probs, roles)
 
 
+def CutRandom(decls, probs, revealed, found, hand_size, active_wires, curr_cut, pos_bad, num_bom):
+  num_players = revealed.size
+  cutee = randint(0, num_players - 1)
+  while revealed[cutee] >= hand_size or cutee == curr_cut:
+    cutee = randint(0, num_players - 1)
+  return cutee
+
+
 def CutMaxScore(decls, probs, revealed, found, hand_size, active_wires, curr_cut, pos_bad, num_bom):
   num_players = decls.size
   score = np.zeros(num_players)
@@ -578,3 +587,26 @@ def CutMaxScore(decls, probs, revealed, found, hand_size, active_wires, curr_cut
         cutee = i
         max_score = score[i]
   return cutee
+
+
+#%%
+def Test(strategies, num_players, num_games, init_hand_size=5):
+  win_rate = [0]  * len(strategies)
+  suspicion = [0] * len(strategies)
+  for strat in range(len(strategies)):
+    for _ in range(num_games):
+      (is_win, probs, roles) = PlayAuto(strategies[strat], num_players, init_hand_size, 0)
+      win_rate[strat] += is_win
+      culprits = []
+      for player in range(num_players):
+        if roles[player] == 1:
+          culprits.append(player)
+      for j in range(len(culprits)):
+        suspicion[strat] += probs[culprits[j]] / len(culprits)
+    win_rate[strat] /= num_games
+    suspicion[strat] /= num_games
+  return (win_rate, suspicion)
+
+print(Test([CutRandom, CutMaxScore], 6, 100))
+
+# %%
