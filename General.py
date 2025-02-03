@@ -93,6 +93,7 @@ def DisplayProbs(players, probs, probs_list, decls, revealed, found, hand_size, 
   print(tabulate(table, headers='firstrow', tablefmt='fancy_grid', floatfmt=(".1f", ".1f", ".1f", ".1f", ".3f")))
   return
 
+
 def ProbDeclaration(decls, hand_size, active_wires, num_bad, num_bom):
   num_players = decls.shape[0]
   probs = np.zeros([num_players]*(num_bad + num_bom))
@@ -242,6 +243,180 @@ def P_wire(decls, probs, revealed, found, hand_size, active_wires, num_bad, num_
     if hand_size - revealed[good] > 0:
       p_wire[good] /= hand_size - revealed[good]
   return p_wire
+
+
+def Play(players=["Alice", "Bob", "Clara", "Darryl", "Erica", "Fred"], initial_hand_size=5):
+  num_players = len(players)
+  num_bom = 1
+  if num_players < 4:
+    print("Not enough players")
+    return
+  elif num_players == 4:
+    pos_bad = [[1, 2/5], [2, 3/5]]
+  elif num_players < 7:
+    pos_bad = [[2, 1.0]]
+  elif num_players == 7:
+    pos_bad = [[2, 3/8], [3, 5/8]]
+  elif num_players == 8:
+    pos_bad = [[3, 1.0]]
+  else:
+    print("Too many players")
+    return
+  hand_size = initial_hand_size
+  num_wires = num_players * hand_size
+  active_wires = num_players
+  zeros = np.zeros(num_players)
+  # Initialize probabilities
+  probabilities_list = [[] for _ in range(len(pos_bad))]
+  # Starting turns
+  while hand_size > 1:
+    print("\n\n Round ", initial_hand_size - hand_size + 1)
+    # Declare your wires
+    declarations = zeros.copy()
+    for i in range(num_players):
+      declarations[i] = int(input("How many wires does " + players[i] + " say they have? "))
+    print("d:", declarations)
+    # Calculate probabilities
+    probabilities = [0 for _ in range(len(pos_bad))]
+    prob_bad = [0 for _ in range(len(pos_bad))]
+    for i in range(len(pos_bad)):
+      probabilities[i] = ProbDeclaration(declarations, hand_size, active_wires, pos_bad[i][0], num_bom)
+      prob_bad[i], _ = Separate(probabilities[i], pos_bad[i][0], num_bom)
+      probabilities_list[i].append(deepcopy(prob_bad[i]))
+    DisplayProbs(players, probabilities, probabilities_list, declarations, zeros, zeros, hand_size, active_wires, pos_bad, num_bom)
+    # Cut wires
+    found = zeros.copy()
+    revealed = zeros.copy()
+    for i in range(num_players):
+      print("\n Cut number", i + 1)
+      cutee_str = input("Who's wire has been cut? ")
+      while cutee_str not in players:
+        cutee_str = input("You must have made a typo. Who? ")
+      cutee = 0
+      for j in range(num_players):
+        if players[j] == cutee_str:
+          cutee = j
+      revealed[cutee] += 1
+      num_wires -= 1
+      shown = int(input("Did you reveal\n" + " 0- an inactive wire\n 1- an active wire\n 2- the bomb"))
+      while shown not in [0, 1, 2]:
+        shown = int(input("Sorry, I'm looking for a 0, a 1 or a 2 here."))
+      if shown == 2:
+        print("The Bomb was detonated. Bad guys win!")
+        return
+      if shown == 1:
+        found[cutee] += 1
+        active_wires -= 1
+      print("r:", revealed)
+      print("f:", found)
+      # Update probabilities
+      probs = [0 for _ in range(len(pos_bad))]
+      prob_bad = [0 for _ in range(len(pos_bad))]
+      for i in range(len(pos_bad)):
+        probs[i] = ProbCut(declarations, probabilities[i], revealed, found, hand_size, active_wires, pos_bad[i][0], num_bom)
+        prob_bad[i], _ = Separate(probs[i], pos_bad[i][0], num_bom)
+        probabilities_list[i][-1] = deepcopy(prob_bad[i])
+      DisplayProbs(players, probs, probabilities_list, declarations, revealed, found, hand_size, active_wires, pos_bad, num_bom)
+      # Test for victory
+      if active_wires <= 0:
+        print("All wires have been cut. Good guys win!")
+        return
+    # Next round
+    hand_size -= 1
+  print("Out of time. Bad guys win!")
+  return
+
+
+def PlaySubjective(other_players=["Alice", "Bob", "Clara", "Darryl", "Erica"], initial_hand_size=5):
+  # Initialize game
+  num_players = len(other_players)
+  hand_size = initial_hand_size
+  num_wires = (num_players + 1) * hand_size
+  active_wires = num_players + 1
+  is_bad = int(input("Are you a\n 0- good guy\n 1- bad guy"))
+  while is_bad not in [0, 1]:
+    is_bad = int(input("Sorry, I'm looking for a 0 or a 1 here."))
+  num_bom = 1
+  if num_players < 4:
+    print("Not enough players")
+    return
+  elif num_players == 4:
+    pos_bad = [[1, 2/5], [2, 3/5]]
+  elif num_players < 7:
+    pos_bad = [[2, 1.0]]
+  elif num_players == 7:
+    pos_bad = [[2, 3/8], [3, 5/8]]
+  elif num_players == 8:
+    pos_bad = [[3, 1.0]]
+  else:
+    print("Too many players")
+    return
+  for i in range(len(pos_bad)):
+    pos_bad[i][0] -= is_bad
+  zeros = np.zeros(num_players)
+  probabilities_list = [[] for _ in range(len(pos_bad))]
+  # Starting turns
+  while hand_size > 1:
+    print("\n\n Round ", initial_hand_size - hand_size + 1)
+    # Wire declarations
+    player_bomb = int(input("Do you\n 0- not have the bomb\n 1- have the bomb"))
+    while player_bomb not in [0, 1]:
+      player_bomb = int(input("Sorry, I'm looking for a 0 or a 1 here."))
+    pos_bomb = num_bom - player_bomb
+    player_wires = int(input("How many wires do you have?"))
+    pos_wires = active_wires - player_wires
+    decls = zeros.copy()
+    for i in range(num_players):
+      decls[i] = int(input("How many wires does " + other_players[i] + " say they have? "))
+    print("d:", decls)
+    # Calculate probabilities
+    probabilities = [0 for _ in range(len(pos_bad))]
+    prob_bad = [0 for _ in range(len(pos_bad))]
+    for i in range(len(pos_bad)):
+      probabilities[i] = ProbDeclaration(decls, hand_size, pos_wires, pos_bad[i][0], pos_bomb)
+      prob_bad[i], _ = Separate(probabilities[i], pos_bad[i][0], pos_bomb)
+      probabilities_list[i].append(deepcopy(prob_bad[i]))
+    DisplayProbs(other_players, probabilities, probabilities_list, decls, zeros, zeros, hand_size, pos_wires, pos_bad, pos_bomb)
+    # Cut wires
+    found = zeros.copy()
+    revealed = zeros.copy()
+    for i in range(num_players + 1):
+      print("\n Cut number", i + 1)
+      cutee_str = input("Who's wire has been cut? ")
+      cutee = -1
+      for j in range(num_players):
+        if cutee_str in other_players[j].casefold():
+          cutee = j
+          revealed[cutee] += 1
+      num_wires -= 1
+      shown = int(input("Did you reveal\n 0- an inactive wire\n 1- an active wire\n 2- the bomb"))
+      while shown not in [0, 1, 2]:
+        shown = int(input("Sorry, I'm looking for a 0, a 1 or a 2 here."))
+      if shown == 2:
+        print("The Bomb was detonated. Bad guys win!")
+        return
+      if shown == 1:
+        active_wires -= 1
+        if cutee == -1: player_wires -= 1
+        else: found[cutee] += 1
+      print("r:", revealed)
+      print("f:", found)
+      # Update probabilities
+      probs = [0 for _ in range(len(pos_bad))]
+      prob_bad = [0 for _ in range(len(pos_bad))]
+      for i in range(len(pos_bad)):
+        probs[i] = ProbCut(decls, probabilities[i], revealed, found, hand_size, pos_wires, pos_bad[i][0], pos_bomb)
+        prob_bad[i], _ = Separate(probs[i], pos_bad[i][0], pos_bomb)
+        probabilities_list[i][-1] = deepcopy(prob_bad[i])
+      DisplayProbs(other_players, probs, probabilities_list, decls, revealed, found, hand_size, pos_wires, pos_bad, pos_bomb)
+      # Test for victory
+      if active_wires <= 0:
+        print("All wires have been cut. Good guys win!")
+        return
+    # Next round
+    hand_size -= 1
+  print("Out of time. Bad guys win!")
+  return
 
 
 def PlayAuto(CutStrategy, num_players, initial_hand_size=5, verbosity=2):
