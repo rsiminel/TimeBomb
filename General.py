@@ -2,8 +2,12 @@
 import numpy as np
 from copy import deepcopy
 from random import randint
+from scipy.stats import beta
 import UsefulFunctions as uf
 from tabulate import tabulate
+import matplotlib.pyplot as plt
+from scipy.special import gammaln, psi
+from scipy.optimize import minimize_scalar
 from itertools import combinations, combinations_with_replacement
 from sympy.utilities.iterables import multiset_permutations
 
@@ -65,6 +69,35 @@ def CombineNonHomoProbs(prob_bad, probs, num_bad, num_bom):
   return new_probs
 
 
+def dirichlet_entropy(alpha):
+    alpha0 = np.sum(alpha)
+    log_beta = np.sum(gammaln(alpha)) - gammaln(np.sum(alpha))
+    return log_beta + (alpha0 - len(alpha)) * psi(alpha0) - np.sum((alpha - 1) * psi(alpha))
+
+
+def Distributions(probs):
+  num_players = len(probs)
+  I_disc = np.sum(probs * np.log(probs * num_players, where=(probs > 0)))
+  H_prior = dirichlet_entropy(np.full(probs.shape, 1.0))
+  res = minimize_scalar(lambda c: H_prior - I_disc - dirichlet_entropy(c * probs),
+                        bounds=(1, 500), method='bounded')
+  a = res.x * probs
+  b = np.sum(a) - a
+  return (a, b)
+
+
+def ProbsGraph(players, probs, e=0.01):
+  num_players = len(players)
+  x = np.linspace(0, 1, 100)
+  (a, b) = Distributions(probs)
+  fig, axs = plt.subplots(num_players)
+  for i in range(num_players):
+    axs[i].set_title(players[i])
+    axs[i].plot(x, beta.pdf(x, a[i] + e, b[i] + e))
+  plt.show()
+  return
+
+
 def DisplayProbs(players, probs, probs_list, decls, revealed, found, hand_size, active_wires, pos_bad, num_bom):
   num_players = decls.size
   p_wire = np.zeros(num_players)
@@ -92,6 +125,7 @@ def DisplayProbs(players, probs, probs_list, decls, revealed, found, hand_size, 
             [players[i], p_wire[i]*100, p_bomb[i]*100, comb_probs[i]*100, score[i]] for i in range(num_players)] + [
             ["Average", p_wir_rand*100, p_bom_rand*100, p_bad_rand*100, np.sum(score)/num_players]]
   print(tabulate(table, headers='firstrow', tablefmt='fancy_grid', floatfmt=(".1f", ".1f", ".1f", ".1f", ".3f")))
+  ProbsGraph(players, comb_probs)
   return
 
 
@@ -167,8 +201,8 @@ def ProbCut(decls, prior, revealed, found, hand_size, active_wires, num_bad, num
           liars_impossible = True
           break
         if bom in bad_set and hand_size + decls[bom] < bad_wires:
-            liars_impossible = True
-            break
+          liars_impossible = True
+          break
       if liars_impossible:
         continue
       combs = 0
@@ -510,9 +544,9 @@ def PlayAuto(CutStrategy, num_players, initial_hand_size=5, verbosity=2):
     revealed = np.zeros(num_players)
     probs = deepcopy(probabilities)
     cutee = -1
-    for player in range(num_players):
+    for cut in range(num_players):
       if verbosity > 0:
-        print("Cut number", player + 1)
+        print("Cut number", cut + 1)
       cutee = CutStrategy(declarations, probs, revealed, found, hand_size, active_wires, cutee, pos_bad, num_bom)
       randy = randint(1, hand_size - revealed[cutee])
       if bombs[cutee] == 1 and randy == hand_size - revealed[cutee]:
