@@ -78,16 +78,12 @@ def dirichlet_entropy(alpha):
 def ProbsGraph(players, probs, e=0.001):
   num_players = len(players)
   x = np.linspace(0, 1, 500)
-  # fig, axs = plt.subplots(num_players)
   for i in range(num_players):
     res = minimize_scalar(
       lambda c: - dirichlet_entropy(np.array([c * probs[i], c * (1 - probs[i])])),
       bounds=[1, 100], method='bounded'
     )
-    print(res.x)
-    # axs[i].set_title(players[i])
-    # axs[i].plot(x, beta.pdf(x, res.x * probs[i] + e, res.x * (1 - probs[i]) + num_players * e))
-    plt.plot(x, beta.pdf(x, res.x * probs[i] + e, res.x * (1 - probs[i]) + num_players * e))
+    plt.plot(x, beta.pdf(x, res.x * probs[i] + e, res.x * (1 - probs[i]) + num_players * e), label=players[i])  
   plt.show()
   return
 
