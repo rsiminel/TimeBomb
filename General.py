@@ -8,8 +8,8 @@ from tabulate import tabulate
 import matplotlib.pyplot as plt
 from scipy.special import gammaln, psi
 from scipy.optimize import minimize_scalar
-from itertools import combinations, combinations_with_replacement
 from sympy.utilities.iterables import multiset_permutations
+from itertools import combinations, combinations_with_replacement
 
 
 def Cn(distribution):
@@ -70,30 +70,24 @@ def CombineNonHomoProbs(prob_bad, probs, num_bad, num_bom):
 
 
 def dirichlet_entropy(alpha):
-    alpha0 = np.sum(alpha)
-    log_beta = np.sum(gammaln(alpha)) - gammaln(np.sum(alpha))
-    return log_beta + (alpha0 - len(alpha)) * psi(alpha0) - np.sum((alpha - 1) * psi(alpha))
+  alpha0 = np.sum(alpha)
+  log_beta = np.sum(gammaln(alpha)) - gammaln(alpha0)
+  return log_beta + (alpha0 - len(alpha)) * psi(alpha0) - np.sum((alpha - 1) * psi(alpha))
 
 
-def Distributions(probs):
-  num_players = len(probs)
-  I_disc = np.sum(probs * np.log(probs * num_players, where=(probs > 0)))
-  H_prior = dirichlet_entropy(np.full(probs.shape, 1.0))
-  res = minimize_scalar(lambda c: H_prior - I_disc - dirichlet_entropy(c * probs),
-                        bounds=(1, 500), method='bounded')
-  a = res.x * probs
-  b = np.sum(a) - a
-  return (a, b)
-
-
-def ProbsGraph(players, probs, e=0.01):
+def ProbsGraph(players, probs, e=0.001):
   num_players = len(players)
-  x = np.linspace(0, 1, 100)
-  (a, b) = Distributions(probs)
-  fig, axs = plt.subplots(num_players)
+  x = np.linspace(0, 1, 500)
+  # fig, axs = plt.subplots(num_players)
   for i in range(num_players):
-    axs[i].set_title(players[i])
-    axs[i].plot(x, beta.pdf(x, a[i] + e, b[i] + e))
+    res = minimize_scalar(
+      lambda c: - dirichlet_entropy(np.array([c * probs[i], c * (1 - probs[i])])),
+      bounds=[1, 100], method='bounded'
+    )
+    print(res.x)
+    # axs[i].set_title(players[i])
+    # axs[i].plot(x, beta.pdf(x, res.x * probs[i] + e, res.x * (1 - probs[i]) + num_players * e))
+    plt.plot(x, beta.pdf(x, res.x * probs[i] + e, res.x * (1 - probs[i]) + num_players * e))
   plt.show()
   return
 
@@ -115,11 +109,11 @@ def DisplayProbs(players, probs, probs_list, decls, revealed, found, hand_size, 
           p_bomb[bom] += pos_bad[i][1] * prob_bomb[bom_set] / (hand_size - revealed[bom])
     comb_probs += pos_bad[i][1] * Flatten(CombineProbs(probs_list[i]))
     total_probs = CombineNonHomoProbs(CombineProbs(probs_list[i][0:-1]), probs[i], pos_bad[i][0], num_bom)
-    p_wire += pos_bad[i][1] * P_wire(decls, total_probs, revealed, found, hand_size, active_wires, pos_bad[i][0], num_bom)
+    p_wire += pos_bad[i][1] * P_wire(decls, total_probs, revealed, found, hand_size, active_wires + np.sum(found), pos_bad[i][0], num_bom)
     curr_points = num_players - active_wires
-    score += pos_bad[i][1] * (1 - p_bomb) * (p_wire * (curr_points + 1) + (1 - p_wire) * curr_points)
+    score += pos_bad[i][1] * ((1 - p_bomb) * (p_wire * (curr_points + 1) + (1 - p_wire) * curr_points))
     p_wir_rand += pos_bad[i][1] * active_wires / (num_players * hand_size - np.sum(revealed))
-    p_bom_rand += pos_bad[i][1] * 1 / (num_players * hand_size - np.sum(revealed))
+    p_bom_rand += pos_bad[i][1] * num_bom / (num_players * hand_size - np.sum(revealed))
     p_bad_rand += pos_bad[i][1] * pos_bad[i][0] / num_players
   table = [["Player", "P_wire", "P_bomb", "P_bad", "Score"]] + [
             [players[i], p_wire[i]*100, p_bomb[i]*100, comb_probs[i]*100, score[i]] for i in range(num_players)] + [
@@ -322,15 +316,14 @@ def Play(players=["Alice", "Bob", "Clara", "Darryl", "Erica", "Fred"], initial_h
     # Cut wires
     found = zeros.copy()
     revealed = zeros.copy()
-    for i in range(num_players):
-      print("\n Cut number", i + 1)
+    for cut in range(num_players):
+      print("\n Cut number", cut + 1)
       cutee_str = input("Who's wire has been cut? ")
       while cutee_str not in players:
         cutee_str = input("You must have made a typo. Who? ")
-      cutee = 0
-      for j in range(num_players):
-        if players[j] == cutee_str:
-          cutee = j
+      for player in range(num_players):
+        if players[player] == cutee_str:
+          cutee = player
       revealed[cutee] += 1
       num_wires -= 1
       shown = int(input("Did you reveal\n" + " 0- an inactive wire\n 1- an active wire\n 2- the bomb"))
@@ -348,7 +341,7 @@ def Play(players=["Alice", "Bob", "Clara", "Darryl", "Erica", "Fred"], initial_h
       probs = [0 for _ in range(len(pos_bad))]
       prob_bad = [0 for _ in range(len(pos_bad))]
       for i in range(len(pos_bad)):
-        probs[i] = ProbCut(declarations, probabilities[i], revealed, found, hand_size, active_wires, pos_bad[i][0], num_bom)
+        probs[i] = ProbCut(declarations, probabilities[i], revealed, found, hand_size, active_wires + np.sum(found), pos_bad[i][0], num_bom)
         prob_bad[i], _ = Separate(probs[i], pos_bad[i][0], num_bom)
         probabilities_list[i][-1] = deepcopy(prob_bad[i])
       DisplayProbs(players, probs, probabilities_list, declarations, revealed, found, hand_size, active_wires, pos_bad, num_bom)
@@ -415,15 +408,25 @@ def PlaySubjective(other_players=["Alice", "Bob", "Clara", "Darryl", "Erica"], i
     # Cut wires
     found = zeros.copy()
     revealed = zeros.copy()
-    for i in range(num_players + 1):
-      print("\n Cut number", i + 1)
+    for cut in range(num_players):
+      print("\n Cut number", cut + 1)
       cutee_str = input("Who's wire has been cut? ")
-      cutee = -1
-      for j in range(num_players):
-        if cutee_str in other_players[j].casefold():
-          cutee = j
-          revealed[cutee] += 1
       num_wires -= 1
+      if cutee_str == "me":
+        shown = int(input("Did you reveal\n 0- an inactive wire\n 1- an active wire\n 2- the bomb"))
+        while shown not in [0, 1, 2]:
+          shown = int(input("Sorry, I'm looking for a 0, a 1 or a 2 here."))
+        if shown == 2:
+          print("The Bomb was detonated. Bad guys win!")
+          return
+        if shown == 1:
+          active_wires -= 1
+        continue
+      while cutee_str not in other_players:
+        cutee_str = input("You must have made a typo. Who? ")
+      for player in range(num_players):
+        if other_players[player] == cutee_str:
+          cutee = player
       shown = int(input("Did you reveal\n 0- an inactive wire\n 1- an active wire\n 2- the bomb"))
       while shown not in [0, 1, 2]:
         shown = int(input("Sorry, I'm looking for a 0, a 1 or a 2 here."))
@@ -432,15 +435,14 @@ def PlaySubjective(other_players=["Alice", "Bob", "Clara", "Darryl", "Erica"], i
         return
       if shown == 1:
         active_wires -= 1
-        if cutee == -1: player_wires -= 1
-        else: found[cutee] += 1
+        found[cutee] += 1
       print("r:", revealed)
       print("f:", found)
       # Update probabilities
       probs = [0 for _ in range(len(pos_bad))]
       prob_bad = [0 for _ in range(len(pos_bad))]
       for i in range(len(pos_bad)):
-        probs[i] = ProbCut(decls, probabilities[i], revealed, found, hand_size, pos_wires, pos_bad[i][0], pos_bomb)
+        probs[i] = ProbCut(decls, probabilities[i], revealed, found, hand_size, pos_wires + np.sum(found), pos_bad[i][0], pos_bomb)
         prob_bad[i], _ = Separate(probs[i], pos_bad[i][0], pos_bomb)
         probabilities_list[i][-1] = deepcopy(prob_bad[i])
       DisplayProbs(other_players, probs, probabilities_list, decls, revealed, found, hand_size, pos_wires, pos_bad, pos_bomb)
@@ -568,7 +570,7 @@ def PlayAuto(CutStrategy, num_players, initial_hand_size=5, verbosity=2):
       probs = [0 for _ in range(len(pos_bad))]
       prob_bad = [0 for _ in range(len(pos_bad))]
       for i in range(len(pos_bad)):
-        probs[i] = ProbCut(declarations, probabilities[i], revealed, found, hand_size, active_wires, pos_bad[i][0], num_bom)
+        probs[i] = ProbCut(declarations, probabilities[i], revealed, found, hand_size, active_wires + np.sum(found), pos_bad[i][0], num_bom)
         prob_bad[i], _ = Separate(probs[i], pos_bad[i][0], num_bom)
         probabilities_list[i][-1] = deepcopy(prob_bad[i])
       if verbosity > 1:
@@ -605,7 +607,7 @@ def CutMaxScore(decls, probs, revealed, found, hand_size, active_wires, curr_cut
   num_players = decls.size
   score = np.zeros(num_players)
   for i in range(len(pos_bad)):
-    p_wire = P_wire(decls, probs[i], revealed, found, hand_size, active_wires, pos_bad[i][0], num_bom)
+    p_wire = P_wire(decls, probs[i], revealed, found, hand_size, active_wires + np.sum(found), pos_bad[i][0], num_bom)
     _, prob_bomb = Separate(probs[i], pos_bad[i][0], num_bom)
     p_bomb = np.zeros(num_players)
     for j in range(num_players):
@@ -623,7 +625,6 @@ def CutMaxScore(decls, probs, revealed, found, hand_size, active_wires, curr_cut
   return cutee
 
 
-#%%
 def Test(strategies, num_players, num_games, init_hand_size=5):
   win_rate = [0]  * len(strategies)
   suspicion = [0] * len(strategies)
@@ -640,7 +641,5 @@ def Test(strategies, num_players, num_games, init_hand_size=5):
     win_rate[strat] /= num_games
     suspicion[strat] /= num_games
   return (win_rate, suspicion)
-
-print(Test([CutRandom, CutMaxScore], 6, 100))
 
 # %%
