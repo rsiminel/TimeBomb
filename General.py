@@ -438,8 +438,10 @@ def PlayAuto(CutStrategy, num_players, initial_hand_size=5, verbosity=2):
     print("Not enough players")
     return
   elif num_players == 4:
-    num_bad = 2 - int(randint(0, 4) < 2)
-    pos_bad = [[1, 2/5], [2, 3/5]]
+    # num_bad = 2 - int(randint(0, 4) < 2)
+    # pos_bad = [[1, 2/5], [2, 3/5]]
+    num_bad = 1
+    pos_bad = [[1, 1.0]]
   elif num_players < 7:
     num_bad = 2
     pos_bad = [[2, 1.0]]
@@ -525,7 +527,7 @@ def PlayAuto(CutStrategy, num_players, initial_hand_size=5, verbosity=2):
     for cut in range(num_players):
       if verbosity > 0:
         print("Cut number", cut + 1)
-      new_cutee = CutStrategy(declarations, probs, revealed, found, hand_size, active_wires, cutee, pos_bad, num_bom)
+      new_cutee = CutStrategy(declarations, probabilities_list, probs, revealed, found, hand_size, active_wires, cut, cutee, pos_bad, num_bom)
       if new_cutee == cutee or revealed[cutee] >= hand_size:
         if verbosity > 0:
           print("CutStrategy broke the rules. Bad guys win!")
