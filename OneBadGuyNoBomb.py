@@ -26,7 +26,7 @@ def PlayAuto(num_players=4, initial_hand_size=5, verbosity=2):
   while hand_size > 1:
     if verbosity > 0:
       print("Round ", initial_hand_size - hand_size + 1)
-    wires = uf.DistributeWires(num_players, active_wires, hand_size)
+    wires = uf.DistributeWires(num_players, hand_size, active_wires)
     if verbosity > 0:
       print("w:", wires)
     # Declare your wires

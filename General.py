@@ -69,25 +69,6 @@ def CombineNonHomoProbs(prob_bad, probs, num_bad, num_bom):
   return new_probs
 
 
-def dirichlet_entropy(alpha):
-  alpha0 = np.sum(alpha)
-  log_beta = np.sum(gammaln(alpha)) - gammaln(alpha0)
-  return log_beta + (alpha0 - len(alpha)) * psi(alpha0) - np.sum((alpha - 1) * psi(alpha))
-
-
-def ProbsGraph(players, probs, e=0.001):
-  num_players = len(players)
-  x = np.linspace(0, 1, 500)
-  for i in range(num_players):
-    res = minimize_scalar(
-      lambda c: - dirichlet_entropy(np.array([c * probs[i], c * (1 - probs[i])])),
-      bounds=[1, 100], method='bounded'
-    )
-    plt.plot(x, beta.pdf(x, res.x * probs[i] + e, res.x * (1 - probs[i]) + num_players * e), label=players[i])  
-  plt.show()
-  return
-
-
 def DisplayProbs(players, probs, probs_list, decls, revealed, found, hand_size, active_wires, pos_bad, num_bom):
   num_players = decls.size
   p_wire = np.zeros(num_players)
@@ -115,7 +96,6 @@ def DisplayProbs(players, probs, probs_list, decls, revealed, found, hand_size, 
             [players[i], p_wire[i]*100, p_bomb[i]*100, comb_probs[i]*100, score[i]] for i in range(num_players)] + [
             ["Average", p_wir_rand*100, p_bom_rand*100, p_bad_rand*100, np.sum(score)/num_players]]
   print(tabulate(table, headers='firstrow', tablefmt='fancy_grid', floatfmt=(".1f", ".1f", ".1f", ".1f", ".3f")))
-  ProbsGraph(players, comb_probs)
   return
 
 
@@ -545,7 +525,15 @@ def PlayAuto(CutStrategy, num_players, initial_hand_size=5, verbosity=2):
     for cut in range(num_players):
       if verbosity > 0:
         print("Cut number", cut + 1)
-      cutee = CutStrategy(declarations, probs, revealed, found, hand_size, active_wires, cutee, pos_bad, num_bom)
+      new_cutee = CutStrategy(declarations, probs, revealed, found, hand_size, active_wires, cutee, pos_bad, num_bom)
+      if new_cutee == cutee or revealed[cutee] >= hand_size:
+        if verbosity > 0:
+          print("CutStrategy broke the rules. Bad guys win!")
+        final_probs = np.zeros(num_players)
+        for i in range(len(pos_bad)):
+          final_probs += pos_bad[i][1] * Flatten(CombineProbs(probabilities_list[i]))
+        return (0, final_probs, roles)
+      else: cutee = new_cutee
       randy = randint(1, hand_size - revealed[cutee])
       if bombs[cutee] == 1 and randy == hand_size - revealed[cutee]:
         if verbosity > 0:
