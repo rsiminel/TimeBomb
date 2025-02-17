@@ -1,11 +1,13 @@
 from itertools import combinations
+import matplotlib.pyplot as plt
+from tabulate import tabulate
 from random import randint
 from copy import deepcopy
+from tqdm import tqdm
 import tensorflow as tf
 import numpy as np
 import keras
 import General as tb
-import UsefulFunctions as uf
 
 def StrategyWrapper(actor):
   def Strategy(decls, probs_list, probs, revealed, found, hand_size, active_wires, cut, curr_cut, pos_bad, num_bom):
@@ -38,7 +40,8 @@ def run_episode(actor):
   Returns:
     observations: NumPy array of shape (episode_length, observation_dimensions)
     actions: NumPy array of shape (episode_length,) containing integer actions
-    rewards: NumPy array of shape (episode_length,) containing rewards from each step (0 or 1)
+    rewards: NumPy array of shape (episode_length,) containing rewards from each step
+    is_win: 0 (loss) or 1 (win)
   """
   # Game Parameters
   num_players = 4
@@ -47,12 +50,12 @@ def run_episode(actor):
   num_bom = 1
   initial_hand_size = 5
   # Reward Parameters
-  bomb_cut = -3
   wire_cut = 3
+  bomb_cut = -3
   nada_cut = 0
   rule_cut = -10
-  bomb_game = -1
   wire_game = 1
+  bomb_game = -1
   nada_game = -1
   rule_game = -1
   # Initializations
@@ -62,7 +65,7 @@ def run_episode(actor):
   hand_size = initial_hand_size
   num_wires = num_players * hand_size
   active_wires = num_players
-  zeros = np.zeros(num_players)
+  zeros = np.zeros(num_players, dtype=np.int8)
   # Distributing roles
   roles = zeros.copy()
   evil = 0
@@ -76,14 +79,7 @@ def run_episode(actor):
   # Starting turns
   while hand_size > 1:
     # Distribute wires
-    wires = uf.DistributeWires(num_players, hand_size, active_wires)
-    bombs = zeros.copy()
-    bom = 0
-    while bom < num_bom:
-      randy = randint(0, num_players - 1)
-      if bombs[randy] == 0 and wires[randy] < hand_size:
-        bombs[randy] = 1
-        bom += 1
+    wires, bombs = tb.DistributeWires(num_players, hand_size, active_wires, num_bom)
     # Declare your wires
     declarations = wires.copy()
     for player in range(num_players):
@@ -103,8 +99,8 @@ def run_episode(actor):
       prob_bad[i], _ = tb.Separate(probabilities[i], pos_bad[i][0], num_bom)
       probabilities_list[i].append(deepcopy(prob_bad[i]))
     # Cut wires
-    found = np.zeros(num_players)
-    revealed = np.zeros(num_players)
+    found = zeros.copy()
+    revealed = zeros.copy()
     probs = deepcopy(probabilities)
     cutee = -1
     for cut in range(num_players):
@@ -133,12 +129,12 @@ def run_episode(actor):
       # Reveal a card
       if new_cutee == cutee or revealed[cutee] >= hand_size:
         rewards.append(rule_cut)
-        return np.array(observations), np.array(actions), np.array(rewards) + rule_game
+        return np.array(observations), np.array(actions), np.array(rewards) + rule_game, 0
       else: cutee = new_cutee
       randy = randint(1, hand_size - revealed[cutee])
       if bombs[cutee] == 1 and randy == hand_size - revealed[cutee]:
         rewards.append(bomb_cut)
-        return np.array(observations), np.array(actions), np.array(rewards) + bomb_game
+        return np.array(observations), np.array(actions), np.array(rewards) + bomb_game, 0
       elif randy <= wires[cutee] - found[cutee]:
         found[cutee] += 1
         active_wires -= 1
@@ -156,18 +152,18 @@ def run_episode(actor):
         probabilities_list[i][-1] = deepcopy(prob_bad[i])
       # Test for victory
       if active_wires <= 0:
-        return np.array(observations), np.array(actions), np.array(rewards) + wire_game
+        return np.array(observations), np.array(actions), np.array(rewards) + wire_game, 1
     # Next round
     hand_size -= 1
-  return np.array(observations), np.array(actions), np.array(rewards) + nada_game
+  return np.array(observations), np.array(actions), np.array(rewards) + nada_game, 0
 
-# Define a simple MLP model for the actor.
+# Define a simple MLP model for the actor
 def mlp(x, sizes, activation=tf.nn.tanh, output_activation=None):
   for size in sizes[:-1]:
     x = tf.keras.layers.Dense(units=size, activation=activation)(x)
   return tf.keras.layers.Dense(units=sizes[-1], activation=output_activation)(x)
 
-# Sampling an action from the actor's policy (categorical distribution).
+# Sampling an action from the actor's policy (categorical distribution)
 def sample_action(actor, observation):  # observation is assumed to be a tensor of shape (batch, observation_dimensions)
   logits = actor(observation)
   action = tf.squeeze(tf.random.categorical(logits, num_samples=1), axis=1)
@@ -178,75 +174,87 @@ def train(actor, games_per_epoch, optimizer):
   all_observations = []
   all_actions = []
   all_returns = []
-  # Run several episodes to collect training data.
-  for _ in range(games_per_epoch):
-    obs, actions, returns = run_episode(actor)
+  wins = 0
+  # Run several episodes to collect training data
+  for _ in tqdm(range(games_per_epoch)):
+    obs, actions, returns, win = run_episode(actor)
     all_observations.append(obs)
     all_actions.append(actions)
     all_returns.append(returns)
-  # Flatten the episodes into a single batch.
+    wins += win
+  # Flatten the episodes into a single batch
   observations = np.concatenate(all_observations, axis=0)
   actions = np.concatenate(all_actions, axis=0)
   returns = np.concatenate(all_returns, axis=0)
-  # Convert to tensors.
+  # Convert to tensors
   observations = tf.convert_to_tensor(observations, dtype=tf.float32)
   actions = tf.convert_to_tensor(actions, dtype=tf.int32)
   returns = tf.convert_to_tensor(returns, dtype=tf.float32)
-  # Compute the policy gradient loss.
+  # Compute the policy gradient loss
   with tf.GradientTape() as tape:
-    # Forward pass: compute logits for all observations.
+    # Forward pass: compute logits for all observations
     logits = actor(observations)  # shape: (N, num_players)
     log_probs = tf.nn.log_softmax(logits, axis=1)
-    # Gather the log probabilities for the actions actually taken.
+    # Gather the log probabilities for the actions actually taken
     indices = tf.stack([tf.range(tf.shape(actions)[0]), actions], axis=1)
     selected_log_probs = tf.gather_nd(log_probs, indices)
-    # REINFORCE loss: weight the log probability by the (discounted) return.
-    loss = -tf.reduce_mean(selected_log_probs * returns)
-  # Compute gradients and update the actor's parameters.
-  grads = tape.gradient(loss, actor.trainable_variables)
+    # REINFORCE loss: weight the log probability by the return
+    score = -tf.reduce_mean(selected_log_probs * returns)
+  # Compute gradients and update the actor's parameters
+  grads = tape.gradient(score, actor.trainable_variables)
   optimizer.apply_gradients(zip(grads, actor.trainable_variables))
-  return loss
+  return score.numpy(), wins
 
-def make_model(pweight, num_players):
+def make_model(model_file, num_players):
   # Training Hyperparameters
   num_epochs = 100
-  games_per_epoch = 500
+  games_per_epoch = 10000
   observation_dimensions = 4 * num_players + 3
-  hidden_sizes = [8]
-  initial_lr = 5e-2
-  patience = 5
-  lr_reduction = 0.95
-  optimizer = keras.optimizers.Adam(learning_rate=initial_lr)
+  hidden_sizes = [32, 8]
+  optimizer = keras.optimizers.Adam(learning_rate=0.05)
   # Create actor
   observation_input = tf.keras.Input(shape=(observation_dimensions,), dtype="float32")
   logits = mlp(observation_input, hidden_sizes + [num_players])
   actor = tf.keras.Model(inputs=observation_input, outputs=logits)
   print(actor.summary())
   # Training Loop
-  best_loss = -10
-  epochs_without_improvement = 0
+  scores = np.zeros(num_epochs)
   for epoch in range(num_epochs):
-    loss = train(actor, games_per_epoch, optimizer).numpy()
-    print(f"Epoch: {epoch}, Loss: {loss}")
-    # Reduce learning rate if a loss plateau is detected
-    if loss > best_loss:
-      best_loss = loss
-      epochs_without_improvement = 0
-    else:
-      epochs_without_improvement += 1
-    if epochs_without_improvement >= patience:
-        optimizer.learning_rate.assign(optimizer.learning_rate.numpy() * lr_reduction)
-        epochs_without_improvement = 0
+    lr = optimizer.learning_rate.numpy()
+    score, wins = train(actor, games_per_epoch, optimizer)
+    table = [
+      ["Epoch", "Wins", "Score", "LR"]] + [
+      [epoch, wins, score, lr]
+    ]
+    print(tabulate(table, headers='firstrow', tablefmt='fancy_grid', floatfmt=(".0f", ".0f", ".3f", ".3f", ".3f")))
+    scores[epoch] = score
+    # if epoch == 25:
+    #   games_per_epoch = 1000
+    # if epoch == 50:
+    #   games_per_epoch = 2500
+    # if epoch == 75:
+    #   games_per_epoch = 5000
+    # if epoch == 100:
+    #   games_per_epoch = 10000
+    # if epoch == 125:
+    #   games_per_epoch = 20000
   # Save Model
-  actor.save(pweight)
+  actor.save(model_file)
+  plt.plot(scores)
+  plt.title('model score')
+  plt.ylabel('score')
+  plt.xlabel('epoch')
+  plt.show()
 
-def main():
+def main(model_name):
   num_players = 4
-  model_name='GoodObjective'
-  pweight = './models/' + model_name  + '.keras'
-  make_model(pweight, num_players)
-  actor = keras.models.load_model(pweight)
-  tb.PlayAuto(StrategyWrapper(actor), num_players)
+  model_file = './models/' + model_name  + '.keras'
+  make_model(model_file, num_players)
+  actor = keras.models.load_model(model_file)
+  # tb.PlayAuto(StrategyWrapper(actor), num_players)
+  strategies = [StrategyWrapper(actor), tb.CutMaxScore, tb.CutRandom]
+  win_rates, suspicion = tb.Test(strategies, 4, 5000)
+  print(win_rates, suspicion)
   return
 
-main()
+main("Test")

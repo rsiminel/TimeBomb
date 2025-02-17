@@ -2,21 +2,24 @@
 import numpy as np
 from copy import deepcopy
 from random import randint
-from scipy.stats import beta
-import UsefulFunctions as uf
 from tabulate import tabulate
-import matplotlib.pyplot as plt
-from scipy.special import gammaln, psi
-from scipy.optimize import minimize_scalar
+from math import factorial, comb
 from sympy.utilities.iterables import multiset_permutations
 from itertools import combinations, combinations_with_replacement
+
+
+def Lklhd(n, m, k, p):
+  c = comb(n, m)
+  if c == 0:
+    return 0
+  return comb(k, p) * comb(n - k, m - p) / c
 
 
 def Cn(distribution):
   prod = 1
   for i in distribution:
-    prod *= uf.Fact(i)
-  return uf.Fact(sum(distribution)) / prod
+    prod *= factorial(i)
+  return factorial(np.sum(distribution)) / prod
 
 
 def Flatten(probabilities):
@@ -123,7 +126,7 @@ def ProbDeclaration(decls, hand_size, active_wires, num_bad, num_bom):
         if sum(short_ord_wires_dist) != bad_wires:
           continue
         for short_wires_dist in multiset_permutations(short_ord_wires_dist):
-          wires_dist = np.zeros(num_players)
+          wires_dist = decls.copy()
           for wire in range(len(short_wires_dist)):
             wires_dist[liar_set[wire]] = short_wires_dist[wire]
           prob = 1
@@ -133,17 +136,17 @@ def ProbDeclaration(decls, hand_size, active_wires, num_bad, num_bom):
               wires_impossible = True
               break
             else:  # bad_bom has =fewer wires than declared
-              prob *= uf.C(wires_dist[bad_bom], decls[bad_bom])
+              prob *= comb(decls[bad_bom], wires_dist[bad_bom])
           if wires_impossible:
             continue
           for bad_nbom in bad_nbom_set:
             if wires_dist[bad_nbom] < decls[bad_nbom]:  # bad_nbom has fewer wires than declared
-              prob *= uf.C(wires_dist[bad_nbom], decls[bad_nbom])
+              prob *= comb(decls[bad_nbom], wires_dist[bad_nbom])
             else:  # bad_nbom has =more wires than declared
-              prob *= uf.C(wires_dist[bad_nbom] - decls[bad_nbom], hand_size - decls[bad_nbom])
+              prob *= comb(hand_size - decls[bad_nbom], wires_dist[bad_nbom] - decls[bad_nbom])
           for nbad_bom in nbad_bom_set:
             wires_dist[nbad_bom] += decls[nbad_bom]
-            prob *= uf.C(wires_dist[nbad_bom] - decls[nbad_bom], hand_size - decls[nbad_bom] - 1)
+            prob *= comb(hand_size - decls[nbad_bom] - 1, wires_dist[nbad_bom] - decls[nbad_bom])
           new_combs = Cn(wires_dist)
           probs[bad_set + bom_set] += prob * new_combs
           combs += new_combs
@@ -181,19 +184,21 @@ def ProbCut(decls, prior, revealed, found, hand_size, active_wires, num_bad, num
         if sum(short_ord_wires_dist) != bad_wires:
           continue
         for short_wires_dist in multiset_permutations(short_ord_wires_dist):
-          wires_dist = np.zeros(num_players)
+          wires_dist = decls.copy()
           for wire in range(len(short_wires_dist)):
             wires_dist[liar_set[wire]] = short_wires_dist[wire]
           lklhd = 1
           for player in range(num_players):
-            if player in bom_set and player in bad_set:
-              lklhd *= uf.Lklhd(hand_size - 1, wires_dist[player], revealed[player], found[player])
-            elif player in bom_set:
-              lklhd *= uf.Lklhd(hand_size - 1, wires_dist[player] + decls[player], revealed[bom], found[bom])
-            elif player in bad_set:
-              lklhd *= uf.Lklhd(hand_size, wires_dist[player], revealed[player], found[player])
+            if wires_dist[player] < found[player]:
+              lklhd = 0
+              break
+            if player in bom_set:
+              if player in bad_set:
+                lklhd *= Lklhd(hand_size - 1, wires_dist[player], revealed[player], found[player])
+              else:
+                lklhd *= Lklhd(hand_size - 1, wires_dist[player] + decls[player], revealed[bom], found[bom])
             else:
-              lklhd *= uf.Lklhd(hand_size, decls[player], revealed[player], found[player])
+              lklhd *= Lklhd(hand_size, wires_dist[player], revealed[player], found[player])
           new_combs = Cn(wires_dist)
           combs += new_combs
           lklhds[bad_set + bom_set] += new_combs * lklhd
@@ -220,7 +225,7 @@ def P_wire(decls, probs, revealed, found, hand_size, active_wires, num_bad, num_
         if sum(short_ord_wires_dist) != bad_wires:
           continue
         for short_wires_dist in multiset_permutations(short_ord_wires_dist):
-          wires_dist = np.zeros(num_players)
+          wires_dist = decls.copy()
           for wire in range(len(short_wires_dist)):
             wires_dist[liar_set[wire]] = short_wires_dist[wire]
           new_combs = Cn(wires_dist)
@@ -431,6 +436,22 @@ def PlaySubjective(other_players=["Alice", "Bob", "Clara", "Darryl", "Erica"], i
   print("Out of time. Bad guys win!")
   return
 
+def DistributeWires(num_players, hand_size, active_wires, num_bom):
+  wires = np.zeros(num_players, dtype=np.int8)
+  given = 0
+  while given < active_wires:
+    randy = randint(0, num_players - 1)
+    if wires[randy] < hand_size:
+      wires[randy] += 1
+      given += 1
+  bombs = np.zeros(num_players, dtype=np.int8)
+  bom = 0
+  while bom < num_bom:
+    randy = randint(0, num_players - 1)
+    if bombs[randy] == 0 and wires[randy] < hand_size:
+      bombs[randy] = 1
+      bom += 1
+  return wires, bombs
 
 def PlayAuto(CutStrategy, num_players, initial_hand_size=5, verbosity=2):
   num_bom = 1
@@ -457,7 +478,7 @@ def PlayAuto(CutStrategy, num_players, initial_hand_size=5, verbosity=2):
   hand_size = initial_hand_size
   num_wires = num_players * hand_size
   active_wires = num_players
-  zeros = np.zeros(num_players)
+  zeros = np.zeros(num_players, dtype=np.int8)
   # Distributing roles
   roles = zeros.copy()
   evil = 0
@@ -475,14 +496,7 @@ def PlayAuto(CutStrategy, num_players, initial_hand_size=5, verbosity=2):
     if verbosity > 0:
       print("Round ", initial_hand_size - hand_size + 1)
     # Distribute wires
-    wires = uf.DistributeWires(num_players, hand_size, active_wires)
-    bombs = zeros.copy()
-    bom = 0
-    while bom < num_bom:
-      randy = randint(0, num_players - 1)
-      if bombs[randy] == 0 and wires[randy] < hand_size:
-        bombs[randy] = 1
-        bom += 1
+    wires, bombs = DistributeWires(num_players, hand_size, active_wires, num_bom)
     if verbosity > 0:
       print("w:", wires)
       print("b:", bombs)
@@ -520,8 +534,8 @@ def PlayAuto(CutStrategy, num_players, initial_hand_size=5, verbosity=2):
           players += ["good"]
       DisplayProbs(players, probabilities, probabilities_list, declarations, zeros, zeros, hand_size, active_wires, pos_bad, num_bom)
     # Cut wires
-    found = np.zeros(num_players)
-    revealed = np.zeros(num_players)
+    found = zeros.copy()
+    revealed = zeros.copy()
     probs = deepcopy(probabilities)
     cutee = -1
     for cut in range(num_players):
@@ -581,7 +595,7 @@ def PlayAuto(CutStrategy, num_players, initial_hand_size=5, verbosity=2):
   return (0, final_probs, roles)
 
 
-def CutRandom(decls, probs, revealed, found, hand_size, active_wires, curr_cut, pos_bad, num_bom):
+def CutRandom(decls, probs_list, probs, revealed, found, hand_size, active_wires, cut, curr_cut, pos_bad, num_bom):
   num_players = revealed.size
   cutee = randint(0, num_players - 1)
   while revealed[cutee] >= hand_size or cutee == curr_cut:
@@ -589,7 +603,7 @@ def CutRandom(decls, probs, revealed, found, hand_size, active_wires, curr_cut, 
   return cutee
 
 
-def CutMaxScore(decls, probs, revealed, found, hand_size, active_wires, curr_cut, pos_bad, num_bom):
+def CutMaxScore(decls, probs_list, probs, revealed, found, hand_size, active_wires, cut, curr_cut, pos_bad, num_bom):
   num_players = decls.size
   score = np.zeros(num_players)
   for i in range(len(pos_bad)):
