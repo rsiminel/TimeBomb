@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <link rel="stylesheet" href="styles.css">
+  <title>Time Bomb Assistant</title>
+</head>
+<body>
+  <script src="main.js"></script>
+  <h1>Time Bomb Assistant</h1>
+  
+  <!-- Setup Section -->
+  <div class="section" id="setup">
+    <h2>Game Setup</h2>
+    <label for="playersInput">Players (comma separated):</label>
+    <input type="text" id="playersInput" value="Alice, Bob, Clara, Darryl, Erica, Fred" size="50">
+    <br>
+    <label for="handSizeInput">Initial Hand Size:</label>
+    <input type="number" id="handSizeInput" value="5" min="2">
+    <br>
+    <button id="startGame">Start Game</button>
+  </div>
+  
+  <!-- Main Game Section -->
+  <div class="section hidden" id="gameArea">
+    <h2>Game Play</h2>
+    <div id="roundInfo"></div>
+    <!-- Declarations Input -->
+    <div id="declarationsArea">
+      <h3>Player Declarations</h3>
+      <div id="declarationsInputs"></div>
+      <button id="submitDeclarations">Submit Declarations</button>
+    </div>
+    <!-- Wire Cutting Input -->
+    <div id="cutArea" class="hidden">
+      <h3>Wire Cutting</h3>
+      <label for="cutPlayer">Select player whose wire is cut:</label>
+      <select id="cutPlayer"></select>
+      <br>
+      <label for="wireResult">Result:</label>
+      <select id="wireResult">
+        <option value="0">Inactive</option>
+        <option value="1">Active</option>
+        <option value="2">Bomb</option>
+      </select>
+      <br>
+      <button id="submitCut">Submit Cut</button>
+    </div>
+  </div>
+  
+  <!-- Sidebar Toggle Button -->
+  <div class="sidebar-toggle" id="toggleSidebar">Show Stats</div>
+  
+  <!-- Sidebar -->
+  <div class="sidebar" id="Sidebar">
+    <!-- Game Log -->
+    <h3>Game Log</h3>
+    <pre id="gameLog"><code></code></pre>
+    <!-- Probability Table -->
+    <h3>Probability Table</h3>
+    <div id="probabilitiesTable"></div>
+  </div>
+</body>
+</html>
