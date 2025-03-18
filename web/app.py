@@ -2,7 +2,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import numpy as np
 from copy import deepcopy
-from math import factorial, comb
+from scipy.special import factorial, comb
 from sympy.utilities.iterables import multiset_permutations
 from itertools import combinations, combinations_with_replacement
 
@@ -13,16 +13,11 @@ CORS(app)
 
 def Lklhd(n, m, k, p):
   c = comb(n, m)
-  if c == 0:
-    return 0
-  return comb(k, p) * comb(n - k, m - p) / c
+  return comb(k, p) * comb(n - k, m - p) / c if c else 0
 
 
 def Cn(distribution):
-  prod = 1
-  for i in distribution:
-    prod *= factorial(i)
-  return factorial(np.sum(distribution)) / prod
+  return factorial(np.sum(distribution)) / np.prod(factorial(distribution))
 
 
 def Flatten(probabilities):
@@ -30,8 +25,7 @@ def Flatten(probabilities):
   num_dims = len(probabilities.shape)
   probability_line = np.zeros(num_players)
   for indices in combinations(range(num_players), num_dims):
-    for index in indices:
-      probability_line[index] += probabilities[indices]
+    probability_line[list(indices)] += probabilities[indices]
   return probability_line
 
 
@@ -41,8 +35,8 @@ def Separate(probabilities, num_bad, num_bom):
   probability_bom = np.zeros([num_players]*num_bom)
   for bad_indices in combinations(range(num_players), num_bad):
     for bom_indices in combinations(range(num_players), num_bom):
-        probability_bad[bad_indices] += probabilities[bad_indices + bom_indices]
-        probability_bom[bom_indices] += probabilities[bad_indices + bom_indices]
+      probability_bad[bad_indices] += probabilities[bad_indices + bom_indices]
+      probability_bom[bom_indices] += probabilities[bad_indices + bom_indices]
   return (probability_bad, probability_bom)
 
 
@@ -79,19 +73,12 @@ def ProbDeclaration(decls, hand_size, active_wires, num_evil, num_bomb):
   num_players = decls.shape[0]
   probs = np.zeros([num_players]*(num_evil + num_bomb))
   for evil_set in combinations(range(num_players), num_evil):
-    evil_wires = int(active_wires - np.sum(decls))
-    for evil in evil_set:
-      evil_wires += int(decls[evil])
+    evil_wires = int(active_wires - np.sum(decls) + np.sum(decls[list(evil_set)]))
     for bomb_set in combinations(range(num_players), num_bomb):
       evil_bomb_set = tuple(set(evil_set) & set(bomb_set))
       evil_no_bomb_set = tuple(set(evil_set) - set(bomb_set))
       good_bomb_set = tuple(set(bomb_set) - set(evil_set))
-      liars_impossible = False
-      for good_bomb in good_bomb_set:
-        if hand_size - decls[good_bomb] - 1 < 0:  # The bomb is not hidden in nbad_bom's hand
-          liars_impossible = True
-          break
-      if liars_impossible:
+      if np.any(hand_size - decls[list(good_bomb_set)] - 1 < 0):  # The bomb is not hidden in good_bomb's hand
         continue
       combs = 0
       liar_set = evil_bomb_set + evil_no_bomb_set + good_bomb_set
@@ -101,11 +88,14 @@ def ProbDeclaration(decls, hand_size, active_wires, num_evil, num_bomb):
         for short_wires_dist in multiset_permutations(short_ord_wires_dist):
           wires_dist = decls.copy()
           for wire in range(len(short_wires_dist)):
-            wires_dist[liar_set[wire]] = short_wires_dist[wire]
+            if liar_set[wire] in good_bomb_set:
+              wires_dist[liar_set[wire]] += short_wires_dist[wire]
+            else:
+              wires_dist[liar_set[wire]] = short_wires_dist[wire]
           prob = 1
           wires_impossible = False
           for evil_bomb in evil_bomb_set:
-            if wires_dist[evil_bomb] > decls[evil_bomb]:  # bad_bom has more wires than declared
+            if wires_dist[evil_bomb] > decls[evil_bomb]:  # evil_bomb has more wires than declared
               wires_impossible = True
               break
             else:  # bad_bom has =fewer wires than declared
@@ -135,9 +125,7 @@ def ProbCut(decls, prior, revealed, found, hand_size, active_wires, num_evil, nu
   lklhds = np.zeros([num_players]*(num_evil + num_bomb))
   marginal = 0
   for evil_set in combinations(range(num_players), num_evil):
-    evil_wires = int(active_wires - np.sum(decls))
-    for evil in evil_set:
-      evil_wires += int(decls[evil])
+    evil_wires = int(active_wires - np.sum(decls) + np.sum(decls[list(evil_set)]))
     for bomb_set in combinations(range(num_players), num_bomb):
       if prior[evil_set + bomb_set] == 1:  # Bad guys and the bomb found
         return prior
@@ -159,7 +147,10 @@ def ProbCut(decls, prior, revealed, found, hand_size, active_wires, num_evil, nu
         for short_wires_dist in multiset_permutations(short_ord_wires_dist):
           wires_dist = decls.copy()
           for wire in range(len(short_wires_dist)):
-            wires_dist[liar_set[wire]] = short_wires_dist[wire]
+            if liar_set[wire] in bomb_set:
+              wires_dist[liar_set[wire]] += short_wires_dist[wire]
+            if liar_set[wire] in evil_set:
+              wires_dist[liar_set[wire]] = short_wires_dist[wire]
           lklhd = 1
           for player in range(num_players):
             if wires_dist[player] < found[player]:
@@ -187,9 +178,7 @@ def P_wire(decls, probs, revealed, found, hand_size, active_wires, num_evil, num
   num_players = decls.size
   p_wire = np.zeros(num_players)
   for evil_set in combinations(range(num_players), num_evil):
-    evil_wires = int(active_wires - np.sum(decls))
-    for evil in evil_set:
-      evil_wires += int(decls[evil])
+    evil_wires = int(active_wires - np.sum(decls) + np.sum(decls[list(evil_set)]))
     for bomb_set in combinations(range(num_players), num_bomb):
       combs = 0
       wires_avg = np.zeros(num_players)
@@ -200,7 +189,10 @@ def P_wire(decls, probs, revealed, found, hand_size, active_wires, num_evil, num
         for short_wires_dist in multiset_permutations(short_ord_wires_dist):
           wires_dist = decls.copy()
           for wire in range(len(short_wires_dist)):
-            wires_dist[liar_set[wire]] = short_wires_dist[wire]
+            if liar_set[wire] in bomb_set:
+              wires_dist[liar_set[wire]] += short_wires_dist[wire]
+            if liar_set[wire] in evil_set:
+              wires_dist[liar_set[wire]] = short_wires_dist[wire]
           new_combs = Cn(wires_dist)
           wires_impossible = False
           for player in liar_set:
@@ -219,12 +211,9 @@ def P_wire(decls, probs, revealed, found, hand_size, active_wires, num_evil, num
       if combs != 0:
         wires_avg /= combs
       p_wire += wires_avg * probs[evil_set + bomb_set]
-  (p_bad, _) = Separate(probs, num_evil, num_bomb)
-  lin_probs = Flatten(p_bad)
-  for good in range(num_players):
-    p_wire[good] += (1 - lin_probs[good]) * (decls[good] - found[good])
-    if hand_size - revealed[good] > 0:
-      p_wire[good] /= hand_size - revealed[good]
+  for player in range(num_players):
+    if hand_size - revealed[player] > 0:
+      p_wire[player] /= hand_size - revealed[player]
   return p_wire
 
 
@@ -252,7 +241,6 @@ def Declaration():
       for bom_set in combinations(range(num_players), num_bomb):
         for bom in bom_set:
           p_bomb[bom] += pos_evil[pos][1] * prob_bomb[bom_set] / hand_size
-      
       p_evil += pos_evil[pos][1] * Flatten(CombineProbs(probs_list[pos]))
       total_probs = CombineNonHomoProbs(CombineProbs(probs_list[pos][0:-1]), probs[pos], pos_evil[pos][0], num_bomb)
       p_wire += pos_evil[pos][1] * P_wire(decls, total_probs, zeros, zeros, hand_size, active_wires, pos_evil[pos][0], num_bomb)
