@@ -98,14 +98,14 @@ def ProbDeclaration(decls, hand_size, active_wires, num_evil, num_bomb):
             if wires_dist[evil_bomb] > decls[evil_bomb]:  # evil_bomb has more wires than declared
               wires_impossible = True
               break
-            else:  # bad_bom has =fewer wires than declared
+            else:  # evil_bomb has =fewer wires than declared
               prob *= comb(decls[evil_bomb], wires_dist[evil_bomb])
           if wires_impossible:
             continue
           for evil_no_bomb in evil_no_bomb_set:
-            if wires_dist[evil_no_bomb] < decls[evil_no_bomb]:  # bad_nbom has fewer wires than declared
+            if wires_dist[evil_no_bomb] < decls[evil_no_bomb]:  # evil_no_bomb has fewer wires than declared
               prob *= comb(decls[evil_no_bomb], wires_dist[evil_no_bomb])
-            else:  # bad_nbom has =more wires than declared
+            else:  # evil_no_bomb has =more wires than declared
               prob *= comb(hand_size - decls[evil_no_bomb], wires_dist[evil_no_bomb] - decls[evil_no_bomb])
           for good_bomb in good_bomb_set:
             wires_dist[good_bomb] += decls[good_bomb]
@@ -153,14 +153,8 @@ def ProbCut(decls, prior, revealed, found, hand_size, active_wires, num_evil, nu
               wires_dist[liar_set[wire]] = short_wires_dist[wire]
           lklhd = 1
           for player in range(num_players):
-            if wires_dist[player] < found[player]:
-              lklhd = 0
-              break
             if player in bomb_set:
-              if player in evil_set:
-                lklhd *= Lklhd(hand_size - 1, wires_dist[player], revealed[player], found[player])
-              else:
-                lklhd *= Lklhd(hand_size - 1, wires_dist[player] + decls[player], revealed[bomb], found[bomb])
+              lklhd *= Lklhd(hand_size - 1, wires_dist[player], revealed[player], found[player])
             else:
               lklhd *= Lklhd(hand_size, wires_dist[player], revealed[player], found[player])
           new_combs = Cn(wires_dist)
