@@ -643,3 +643,120 @@ def Test(strategies, num_players, num_games, init_hand_size=5):
   return (win_rate, suspicion)
 
 # %%
+
+# print(PlayAuto(CutMaxScore, 5))
+
+def UnitTest(num_players=5, hand_size=5, active_wires=5, num_bad=2, num_bom=1):
+  zeros = np.zeros(num_players)
+  pos_bad = [[2, 1.0]]
+  decls = np.array([5, 1, 4, 0, 0])
+  prior = ProbDeclaration(decls, hand_size, active_wires, num_bad, num_bom)
+  revealed = np.array([0, 3, 2, 0, 0])
+  found = np.array([0, 0, 0, 0, 0])
+  prob_bad_old, _ = Separate(ProbCut(decls, prior, revealed, found, hand_size, active_wires, num_bad, num_bom), num_bad, num_bom)
+  probabilities_list = [[prob_bad_old]]
+  hand_size -= 1
+  declarations = np.array([2, 0, 2, 0, 1])
+  probabilities = [ProbDeclaration(declarations, hand_size, active_wires, num_bad, num_bom)]
+  prob_bad, _ = Separate(probabilities[0], num_bad, num_bom)
+  probabilities_list[0].append(deepcopy(prob_bad))
+  DisplayProbs(["liar", "good", "liar", "good", "good - bomb"], probabilities, probabilities_list, declarations, zeros, zeros, hand_size, active_wires, pos_bad, num_bom)
+
+def UnitTestDeclarationSimple():
+  num_bom = 1
+  num_bad = 1
+  for hand_size in [2, 3, 4, 5]:
+    for active_wires in range(4):
+      for wires_dist_ord in combinations_with_replacement(range(hand_size), 4):
+        if sum(wires_dist_ord) != active_wires:
+          continue
+        for wires_dist in multiset_permutations(wires_dist_ord):
+          for bad_lie in range(hand_size):
+            for bom_lie in range(wires_dist[1]):
+              decls = np.array([bad_lie, bom_lie, wires_dist[2], wires_dist[3]])
+              prob = ProbDeclaration(decls, hand_size, active_wires, num_bad, num_bom)
+              assert np.isclose(np.sum(prob), 1.0), f"ProbDeclaration {prob} does not sum to 1 for {num_bad} bad, {hand_size} hand size, {active_wires} wires, and {decls}"
+              assert np.all(prob >= 0), f"ProbDeclaration {prob} has negative probabilities for {num_bad} bad, {hand_size} hand size, {active_wires} wires, and {decls}"
+              assert np.all(prob <= 1), f"ProbDeclaration {prob} has probabilities greater than 1 for {num_bad} bad, {hand_size} hand size, {active_wires} wires, and {decls}"
+
+def UnitTestDeclaration():
+  num_bom = 1
+  for num_players in range(4, 7):  # Limited to 6 players due to combinatorial explosion
+    if num_players == 4:
+      pos_bad = [[1, 2/5], [2, 3/5]]
+    elif num_players < 7:
+      pos_bad = [[2, 1.0]]
+    elif num_players == 7:
+      pos_bad = [[2, 3/8], [3, 5/8]]
+    elif num_players == 8:
+      pos_bad = [[3, 1.0]]
+    for pos in range(len(pos_bad)):
+      num_bad = pos_bad[pos][0]
+      for hand_size in tqdm([2, 3, 4, 5]):
+        for active_wires in range(num_players):
+          for wires_dist_ord in combinations_with_replacement(range(hand_size), num_players):
+            if sum(wires_dist_ord) != active_wires:
+              continue
+            for wires_dist in multiset_permutations(wires_dist_ord):
+              for bad_lie_dist in combinations_with_replacement(range(hand_size), num_bad):
+                for bom_lie in range(wires_dist[num_bad]):
+                  decls = np.array(list(bad_lie_dist) + [bom_lie] + list(wires_dist[num_bad + 1:]))
+                  prob = ProbDeclaration(decls, hand_size, active_wires, num_bad, num_bom)
+                  assert np.isclose(np.sum(prob), 1.0), f"ProbDeclaration {prob} does not sum to 1 for {num_bad} bad, {hand_size} hand size, {active_wires} wires, and {decls}"
+                  assert np.all(prob >= 0), f"ProbDeclaration {prob} has negative probabilities for {num_bad} bad, {hand_size} hand size, {active_wires} wires, and {decls}"
+                  assert np.all(prob <= 1), f"ProbDeclaration {prob} has probabilities greater than 1 for {num_bad} bad, {hand_size} hand size, {active_wires} wires, and {decls}"
+
+def UnitTestCutSimple():
+  num_bom = 1
+  num_bad = 1
+  for hand_size in tqdm([2, 3, 4, 5]):
+    for active_wires in range(4):
+      for wires_dist_ord in combinations_with_replacement(range(hand_size), 4):
+        if sum(wires_dist_ord) != active_wires:
+          continue
+        for wires_dist in multiset_permutations(wires_dist_ord):
+          for bad_lie in range(hand_size):
+            for bom_lie in range(wires_dist[1]):
+              decls = np.array([bad_lie, bom_lie, wires_dist[2], wires_dist[3]])
+              prior = ProbDeclaration(decls, hand_size, active_wires, num_bad, num_bom)
+              for revealed_dist in combinations_with_replacement(range(hand_size), 4):
+                revealed = np.array(list(revealed_dist))
+                for found_dist in combinations_with_replacement(range(hand_size), 4):
+                  if sum(found_dist) > active_wires:
+                    continue
+                  found = np.array(list(found_dist))
+                  prob = ProbCut(decls, prior, revealed, found, hand_size, active_wires, num_bad, num_bom)
+                  assert np.isclose(np.sum(prob), 1.0), f"ProbCut {prob} does not sum to 1 for {num_bad} bad, {hand_size} hand size, {active_wires} wires, {decls} declared, {revealed} revealed, {found} found"
+                  assert np.all(prob >= 0), f"ProbCut {prob} has negative probabilities for {num_bad} bad, {hand_size} hand size, {active_wires} wires, {decls} declared, {revealed} revealed, {found} found"
+                  assert np.all(prob <= 1), f"ProbCut {prob} has probabilities greater than 1 for {num_bad} bad, {hand_size} hand size, {active_wires} wires, {decls} declared, {revealed} revealed, {found} found"
+
+def UnitTestCut():
+  num_bom = 1
+  num_players = 4  # Limited to 4 players due to combinatorial explosion
+  pos_bad = [[1, 2/5], [2, 3/5]]
+  for pos in range(len(pos_bad)):
+    num_bad = pos_bad[pos][0]
+    for hand_size in tqdm([2, 3, 4, 5]):
+      for active_wires in range(num_players):
+        for wires_dist_ord in combinations_with_replacement(range(hand_size), num_players):
+          if sum(wires_dist_ord) != active_wires:
+            continue
+          for wires_dist in multiset_permutations(wires_dist_ord):
+            for bad_lie_dist in combinations_with_replacement(range(hand_size), num_bad):
+              for bom_lie in range(wires_dist[num_bad]):
+                decls = np.array(list(bad_lie_dist) + [bom_lie] + list(wires_dist[num_bad + 1:]))
+                prior = ProbDeclaration(decls, hand_size, active_wires, num_bad, num_bom)
+                for revealed_dist in combinations_with_replacement(range(hand_size), num_players):
+                  revealed = np.array(list(revealed_dist))
+                  for found_dist in combinations_with_replacement(range(hand_size), num_players):
+                    if sum(found_dist) > active_wires:
+                      continue
+                    found = np.array(list(found_dist))
+                    prob = ProbCut(decls, prior, revealed, found, hand_size, active_wires, num_bad, num_bom)
+                    assert np.isclose(np.sum(prob), 1.0), f"ProbCut {prob} does not sum to 1 for {num_bad} bad, {hand_size} hand size, {active_wires} wires, {decls} declared, {revealed} revealed, {found} found"
+                    assert np.all(prob >= 0), f"ProbCut {prob} has negative probabilities for {num_bad} bad, {hand_size} hand size, {active_wires} wires, {decls} declared, {revealed} revealed, {found} found"
+                    assert np.all(prob <= 1), f"ProbCut {prob} has probabilities greater than 1 for {num_bad} bad, {hand_size} hand size, {active_wires} wires, {decls} declared, {revealed} revealed, {found} found"
+
+# from tqdm import tqdm
+# UnitTestDeclaration()
+# UnitTestCut()
