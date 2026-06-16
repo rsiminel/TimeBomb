@@ -1,7 +1,7 @@
 """Tests for the OneBadGuyNoBomb variant (1 bad guy, no bomb).
 
-Run with pytest:   .venv/bin/python -m pytest test_OneBadGuyNoBomb.py -q
-Or standalone:     .venv/bin/python test_OneBadGuyNoBomb.py
+Run with pytest:   .venv/bin/python -m pytest tests/test_OneBadGuyNoBomb.py -q
+Or standalone:     .venv/bin/python tests/test_OneBadGuyNoBomb.py
 
 The reference implementations below (hypergeometric PMF, brute-force posterior and
 expected-wire calculations) are written independently of the module under test --
@@ -9,9 +9,15 @@ using math.comb rather than UsefulFunctions -- so a shared bug cannot hide behin
 a matching test.
 """
 import math
+import sys
+from pathlib import Path
 from random import Random
 
 import numpy as np
+
+# Make the timebomb/ source root importable when run standalone (pytest uses the
+# repo-root conftest.py for the same effect).
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "timebomb"))
 
 import OneBadGuyNoBomb as ob
 
