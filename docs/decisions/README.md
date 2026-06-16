@@ -18,6 +18,7 @@ record. The mathematics each decision feeds into lives in [model.md](../model.md
 | [0003](0003-defer-bomb-model.md) | Defer the bomb sub-model to the `*OneBomb` variants | Accepted |
 | [0004](0004-uniform-lie-bomb-model.md) | Uniform-lie bomb model (declaration, cut, per-round `P(bomb)`) | Accepted |
 | [0005](0005-cross-round-evidence-combination.md) | Cross-round evidence combination: exact product, no informativeness weighting | Accepted |
+| [0006](0006-cut-recommendation-output.md) | Cut-recommendation output: quantities-only four-stat panel (VOI upgrade open) | Accepted |
 
 Format: lightweight [Nygard-style](https://cognitect.com/blog/2011/11/15/documenting-architecture-decisions)
 ADRs — Context / Options considered / Decision / Consequences.

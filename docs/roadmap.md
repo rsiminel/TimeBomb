@@ -95,9 +95,16 @@ the rationale behind each settled choice is recorded as an ADR in
   to fit and validate; weigh only well after the pipeline is correct and trusted. Once
   the uniform-lie bomb variant is validated, A/B-test the strategic bomb model against
   it on bad-guy and bomb identification accuracy.
-- **Risk-aware cut strategy.** Fold `P(bomb)` into the cut recommendation (expected
-  wire progress vs. bomb risk, §3.6). The bomb sub-model itself stops at the `P(bomb)`
-  readout.
+- **Cut recommendation — quantities-only four-stat panel (§3.6, ADR 0006).** Present
+  per player: P(safe wire), P(bomb), 1-ply ΔH(bad), and round-horizon H(bad) — exploit,
+  risk, immediate-info, strategic-info — leaving the explore/exploit/risk integration to
+  the human. Risk-awareness is the raw `P(bomb)` readout (no ad-hoc penalty: under the
+  P(win) objective the bomb is a terminal-0 state). Calibration of `P(bad)`/`P(bomb)` is
+  a prerequisite for trusting the panel.
+- **Horizon-weighted VOI lookahead (open, ADR 0006).** Upgrade stat 4's objective from
+  end-of-round entropy to a λ-free win-prob gain weighted by *cuts remaining* (role info
+  is durable, so early-round exploration compounds — what a 1-ply VOI cannot see). Needs
+  a simulation-estimated sensitivity coefficient; objective choice still to debate.
 - **Per-round tempering in `CombineProbs`.** A weight `wᵣ` down-weighting *distrusted*
   (declaration-dominated) rounds — only if a calibration test reveals systematic
   overconfidence, and a single global temper is preferred before a per-round one. This

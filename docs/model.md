@@ -254,14 +254,61 @@ this marginal is an implementation task — TODO.md Axis A2.)
 
 ### 3.6 Decision strategies
 
-Two interchangeable policies for choosing the next cut:
+The cut decision is a finite-horizon POMDP whose only true objective is **P(good team
+wins)**; "score", "information", and "bomb risk" are not separate objectives but myopic
+proxies for it. Solving the POMDP exactly is intractable, and the explore/exploit
+tension is an artifact of that approximation. The assistant is therefore **quantities-
+only**: it presents calibrated, individually-justified decision inputs and leaves the
+explore/exploit/risk integration (which requires a utility function — risk appetite —
+that is the player's to own) to the human. See [ADR 0006](decisions/0006-cut-recommendation-output.md).
 
-- **Max-score / max-safe** — cut the player maximizing expected points, driven by
-  `P_wire` and (when bombs exist) `1 − P(bomb)`. See `General.CutMaxScore`.
-- **Min-entropy lookahead** — cut to minimize expected Shannon entropy of the
-  posterior (`H`, `NextH`, `H_Min`); an information-greedy strategy. (Here `H(·)` is
-  Shannon entropy — the code reuses the name `H`, which §2's table also uses for the
-  hand size; they are unrelated.)
+**The four-stat panel.** For each player `i`, under the hypothesis that one uniformly
+random face-down card of `i`'s is cut this turn, display:
+
+1. **P(safe wire)** — expected immediate progress (exploit), from `P_wire`.
+2. **P(bomb)** — catastrophe risk, from the `P(bomb)` column. Surfaced as a raw
+   probability; no risk tradeoff is baked in.
+3. **1-ply ΔH(bad)** — expected post-cut Shannon entropy of `P(bad)`; what *this single
+   cut* teaches about the fixed roles. Cheap (`O(N × outcomes)`, reuses `ProbCut`);
+   honestly myopic.
+4. **Round-horizon H(bad)** — expected end-of-round entropy of `P(bad)` under an
+   information-greedy continuation (the `H`/`NextH`/`H_Min` min-entropy lookahead). The
+   headline explore stat: it values an opening cut as the first move of an
+   information-gathering *line*, which (3) cannot see.
+
+Deliberately **excluded:** a combined "expected score (bomb→0)" number (it either
+collapses to stat 1 or smuggles in the bomb-vs-wire risk weight that belongs to the
+human), and any `P(bomb)`-entropy / `EIG_bomb` stat (it decays at the round boundary —
+the bomb is re-dealt, §3.8.3 — and minimizing it perversely *courts* detonation, since
+the most bomb-discriminating cut is cutting the suspected bomb hand).
+
+Stat 4 caveats, which it must ship with: it is an information *potential* (the player
+does not control every cut in a round, so info-greedy continuation is counterfactual),
+and the rollout **ignores bomb risk**, so it must always be displayed beside stat 2.
+
+(`H(·)` here is Shannon entropy — the code reuses the name `H`, which §2's table also
+uses for the hand size; they are unrelated.)
+
+**Upgrade path — horizon-weighted VOI (open; to debate further).** Stat 4 uses
+end-of-round entropy as a *proxy* objective. The principled version values a cut in
+win-probability units and needs **no arbitrary weight λ**, because role information is a
+*durable* asset (roles are fixed; a bit learned in round 1 improves cut-targeting in
+every remaining round), whereas bomb information is *ephemeral* (re-dealt each round).
+The value of an opening cut is then
+
+> immediate exploit(i) + [sensitivity of a future cut's `P_wire` to role-certainty] ×
+> [cuts remaining in the game]
+
+where the explore weight is not a tuning knob but an *observable* — how many future cuts
+will benefit from what is learned — which decays to zero on the last cut, automatically
+reproducing "explore early, exploit late." This is what makes early-round
+entropy-reduction genuinely better than myopic score-max and what a **1-ply VOI
+lookahead structurally cannot see** (it prices only the next cut's benefit, missing the
+cross-round compounding). The only empirical quantity is the sensitivity coefficient
+(estimable by simulation, not hand-tuned). Stat 4 is the entropy-surrogate special case;
+the upgrade swaps its objective from "end-of-round entropy" to "horizon-weighted win-prob
+gain". Build stat 4 first (self-contained), then graduate the objective rather than
+rewriting — this is the explore/exploit "solution" still under discussion.
 
 ### 3.7 Open modelling gaps
 

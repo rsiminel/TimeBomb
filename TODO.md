@@ -96,6 +96,25 @@ each round's vector shape (KL-from-uniform); an external exponent would double-c
       *distrusted* (declaration-dominated) rounds — only if a calibration test shows
       systematic overconfidence, and a single global temper is preferred first.
 
+### A6 — Cut recommendation (`§3.6`, ADR 0006) — *model decided: quantities-only panel*
+
+The cut decision is one POMDP (objective = P(win)); explore/exploit/risk are proxies.
+The assistant is **quantities-only**: present calibrated inputs, leave integration to the
+human. Lands in `General.py` (`CutMaxScore`, `H`/`NextH`/`H_Min`); downstream of the
+backend, so not scheduled before `General.py`.
+
+- [x] **Decided + specified** the four-stat panel (P(safe wire), P(bomb), 1-ply ΔH(bad),
+      round-horizon H(bad)) in [ADR 0006](docs/decisions/0006-cut-recommendation-output.md)
+      and model.md §3.6; dropped the combined "score" stat (smuggles a risk weight) and
+      `EIG_bomb` (ephemeral + perverse).
+- [ ] **Implement** the panel against the cleaned `General.py` belief functions; stat 4
+      reuses the min-entropy lookahead, displayed beside stat 2 (it ignores bomb risk).
+- [ ] **Prerequisite — calibration.** Verify `P(bad)`/`P(bomb)` are calibrated before the
+      panel is trusted (shared with A5's calibration check).
+- [ ] **Open (to debate):** the horizon-weighted VOI upgrade — swap stat 4's objective
+      from end-of-round entropy to a λ-free win-prob gain weighted by cuts-remaining;
+      needs a simulation-estimated sensitivity coefficient. See ADR 0006 "Open".
+
 ---
 
 ## Axis B — Variant pipeline
