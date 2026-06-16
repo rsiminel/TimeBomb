@@ -14,8 +14,8 @@ canonical implementation they converge toward.
 | - | ----------------------- | ------------ | -------- |
 | 1 | `OneBadGuyNoBomb.py`    | `B=1, M=0`   | ✅ done   |
 | 2 | `TwoBadGuysNoBomb.py`   | `B=2, M=0`   | ✅ done   |
-| 3 | `OneBadGuyOneBomb.py`   | `B=1, M=1`   | ⏭ next   |
-| 4 | `TwoBadGuysOneBomb.py`  | `B=2, M=1`   | pending  |
+| 3 | `OneBadGuyOneBomb.py`   | `B=1, M=1`   | ✅ done   |
+| 4 | `TwoBadGuysOneBomb.py`  | `B=2, M=1`   | ⏭ next   |
 | 5 | `General.py`            | arbitrary    | pending  |
 
 Downstream, **unblocked only after the backend is done**:
@@ -131,12 +131,33 @@ Meets all four criteria. Highlights:
   accuracy test: over 400 simulated games the belief puts ~0.94 on the true bad
   guys vs ~0.03 on the good ones (random baseline 0.33).
 
-### 3. `OneBadGuyOneBomb.py` — ⏭ next
+### 3. `OneBadGuyOneBomb.py` — ✅ done
 
-`B=1, M=1`: introduces the Bomb. The bomb sub-model is now **specified** (model.md
-§3.8, ADR-0004: uniform-lie bomb model, `N×N` `(bad, bomb)` configs, per-round
-`P(bomb)`), so the variant is unblocked. Apply the same playbook — build an
-independent generative `math.comb` oracle (now over the `(b, h)` config space, with
-the bomb as a must-not-draw card), migrate `ProbDeclaration` / `ProbCut` / `P_wire` to
-§3.8, add the brute-force-backed and beats-random tests, and docstrings. See
-[../TODO.md](../TODO.md) Axis B2.
+`B=1, M=1`: introduces the Bomb. The belief state is the full `N×N` matrix
+`probs[b][h]` = P(player `b` bad, player `h` holds the bomb), diagonal allowed. Meets
+all five criteria. Highlights:
+
+- All three model functions migrated to the §3.8 uniform-lie bomb model: the
+  `ProbDeclaration` closed form `C(2H−1, …)/(C(H,d_b)·C(H,d_h))` (with `C(H−1, …)` on
+  the `b=h` diagonal), a new `L_config`/`L_bomb_hand` pair giving the cut likelihood
+  with the bomb as a must-not-draw card conditioned on "no bomb yet", and the
+  bomb-aware `P_wire` (split-posterior expected wires, denominator still counts the
+  bomb card). The old strategic heuristics (good-bomb under-declares, bad-bomb
+  over-declares) and the `uf.C` negative-argument trap are gone.
+- `PlayAuto` now deals the bomb first then wires among the remaining slots and
+  generates declarations under the uniform-lie model; `DisplayProbs`/`tabulate` and the
+  dead `CombineNonHomoProbs` dropped; integer arrays throughout; `H_Min` `−1` sentinel
+  fixed. `CombineProbs` accumulates only the P(bad) row marginal — the per-round
+  P(bomb) column is never combined (§3.8.3).
+- `test_OneBadGuyOneBomb.py` (10 tests) checks the math against an independent
+  `(b, h)`-enumeration `math.comb` oracle (split-summed declaration prior, cut
+  likelihood, and `P_wire` marginal), plus **two** end-to-end accuracy tests: over 400
+  games the combined belief puts ~0.59 on the true bad guy (top-1 ~0.69) vs the 0.167
+  baseline — weaker than the no-bomb variants because a good guy forced to lie by the
+  bomb looks bad — and the per-round P(bomb) column puts ~0.30 on the true holder
+  (top-1 ~0.42) vs the same baseline.
+
+### 4. `TwoBadGuysOneBomb.py` — ⏭ next
+
+`B=2, M=1`: combines the `B>1` pair structure (§3.4.1) with the bomb sub-model (§3.8).
+Same playbook over the `(bad pair, bomb)` config space.

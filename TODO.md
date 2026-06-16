@@ -66,9 +66,11 @@ brute-force validation — no code has been touched yet.
       conditioned on "no bomb cut yet", and the `P(bad)`/`P(bomb)` readouts. §2
       rewritten to the uniform-lie bomb model; persistence pinned (P(bad) accumulates,
       P(bomb) per-round). Recorded as ADR-0004.
-- [ ] **Implement + validate** in `OneBadGuyOneBomb` (Axis B2): generative oracle over
-      the `(b, h)` config space, then migrate the three functions; confirm against the
-      oracle and the beats-random simulation. **Do not** derive from `General.py`.
+- [x] **Implement + validate** in `OneBadGuyOneBomb` (Axis B2): independent generative
+      `(b, h)`-enumeration oracle (bomb as must-not-draw card), all three functions
+      migrated to §3.8, confirmed against the oracle and **two** beats-random
+      simulations (P(bad) ~0.59 and per-round P(bomb) ~0.30 vs 0.167 baseline). Derived
+      from `docs/model.md`, not `General.py`.
 - [ ] **Deferred (not now):** the strategic bomb-declaration model (under/over-declare)
       to A/B-test against this, and the risk-aware cut strategy.
 
@@ -111,13 +113,15 @@ weighting was wrong (e.g. `bg=2,H=2`: `(¼,½,¼)` vs correct `(⅙,⅔,⅙)`).
 
 ### B2 — Later variants
 
-- [ ] **`OneBadGuyOneBomb.py`** (`B=1, M=1`) — ⏭ next; bomb sub-model now specified
-      (§3.8, ADR-0004). Same playbook over the `N×N` `(bad, bomb)` config space: build
-      the generative oracle (bomb as a must-not-draw card), migrate
-      `ProbDeclaration` / `ProbCut` / `P_wire` to §3.8, ensure `CombineProbs`
-      marginalises out the bomb before combining rounds (P(bomb) is per-round), and add
-      the brute-force + beats-random tests.
-- [ ] **`TwoBadGuysOneBomb.py`** (`B=2, M=1`) — same playbook; combines A2 + §3.8.
+- [x] **`OneBadGuyOneBomb.py`** (`B=1, M=1`) — ✅ done. All three functions migrated to
+      §3.8 over the `N×N` `(bad, bomb)` config space, validated against an independent
+      `(b, h)`-enumeration oracle (bomb as a must-not-draw card) and two beats-random
+      simulations. `CombineProbs` accumulates only the P(bad) row marginal; the
+      per-round P(bomb) column is never combined (§3.8.3). The old strategic heuristics,
+      the `tabulate`/`DisplayProbs`/`CombineNonHomoProbs` dead code, and the `uf.C`
+      negative-argument trap are gone.
+- [ ] **`TwoBadGuysOneBomb.py`** (`B=2, M=1`) — ⏭ next; same playbook over the
+      `(bad pair, bomb)` config space, combining A2 (§3.4.1 pair split) + §3.8.
 - [ ] **`General.py`** — reconcile to the canonical forms; the end target. Carries
       the `P_wire` ungated-good-branch bug (and likely more — not yet trusted).
 

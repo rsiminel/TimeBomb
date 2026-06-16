@@ -350,6 +350,3 @@ def H_Min(decls, probs, revealed, found, hand_size, active_wires, stop):
       min_cutee = cutee
       min_h = h[cutee]
   return (min_h, path + [min_cutee])
-
-PlayAuto()
-
