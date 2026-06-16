@@ -41,6 +41,41 @@ Downstream, **unblocked only after the backend is done**:
    `ProbCut` (§3.4), the correct `P_wire` denominator and gating (§3.5), and no
    dead/duplicate code.
 
+## Cross-cutting foundations
+
+Some model work is **not owned by a single variant** — it touches the shared
+likelihoods and so cuts across the whole pipeline. This track runs alongside the
+per-variant work and, where noted, can re-open a variant already marked done. The
+gaps themselves are catalogued in [model.md §3.7](model.md#37-open-modelling-gaps);
+the task breakdown is [TODO.md Axis A](../TODO.md#axis-a--foundations-cross-cutting);
+the rationale behind each settled choice is recorded as an ADR in
+[decisions/](decisions/).
+
+**Modelling decisions — settled (implementation + brute-force validation remain):**
+
+1. **Declaration prior (§3.3): uniform-lie joint-Bayes.** The bad guy declares
+   uniformly at random; the prior is the multivariate-hypergeometric likelihood of
+   the deal each configuration forces — `P(bad=i) ∝ C(H, t_i)/C(H, decls[i])`, with a
+   closed-form `B > 1` generalisation. Replaces the old card-count heuristic. (Until
+   it is implemented + validated, every variant's `ProbDeclaration` — including the
+   "done" `OneBadGuyNoBomb` — still ships the heuristic.)
+2. **`B > 1` prior and `P_wire` marginal** use the §3.4.1 uniform-placement
+   (multivariate-hypergeometric) model, so prior and cut update share one
+   wire-placement law. No `excess = 0` special case for `B > 1`.
+3. **Degeneracy:** on a zero marginal, fall back to the prior/uniform — never an
+   unnormalisable all-zeros vector.
+
+**Still open:**
+
+4. **Bomb likelihoods** (declaration, cut, `P(bomb)` readout) — deferred until the
+   `*OneBomb` variants.
+
+**Far-future refinement (not scheduled).** Revisit the bad-guy lie model: replace the
+uniform lie with a *strategic / parametric* model (e.g. a small-lie or
+maximally-deceptive bias). This adds a free parameter to fit and validate, so it is
+an exploratory research item to weigh only well after the whole pipeline is correct
+and trusted — explicitly *not* part of the current cleanup.
+
 ## Status detail
 
 ### 1. `OneBadGuyNoBomb.py` — ✅ done
@@ -56,6 +91,12 @@ Meets all four criteria. Highlights:
   validation all fixed.
 - Docstrings on every public function; `test_OneBadGuyNoBomb.py` (16 tests) checks
   the math against independent `math.comb` brute-force references.
+
+**Review caveat:** the suite validates `ProbCut` / `P_wire` (and `ProbSus`) against
+brute force, but `ProbDeclaration`'s *correctness* depends on the model.md §3.3
+heuristic, which is not yet validated against a generative oracle. The done bar is
+met for the cut/ranking math; the declaration prior is invariant-checked only. See
+Cross-cutting foundations, item 1.
 
 ### 2. `TwoBadGuysNoBomb.py` — ⏭ next
 

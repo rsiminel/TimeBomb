@@ -12,18 +12,14 @@ See **[docs/model.md](docs/model.md)** for the mathematics and
 
 ## Repository layout
 
-| Path                      | What it is                                                            |
-| ------------------------- | -------------------------------------------------------------------- |
-| `General.py`              | Canonical engine — arbitrary number of bad guys and bombs.           |
-| `OneBadGuyNoBomb.py`      | Variant `B=1, M=0` (done). The simplest stepping stone.              |
-| `TwoBadGuysNoBomb.py`     | Variant `B=2, M=0`.                                                   |
-| `OneBadGuyOneBomb.py`     | Variant `B=1, M=1`.                                                   |
-| `TwoBadGuysOneBomb.py`    | Variant `B=2, M=1`.                                                   |
-| `UsefulFunctions.py`      | Shared combinatorics helpers (factorials, binomials, hypergeometric).|
-| `AI.py`                   | REINFORCE cut agent (TensorFlow/Keras), on hold.                     |
-| `web/`                    | Flask API + browser "Time Bomb Assistant" UI, on hold.               |
-| `test_*.py`               | Test suites (one per finished variant).                              |
-| `docs/`, `TODO.md`        | Model reference, roadmap, and open work items.                       |
+| Path                   | What it is                                                                 |
+| ---------------------- | -------------------------------------------------------------------------- |
+| variant `*.py`         | The four hardcoded solver variants plus the canonical `General.py`. See [docs/roadmap.md](docs/roadmap.md) for the variant list, configs, cleanup order, and status. |
+| `UsefulFunctions.py`   | Shared combinatorics helpers (factorials, binomials, hypergeometric).      |
+| `AI.py`                | REINFORCE cut agent (TensorFlow/Keras), on hold.                           |
+| `web/`                 | Flask API + browser "Time Bomb Assistant" UI, on hold.                     |
+| `test_*.py`            | Test suites (independent `math.comb` brute-force references).              |
+| `docs/`, `TODO.md`     | Model reference, roadmap, decision records (ADRs), and open work items.    |
 
 ## Playing
 

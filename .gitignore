@@ -1,3 +1,8 @@
 __pycache__
 models
 .venv
+.pytest_cache
+
+# Local Claude Code config and agent guidance (not tracked)
+.claude/
+CLAUDE.md
