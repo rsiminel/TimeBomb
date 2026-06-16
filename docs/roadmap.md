@@ -13,8 +13,8 @@ canonical implementation they converge toward.
 | # | Module                  | Config       | Status   |
 | - | ----------------------- | ------------ | -------- |
 | 1 | `OneBadGuyNoBomb.py`    | `B=1, M=0`   | ✅ done   |
-| 2 | `TwoBadGuysNoBomb.py`   | `B=2, M=0`   | ⏭ next   |
-| 3 | `OneBadGuyOneBomb.py`   | `B=1, M=1`   | pending  |
+| 2 | `TwoBadGuysNoBomb.py`   | `B=2, M=0`   | ✅ done   |
+| 3 | `OneBadGuyOneBomb.py`   | `B=1, M=1`   | ⏭ next   |
 | 4 | `TwoBadGuysOneBomb.py`  | `B=2, M=1`   | pending  |
 | 5 | `General.py`            | arbitrary    | pending  |
 
@@ -34,10 +34,15 @@ Downstream, **unblocked only after the backend is done**:
    known-value cases that pin the model, plus the edge cases that break a naive
    `ProbCut` (impossible observations). Math is checked against an *independent*
    brute-force reference so a shared bug cannot hide.
-3. **Documented** — every public function has a docstring stating its inputs,
+3. **Predictively useful** — an end-to-end test runs full simulated games and
+   confirms the final belief identifies the true bad guy(s) **far above the random
+   baseline** (each player's `P(bad)` marginal averages `B/N` under no information).
+   Oracle-correctness (criterion 2) proves the math is implemented right; this proves
+   the *model itself* is informative — a distinct guarantee the oracle cannot give.
+4. **Documented** — every public function has a docstring stating its inputs,
    outputs, and the model assumption it encodes; the module header explains the
    variant.
-4. **Reconciled** — known discrepancies resolved: the canonical joint-Bayes
+5. **Reconciled** — known discrepancies resolved: the canonical joint-Bayes
    `ProbCut` (§3.4), the correct `P_wire` denominator and gating (§3.5), and no
    dead/duplicate code.
 
@@ -96,9 +101,28 @@ Meets all four criteria. Highlights:
 - Docstrings on every public function; `test_OneBadGuyNoBomb.py` (20 tests) checks
   the math against independent `math.comb` brute-force references.
 
-### 2. `TwoBadGuysNoBomb.py` — ⏭ next
+### 2. `TwoBadGuysNoBomb.py` — ✅ done
 
-`B=2`: the belief state becomes a 2-D array over *pairs* of bad guys. Apply the
-same playbook — audit `ProbDeclaration` / `ProbCut` / `P_wire` against the model,
-collapse to the canonical forms, add a brute-force-backed test suite and
-docstrings. See [../TODO.md](../TODO.md).
+`B=2`: the belief state is a lower-triangular matrix over *pairs* of bad guys.
+Meets all four criteria. Highlights:
+
+- All three model functions migrated from the old Binomial-½ wire split to the
+  §3.4.1 uniform-placement (multivariate-hypergeometric) closed forms: the
+  `ProbDeclaration` pair prior, a new `L_bad_pair` helper collapsing the cut
+  likelihood, and the pooled-marginal `P_wire`.
+- `P_wire` good-guy branch feasibility-gated (the ungated negative-probability bug)
+  and the spurious `+ found[i]` split index removed; `ProbDeclaration` degeneracy
+  now falls back to uniform-over-pairs.
+- `PlayAuto` integer arrays and the `H_Min` `-1` sentinel fixed; docstrings on every
+  public function.
+- `test_TwoBadGuysNoBomb.py` (11 tests) checks the math against an independent
+  split-enumeration `math.comb` oracle (the generative declaration prior, the
+  per-pair cut posterior, and the expected-wire marginal), plus an end-to-end
+  accuracy test: over 400 simulated games the belief puts ~0.94 on the true bad
+  guys vs ~0.03 on the good ones (random baseline 0.33).
+
+### 3. `OneBadGuyOneBomb.py` — ⏭ next
+
+`B=1, M=1`: introduces the Bomb. Needs the Axis A4 bomb sub-model (declaration/cut
+likelihoods, `P(bomb)` readout) specified in `docs/model.md` first, then the same
+playbook. See [../TODO.md](../TODO.md).

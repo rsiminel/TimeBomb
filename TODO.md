@@ -52,6 +52,13 @@ brute-force validation — no code has been touched yet.
       returns uniform, on a zero marginal. Replace `ProbDeclaration`'s all-zeros.
       *(Done in `OneBadGuyNoBomb`; apply to each remaining variant as it is cleaned.)*
 
+### A3b — Backfill the end-to-end accuracy test on `OneBadGuyNoBomb`
+
+- [ ] The "predictively useful" done-criterion (roadmap §Definition of done) was added
+      after variant 1 was marked done. Add the matching beats-random simulation test to
+      `test_OneBadGuyNoBomb.py` so variant 1 meets the full bar too. *(Cheap; mirrors
+      `test_inference_beats_random_chance` in the TwoBadGuys suite.)*
+
 ### A4 — Bomb model (deferred to the `*OneBomb` variants)
 
 - [ ] Specify the bomb-holder declaration likelihood (good-with-bomb under-declares,
@@ -62,39 +69,38 @@ brute-force validation — no code has been touched yet.
 
 ## Axis B — Variant pipeline
 
-### B1 — `TwoBadGuysNoBomb.py` (current variant)
+### B1 — `TwoBadGuysNoBomb.py` — ✅ done
 
-A static audit is done; findings below are **candidates** — confirm each
-numerically against the independent brute-force oracle before fixing. The belief
-state is a 2-D array over *pairs* of bad guys. The wire-split model is decided
-(model.md §3.4.1: uniform placement → closed-form multivariate hypergeometric; the
-code's `C(bg_wires,k)` Binomial-½ weighting is wrong — e.g. `bg=2,H=2`: code
-`(¼,½,¼)` vs correct `(⅙,⅔,⅙)`).
+The belief state is a lower-triangular matrix over *pairs* of bad guys. All findings
+below were confirmed numerically against the independent split-enumeration oracle,
+then fixed (TDD: red → green). The wire-split model is the §3.4.1 uniform placement
+(closed-form multivariate hypergeometric); the old `C(bg_wires,k)` Binomial-½
+weighting was wrong (e.g. `bg=2,H=2`: `(¼,½,¼)` vs correct `(⅙,⅔,⅙)`).
 
-**Build the oracle**
-- [ ] `math.comb` reference for the §3.4.1 model: hypergeometric likelihood, exact
-      posterior over pairs, expected-wire. Ground truth for everything below. **Do
-      not** derive it from `General.py`.
+**Built the oracle**
+- [x] `test_TwoBadGuysNoBomb.py` `math.comb` reference for the §3.4.1 model:
+      generative declaration prior (`itertools.product`), per-pair cut posterior, and
+      expected-wire marginal — each summing the split with hypergeometric weights, so
+      structurally independent of the module's collapsed closed form.
 
-**Verify & fix against the oracle**
-- [ ] `ProbCut` — joint-Bayes over the pair space is structurally right, but replace
-      the `Σ_k C(bg_wires,k)·…` loop with the §3.4.1 closed form. (The static audit
-      called this "clean" — it was not.)
-- [ ] `ProbDeclaration` — apply the settled prior (Axis A1/A2); verify per-pair
-      weighting against the oracle.
-- [ ] `P_wire` bug A — good-guy branch (line ~210) is ungated → emits a **negative**
-      (or `>1`) probability when `found[i] != decls[i]`. Same fix as
-      `OneBadGuyNoBomb`. *(Confirmed by inspection.)*
-- [ ] `P_wire` bug B — `j_wires = bg_wires - i_wires - found[j]` carries a spurious
-      `+ found[i]`; should be `bg_wires - k - found[j]`. *(Confirmed; only bites when
-      `found[i] != 0`.)*
+**Verified & fixed against the oracle**
+- [x] `ProbCut` — kept the joint-Bayes pair structure; replaced the
+      `Σ_k C(bg_wires,k)·…` loop with the §3.4.1 closed form (new `L_bad_pair`
+      helper). The static audit's "clean" was masked by normalisation.
+- [x] `ProbDeclaration` — settled uniform-lie pair prior
+      `C(2H, t_ij)/(C(H,d_i)·C(H,d_j))`; no `excess==0` special case (Axis A2);
+      degeneracy falls back to uniform-over-pairs (A3).
+- [x] `P_wire` bug A — good-guy branch now feasibility-gated (no negative/`>1`).
+- [x] `P_wire` bug B — replaced the whole split loop with the pooled marginal
+      `(bg − f_i − f_j)/(2H − rev_i − rev_j)`, dropping the spurious `+ found[i]`.
 
-**Cleanup & lock in**
-- [ ] `PlayAuto` — `revealed`/`found` are float arrays; use `dtype=int` (convention).
-- [ ] `H_Min` — `min_cutee = -1` sentinel can leak an out-of-range index into the
-      returned path; align with the `OneBadGuyNoBomb` version.
-- [ ] `test_TwoBadGuysNoBomb.py` (brute-force-backed) + docstrings on every public
-      function, update `docs/roadmap.md`, then commit.
+**Cleaned up & locked in**
+- [x] `PlayAuto` — `revealed`/`found` now `dtype=int`.
+- [x] `H_Min` — `-1` sentinel replaced with the `OneBadGuyNoBomb` `min_cutee = 0`
+      pattern.
+- [x] `test_TwoBadGuysNoBomb.py` (11 tests, brute-force-backed + an end-to-end
+      accuracy test: ~0.94 on true bad guys vs 0.33 random baseline) + docstrings on
+      every public function; `docs/roadmap.md` updated; committed.
 
 ### B2 — Later variants
 
