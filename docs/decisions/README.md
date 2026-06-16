@@ -16,6 +16,7 @@ record. The mathematics each decision feeds into lives in [model.md](../model.md
 | [0001](0001-uniform-lie-declaration-prior.md) | Uniform-lie joint-Bayes declaration prior | Accepted |
 | [0002](0002-degeneracy-fallback-to-prior.md) | Fall back to prior/uniform on a zero marginal | Accepted |
 | [0003](0003-defer-bomb-model.md) | Defer the bomb sub-model to the `*OneBomb` variants | Accepted |
+| [0004](0004-uniform-lie-bomb-model.md) | Uniform-lie bomb model (declaration, cut, per-round `P(bomb)`) | Accepted |
 
 Format: lightweight [Nygard-style](https://cognitect.com/blog/2011/11/15/documenting-architecture-decisions)
 ADRs — Context / Options considered / Decision / Consequences.

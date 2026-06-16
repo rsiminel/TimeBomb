@@ -69,17 +69,25 @@ the rationale behind each settled choice is recorded as an ADR in
    wire-placement law. No `excess = 0` special case for `B > 1`.
 3. **Degeneracy:** on a zero marginal, fall back to the prior/uniform — never an
    unnormalisable all-zeros vector.
+4. **Bomb sub-model (§3.8): uniform-lie bomb model.** A player declares truthfully iff
+   good *and* bomb-free; everyone else lies uniformly over `{0..H}`. The config is the
+   pair `(bad, bomb)`; the prior is the closed form
+   `C(2H−1, …)/(C(H,d_b)·C(H,d_h))` (the bomb eats one wire slot), the cut likelihood
+   treats the bomb as a must-not-draw card conditioned on "no bomb cut yet", and the
+   bomb is **per-round**: `P(bad)` accumulates across rounds, `P(bomb)` does not. See
+   [decisions/0004](decisions/0004-uniform-lie-bomb-model.md).
 
-**Still open:**
+**Deferred refinements (not scheduled).**
 
-4. **Bomb likelihoods** (declaration, cut, `P(bomb)` readout) — deferred until the
-   `*OneBomb` variants.
-
-**Far-future refinement (not scheduled).** Revisit the bad-guy lie model: replace the
-uniform lie with a *strategic / parametric* model (e.g. a small-lie or
-maximally-deceptive bias). This adds a free parameter to fit and validate, so it is
-an exploratory research item to weigh only well after the whole pipeline is correct
-and trusted — explicitly *not* part of the current cleanup.
+- **Strategic / parametric lie models.** Replace the uniform lie — for the no-bomb bad
+  guy *and* for bomb-holders (§3.8: good-with-bomb under-declares, bad-with-bomb
+  over-declares) — with a strategic or tunable-bias model. Each adds a free parameter
+  to fit and validate; weigh only well after the pipeline is correct and trusted. Once
+  the uniform-lie bomb variant is validated, A/B-test the strategic bomb model against
+  it on bad-guy and bomb identification accuracy.
+- **Risk-aware cut strategy.** Fold `P(bomb)` into the cut recommendation (expected
+  wire progress vs. bomb risk, §3.6). The bomb sub-model itself stops at the `P(bomb)`
+  readout.
 
 ## Status detail
 
@@ -125,6 +133,10 @@ Meets all four criteria. Highlights:
 
 ### 3. `OneBadGuyOneBomb.py` — ⏭ next
 
-`B=1, M=1`: introduces the Bomb. Needs the Axis A4 bomb sub-model (declaration/cut
-likelihoods, `P(bomb)` readout) specified in `docs/model.md` first, then the same
-playbook. See [../TODO.md](../TODO.md).
+`B=1, M=1`: introduces the Bomb. The bomb sub-model is now **specified** (model.md
+§3.8, ADR-0004: uniform-lie bomb model, `N×N` `(bad, bomb)` configs, per-round
+`P(bomb)`), so the variant is unblocked. Apply the same playbook — build an
+independent generative `math.comb` oracle (now over the `(b, h)` config space, with
+the bomb as a must-not-draw card), migrate `ProbDeclaration` / `ProbCut` / `P_wire` to
+§3.8, add the brute-force-backed and beats-random tests, and docstrings. See
+[../TODO.md](../TODO.md) Axis B2.

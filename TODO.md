@@ -58,11 +58,19 @@ brute-force validation — no code has been touched yet.
       games, N=5): belief puts ~0.95 on the true bad guy and ~0.96 top-1 accuracy vs
       the 0.20 random baseline. Variant 1 now meets the full done bar.
 
-### A4 — Bomb model (deferred to the `*OneBomb` variants)
+### A4 — Bomb model — *model decided: uniform-lie bomb model (§3.8, ADR-0004)*
 
-- [ ] Specify the bomb-holder declaration likelihood (good-with-bomb under-declares,
-      bad-with-bomb over-declares), the cut likelihood, and the `P(bomb)` readout in
-      `docs/model.md`. §1 promises `P(bomb)` but no section models it yet.
+- [x] **Specified** the bomb sub-model in `docs/model.md` §3.8: declaration prior
+      `C(2H−1, …)/(C(H,d_b)·C(H,d_h))` (bomb eats one wire slot; `C(H−1, …)` on the
+      `b=h` diagonal), the cut likelihood with the bomb as a must-not-draw card
+      conditioned on "no bomb cut yet", and the `P(bad)`/`P(bomb)` readouts. §2
+      rewritten to the uniform-lie bomb model; persistence pinned (P(bad) accumulates,
+      P(bomb) per-round). Recorded as ADR-0004.
+- [ ] **Implement + validate** in `OneBadGuyOneBomb` (Axis B2): generative oracle over
+      the `(b, h)` config space, then migrate the three functions; confirm against the
+      oracle and the beats-random simulation. **Do not** derive from `General.py`.
+- [ ] **Deferred (not now):** the strategic bomb-declaration model (under/over-declare)
+      to A/B-test against this, and the risk-aware cut strategy.
 
 ---
 
@@ -103,8 +111,13 @@ weighting was wrong (e.g. `bg=2,H=2`: `(¼,½,¼)` vs correct `(⅙,⅔,⅙)`).
 
 ### B2 — Later variants
 
-- [ ] **`OneBadGuyOneBomb.py`** (`B=1, M=1`) — same playbook; needs Axis A4.
-- [ ] **`TwoBadGuysOneBomb.py`** (`B=2, M=1`) — same playbook; needs A2 + A4.
+- [ ] **`OneBadGuyOneBomb.py`** (`B=1, M=1`) — ⏭ next; bomb sub-model now specified
+      (§3.8, ADR-0004). Same playbook over the `N×N` `(bad, bomb)` config space: build
+      the generative oracle (bomb as a must-not-draw card), migrate
+      `ProbDeclaration` / `ProbCut` / `P_wire` to §3.8, ensure `CombineProbs`
+      marginalises out the bomb before combining rounds (P(bomb) is per-round), and add
+      the brute-force + beats-random tests.
+- [ ] **`TwoBadGuysOneBomb.py`** (`B=2, M=1`) — same playbook; combines A2 + §3.8.
 - [ ] **`General.py`** — reconcile to the canonical forms; the end target. Carries
       the `P_wire` ungated-good-branch bug (and likely more — not yet trusted).
 

@@ -41,17 +41,29 @@ then `N` cuts happen (each cut flips one face-down card of some player), updatin
 **Win/lose.** Good guys win when all `A` active wires are cut. Bad guys win if the
 Bomb is cut, or if time runs out (`H` reaches 1 with wires uncut).
 
-**Behavioral assumptions (the lie model).** These define the likelihoods:
+**Behavioral assumptions (the lie model).** These define the likelihoods. A player
+declares **truthfully if and only if they are good *and* bomb-free**; in every other
+case they declare **uniformly at random** over `{0,…,H}`, independent of their true
+wire count:
 
 - A good guy **without** the bomb declares **truthfully**: `decls[i] = wires[i]`.
-- A good guy **with** the bomb **under-declares** (`decls[i] ≤ wires[i]`) to hide it.
-- A bad guy **without** the bomb **declares uniformly at random** over `{0,…,H}`,
-  independent of his true wire count. (Firm modelling choice; §3.3 derives the prior
-  it implies. A richer *strategic* lie model is a possible far-future refinement —
-  see roadmap.md.)
-- A bad guy **with** the bomb **over-declares** (`decls[i] ≥ wires[i]`).
+- A good guy **with** the bomb declares **uniformly at random** over `{0,…,H}`
+  (holding the bomb makes even a good guy declare like a liar).
+- A bad guy declares **uniformly at random** over `{0,…,H}`, **whether or not** he
+  holds the bomb.
 
-(For the `OneBadGuyNoBomb` variant only the first and third bullets apply.)
+(For the `OneBadGuyNoBomb` variant only the first and third bullets apply, and the
+bomb cases never arise.)
+
+This **uniform-lie bomb model** is a deliberate simplification (firm modelling
+choice; §3.8 derives the prior it implies). It still gives `P(bomb)` real signal —
+a good guy forced to lie is evidence for "bad *or* holding the bomb", coupling the
+two hidden variables — while avoiding the `decls ≤ wires` / `decls ≥ wires`
+constraints of a *strategic* model that can produce dead-end null observations. The
+richer **strategic** model (good-with-bomb under-declares, bad-with-bomb
+over-declares) is the eventual target, to be A/B-tested against this once trusted; a
+fully **parametric** lie bias is a far-future research item. Both are tracked in
+[roadmap.md](roadmap.md) and recorded in [decisions/0004](decisions/0004-uniform-lie-bomb-model.md).
 
 ## 3. Mathematical models
 
@@ -61,7 +73,16 @@ The belief state is a probability array over **configurations** — an assignmen
 which players are bad and which hold bombs. For `B` bad guys and `M` bombs it is a
 `(B+M)`-dimensional array indexed `probs[bad_set + bomb_set]`. The simplest variant
 (`OneBadGuyNoBomb`, `B=1, M=0`) collapses this to a length-`N` vector
-`probs[i] = P(player i is the bad guy)`, normalized to sum to 1.
+`probs[i] = P(player i is the bad guy)`, normalized to sum to 1. Adding one bomb
+(`OneBadGuyOneBomb`, `B=1, M=1`) makes it an `N×N` matrix `probs[b][h] =
+P(player b is bad and player h holds the bomb)`, with `b = h` allowed (the bad guy
+may be dealt his own bomb); see §3.8.
+
+**Persistence across rounds.** Character roles are fixed for the whole game, but the
+wires *and the bomb* are reshuffled and re-dealt every round. So the **bad-set**
+belief accumulates across rounds (via `CombineProbs`) while the **bomb holder** is a
+per-round latent: `P(bomb)` is read from the current round's joint only and never
+combined across rounds (§3.8).
 
 ### 3.2 Hypergeometric likelihood
 
@@ -245,11 +266,84 @@ Two interchangeable policies for choosing the next cut:
 ### 3.7 Open modelling gaps
 
 The declaration prior (§3.3), the `B > 1` wire-split (§3.4.1), the `B > 1` `P_wire`
-marginal (§3.5), and the degeneracy convention are now **firm modelling choices**;
-what remains for them is implementation and brute-force validation (see
-[roadmap.md](roadmap.md) Cross-cutting foundations and [../TODO.md](../TODO.md) Axis
-A). The one sub-model still unspecified:
+marginal (§3.5), the degeneracy convention, and now the **bomb sub-model** (§3.8) are
+all **firm modelling choices**; what remains for them is implementation and
+brute-force validation (see [roadmap.md](roadmap.md) Cross-cutting foundations and
+[../TODO.md](../TODO.md) Axis A). What is deliberately *not* yet modelled:
 
-- **Bomb likelihoods** — the declaration likelihood for bomb-holders
-  (good-with-bomb under-declares, bad-with-bomb over-declares), the cut likelihood,
-  and the `P(bomb)` readout (§1) — deferred until the `*OneBomb` variants.
+- **Strategic bomb declarations** — the richer model where a good-with-bomb
+  *under-declares* and a bad-with-bomb *over-declares* (rather than both lying
+  uniformly, §3.8). The eventual target, to be A/B-tested against the uniform-lie
+  bomb model; a fully parametric lie bias is a further far-future refinement.
+- **Risk-aware cut strategy** — folding `P(bomb)` into the cut recommendation
+  (trading expected wire progress against bomb risk, §3.6). Deferred; the bomb
+  sub-model stops at the `P(bomb)` readout.
+
+### 3.8 The bomb (`B = 1, M = 1`)
+
+Adding one bomb introduces a second hidden variable: besides which player is bad,
+*which player holds the bomb this round*. A configuration is the pair `(b, h)` —
+player `b` is bad, player `h` holds the bomb — and the belief state is the `N×N`
+matrix `probs[b][h]`, with `b = h` allowed (§3.1). The bomb is a card like a wire: it
+occupies one of a hand's `H` slots, so a hand holding it has only `H − 1` slots
+available for wires. The deal places the bomb uniformly (`P(bomb in hand h) = 1/N`)
+and then the `A` wires among the remaining slots, all independent of the secret
+roles.
+
+Under the **uniform-lie bomb model** (§2) a hand is *truthful* iff its owner is good
+and bomb-free, i.e. every hand except `b` and `h`. The liars (`b`, and `h` when
+distinct) declared uniformly, contributing only a constant factor.
+
+#### 3.8.1 Declaration prior — `ProbDeclaration`
+
+Marking `(b, h)` pins every truthful hand `j ∉ {b, h}` to its declared wires and
+forces the liar hands' free wire total to `t_free = A − Σ_{j∉{b,h}} decls[j]`, which
+must be placed in their **non-bomb** slots. Counting the consistent deals and
+collapsing the split via Vandermonde's identity gives the closed form (with
+`excess = Σ decls − A`):
+
+```
+b ≠ h:   P(b, h | decls)  ∝  C(2H−1, decls[b]+decls[h] − excess) / ( C(H, decls[b]) · C(H, decls[h]) )
+b = h:   P(b, b | decls)  ∝  C(H−1,  decls[b] − excess)          /   C(H, decls[b])
+```
+
+with `C(n, k) = 0` for `k < 0` or `k > n`. The slot counts are the crux: two distinct
+liar hands offer `2H − 1` non-bomb slots for the free wires (the bomb eats one), and
+the self-bomb case `b = h` offers `H − 1`. This is the §3.3 prior generalised by one
+bomb-occupied slot. If every configuration has zero weight, fall back to the uniform
+`N×N` prior (degeneracy convention, §3.3).
+
+#### 3.8.2 Cut likelihood — `ProbCut`
+
+Cuts now reveal `{wire, blank, bomb}`. Cutting the bomb ends the game (bad guys win),
+so live inference always **conditions on "no bomb cut yet"**: every observed cut is a
+wire or a blank, and that fact is itself weak evidence about where the bomb is *not*.
+Conditioned on `(b, h)` the likelihood factorises:
+
+- **Truthful hands** `j ∉ {b, h}`: wires pinned to `decls[j]`, no bomb — the standard
+  hypergeometric `Lklhd(H, decls[j], revealed[j], found[j])` of §3.2.
+- **Liar / bomb hands** `b, h`: marginalise their wire split (total `t_free`) under
+  the same uniform-placement law as §3.4.1. In the **bomb hand** `h` the bomb is a
+  *must-not-draw* card, so its cut term is
+
+  ```
+  P(found_h wires, 0 bombs in revealed_h draws | w_h wires) =
+        C(w_h, found_h) · C(H − 1 − w_h, revealed_h − found_h) / C(H, revealed_h)
+  ```
+
+  (a hypergeometric over `w_h` wires, one bomb, and `H − 1 − w_h` blanks, gated to
+  draw no bomb). The bad hand `b` (when `b ≠ h`) uses the ordinary `Lklhd`.
+
+The posterior is Bayes on the configuration space, `posterior(c) ∝ prior(c) · L(c)`,
+returning the prior on a zero marginal (§3.4). Whether the liar/bomb marginal
+collapses to a single closed form (as the bomb-free §3.4.1 does) is an
+*implementation* question — the **model** is fully pinned here, and the brute-force
+test oracle enumerates the split regardless.
+
+#### 3.8.3 Readouts and persistence
+
+- `P(bad = b) = Σ_h probs[b][h]` — the persistent role belief; this marginal is what
+  `CombineProbs` accumulates across rounds.
+- `P(bomb = h) = Σ_b probs[b][h]` — read from the **current round only**. Because the
+  bomb is re-dealt each round (§3.1), it must **never** enter `CombineProbs`; doing so
+  would treat an independent per-round draw as persistent evidence.
