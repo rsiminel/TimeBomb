@@ -98,8 +98,10 @@ Meets all four criteria. Highlights:
   items 1 and 3).
 - `PlayAuto` integer-array crash, `ProbSus` `NameError`, and `Play` input
   validation all fixed.
-- Docstrings on every public function; `test_OneBadGuyNoBomb.py` (20 tests) checks
-  the math against independent `math.comb` brute-force references.
+- Docstrings on every public function; `test_OneBadGuyNoBomb.py` (21 tests) checks
+  the math against independent `math.comb` brute-force references, plus an end-to-end
+  accuracy test: over 400 games the belief puts ~0.95 on the true bad guy (~0.96 top-1
+  accuracy) vs the 0.20 random baseline.
 
 ### 2. `TwoBadGuysNoBomb.py` — ✅ done
 

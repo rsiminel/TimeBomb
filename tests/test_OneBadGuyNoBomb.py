@@ -10,6 +10,7 @@ a matching test.
 """
 import itertools
 import math
+import random
 import sys
 from pathlib import Path
 from random import Random
@@ -360,6 +361,38 @@ def test_probsus_updates_in_place_without_nameerror(monkeypatch=None):
         builtins.input = original
     # Suspect (Bob): 0.25*60 / (0.25*60 + 0.75*30) = 0.4; others rescaled to 0.2 each.
     assert np.allclose(probs, [0.2, 0.4, 0.2, 0.2])
+
+
+# --- end-to-end accuracy (does the model beat random?) -------------------------
+
+def test_inference_beats_random_chance():
+    """A model can be arithmetically correct yet uninformative. This runs full
+    simulated games (declarations -> cuts -> combine) and checks the final belief
+    concentrates on the true bad guy far above the random baseline. Under no
+    information every player's P(bad) averages 1/N; the oracle tests cannot catch a
+    regression that destroys this edge, so it is guarded separately here (mirrors the
+    TwoBadGuysNoBomb suite; roadmap.md Definition of done, criterion 3)."""
+    random.seed(12345)  # PlayAuto draws from the global RNG; seed for determinism
+    N, K = 5, 400
+    bad_mass = good_mass = 0.0
+    top1_hits = 0
+    for _ in range(K):
+        _, marg, roles = ob.PlayAuto(num_players=N, initial_hand_size=5, verbosity=0)
+        bad = int(np.where(roles == 1)[0][0])
+        for i in range(N):
+            if i == bad:
+                bad_mass += marg[i]
+            else:
+                good_mass += marg[i]
+        top1_hits += (int(np.argmax(marg)) == bad)
+    p_bad_on_bad = bad_mass / K
+    p_bad_on_good = good_mass / ((N - 1) * K)
+    top1_acc = top1_hits / K
+    baseline = 1 / N
+    # Generous margins: observed ~0.95 / ~0.01 / ~0.96, baseline 0.20.
+    assert p_bad_on_bad > 0.6, f"P(bad|true bad)={p_bad_on_bad:.3f} not above baseline {baseline:.3f}"
+    assert p_bad_on_good < 0.15, f"P(bad|true good)={p_bad_on_good:.3f} not below baseline {baseline:.3f}"
+    assert top1_acc > 0.6, f"top-1 accuracy={top1_acc:.3f} not above baseline {baseline:.3f}"
 
 
 # --- standalone runner (no pytest required) ------------------------------------

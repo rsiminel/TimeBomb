@@ -52,12 +52,11 @@ brute-force validation — no code has been touched yet.
       returns uniform, on a zero marginal. Replace `ProbDeclaration`'s all-zeros.
       *(Done in `OneBadGuyNoBomb`; apply to each remaining variant as it is cleaned.)*
 
-### A3b — Backfill the end-to-end accuracy test on `OneBadGuyNoBomb`
+### A3b — Backfill the end-to-end accuracy test on `OneBadGuyNoBomb` — ✅ done
 
-- [ ] The "predictively useful" done-criterion (roadmap §Definition of done) was added
-      after variant 1 was marked done. Add the matching beats-random simulation test to
-      `test_OneBadGuyNoBomb.py` so variant 1 meets the full bar too. *(Cheap; mirrors
-      `test_inference_beats_random_chance` in the TwoBadGuys suite.)*
+- [x] Added `test_inference_beats_random_chance` to `test_OneBadGuyNoBomb.py` (400
+      games, N=5): belief puts ~0.95 on the true bad guy and ~0.96 top-1 accuracy vs
+      the 0.20 random baseline. Variant 1 now meets the full done bar.
 
 ### A4 — Bomb model (deferred to the `*OneBomb` variants)
 
