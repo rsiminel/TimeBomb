@@ -188,30 +188,35 @@ def CombineProbs(probabilities_list):
 def ProbDeclaration(declarations, hand_size, active_wires):
   """Prior P(player i is the bad guy) from the round's declarations alone.
 
-  Let ``excess = sum(declarations) - active_wires`` be the total over-declaration.
-  With no excess the declarations are consistent with everyone telling the truth,
-  so no information is available and the prior is uniform. Otherwise the lone liar
-  must account for the excess, and each player is weighted by the number of
-  card-arrangements consistent with their being that liar (C(n, k) = n choose k):
+  The uniform-lie joint-Bayes prior (docs/model.md §3.3). Marking player ``i`` as
+  the bad guy pins every other (truthful) hand to its declared count and forces
+  ``i``'s own true count to ``t_i = declarations[i] - excess``, where
+  ``excess = sum(declarations) - active_wires``. Under a uniform deal the prior is
+  proportional to the multivariate-hypergeometric probability of that forced deal;
+  the bad guy's own declaration is a constant factor (uniform lie) that cancels:
 
-    excess > 0 (liar padded their count): weight C(declarations[i], excess)
-    excess < 0 (liar hid wires):          weight C(hand_size - declarations[i], -excess)
+    P(bad = i) ∝ C(H, t_i) / C(H, declarations[i]),   t_i = declarations[i] - excess
 
-  Returns a probability vector summing to 1, or all-zeros if the declarations are
-  impossible under the model (no single liar can account for the excess).
+  with ``C(H, t) = 0`` for ``t < 0`` or ``t > H`` (zeroing any player who cannot
+  alone account for the excess). With ``excess = 0`` every weight is 1, recovering a
+  uniform prior. If no player can account for the excess (every weight 0) the
+  declarations are impossible under the model and the prior falls back to uniform
+  (degeneracy convention, §3.3 / TODO Axis A3) -- never an all-zeros vector.
+
+  Returns a probability vector summing to 1.
   """
   num_players = declarations.size
-  probabilities = np.full(num_players, 1 / num_players)
-  excess = - active_wires + sum(declarations)
-  if excess != 0:  # With no excess, no information can be extracted
-    for i in range(num_players):
-      if excess > 0:  # The extra decls are in i's declarations
-        probabilities[i] = uf.C(excess, declarations[i])
-      else:  # The missing decls are in what i did not declare
-        probabilities[i] = uf.C(- excess, hand_size - declarations[i])
-    if np.sum(probabilities) != 0:
-      probabilities /= np.sum(probabilities)
-  return probabilities
+  uniform = np.full(num_players, 1 / num_players)
+  excess = sum(declarations) - active_wires
+  weights = np.zeros(num_players)
+  for i in range(num_players):
+    t_i = declarations[i] - excess
+    if 0 <= t_i <= hand_size:  # i can alone account for the excess
+      weights[i] = uf.C(t_i, hand_size) / uf.C(declarations[i], hand_size)
+  total = np.sum(weights)
+  if total == 0:  # Declarations impossible under the model: fall back to uniform
+    return uniform
+  return weights / total
 
 
 def ProbCut(decls, prior, revealed, found, hand_size, active_wires):

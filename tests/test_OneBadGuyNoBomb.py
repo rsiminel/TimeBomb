@@ -8,6 +8,7 @@ expected-wire calculations) are written independently of the module under test -
 using math.comb rather than UsefulFunctions -- so a shared bug cannot hide behind
 a matching test.
 """
+import itertools
 import math
 import sys
 from pathlib import Path
@@ -77,6 +78,39 @@ def brute_pwire(decls, probs, revealed, found, hand_size, active_wires):
     return pw
 
 
+def generative_declaration_prior(decls, hand_size, active_wires):
+    """Posterior P(player i is bad | decls) under the generative model of
+    docs/model.md (§2 lie model + §3.3), enumerated independently of the module:
+
+      * the bad guy is chosen uniformly (prior 1/N);
+      * the A wires are dealt across the N hands ~ multivariate hypergeometric, so a
+        true wire vector ``w`` (0 <= w[j] <= H, sum == A) has weight Π_j C(H, w[j]);
+      * good guys (j != bad) declare truthfully  -> w[j] == decls[j];
+      * the bad guy declares uniformly over {0..H} -> a constant 1/(H+1) factor that
+        cancels in normalisation.
+
+    This enumerates *every* candidate wire vector via itertools.product and sums raw
+    deal weights -- no closed form, no division -- so it shares no algebra with
+    ``ProbDeclaration`` and cannot launder a shared bug. Returns the uniform vector
+    when the declarations are impossible under the model (the A3 degeneracy fallback).
+    """
+    decls = [int(round(d)) for d in decls]
+    n, H, A = len(decls), int(hand_size), int(active_wires)
+    post = np.zeros(n)
+    for bad in range(n):
+        for w in itertools.product(range(H + 1), repeat=n):
+            if sum(w) != A:
+                continue
+            if any(w[j] != decls[j] for j in range(n) if j != bad):
+                continue
+            weight = 1
+            for j in range(n):
+                weight *= math.comb(H, w[j])
+            post[bad] += weight
+    s = post.sum()
+    return np.full(n, 1.0 / n) if s == 0 else post / s
+
+
 # --- helpers -------------------------------------------------------------------
 
 def is_distribution(v, total=1.0):
@@ -128,21 +162,64 @@ def random_consistent_state(rng):
 # --- ProbDeclaration -----------------------------------------------------------
 
 def test_probdeclaration_uniform_when_no_excess():
+    # excess=0 -> t_i = decls[i], every weight C(H,t_i)/C(H,decls[i]) = 1 -> uniform.
     decls = np.array([2., 1., 1., 0.])  # sum 4 == active_wires
     p = ob.ProbDeclaration(decls, hand_size=5, active_wires=4)
     assert np.allclose(p, 0.25)
 
 
 def test_probdeclaration_known_values_positive_excess():
-    # sum(decls)=4, active=2 -> excess=2. weights C(decls[i],2): [3,0,0] -> [1,0,0]
+    # sum=4, active=2 -> excess=2. t_i = decls[i]-2 = [1,-1,-2]; only player 0 can
+    # absorb the excess (others go negative), so the prior collapses to [1,0,0].
     p = ob.ProbDeclaration(np.array([3., 1., 0.]), hand_size=5, active_wires=2)
     assert np.allclose(p, [1., 0., 0.])
 
 
 def test_probdeclaration_known_values_negative_excess():
-    # sum=2, active=4 -> excess=-2. weights C(hand_size-decls[i],2): [1,1,3] -> [.2,.2,.6]
+    # sum=2, active=4 -> excess=-2. t_i = decls[i]+2 = [3,3,2].
+    # weights C(3,t_i)/C(3,decls[i]) = [1/3, 1/3, 3] -> normalise [1/11, 1/11, 9/11].
     p = ob.ProbDeclaration(np.array([1., 1., 0.]), hand_size=3, active_wires=4)
-    assert np.allclose(p, [0.2, 0.2, 0.6])
+    assert np.allclose(p, [1 / 11, 1 / 11, 9 / 11])
+
+
+def test_probdeclaration_uniform_lie_diverges_from_heuristic():
+    # The ADR-0001 divergence case: N=3, H=3, A=4, decls=[2,2,1], excess=1.
+    # Uniform-lie prior -> [3/7, 3/7, 1/7]; the old card-count heuristic gave
+    # [0.4, 0.4, 0.2]. Pins that the new model is in force.
+    p = ob.ProbDeclaration(np.array([2., 2., 1.]), hand_size=3, active_wires=4)
+    assert np.allclose(p, [3 / 7, 3 / 7, 1 / 7])
+    assert not np.allclose(p, [0.4, 0.4, 0.2])
+
+
+def test_probdeclaration_matches_generative_oracle():
+    # ProbDeclaration must equal the independent generative brute force. Bounded
+    # params keep the itertools.product enumeration cheap.
+    rng = Random(1)
+    max_diff = 0.0
+    for _ in range(2000):
+        n = rng.randint(3, 4)
+        hand_size = rng.randint(2, 3)
+        active = rng.randint(0, n * hand_size)
+        decls = np.array([float(rng.randint(0, hand_size)) for _ in range(n)])
+        got = ob.ProbDeclaration(decls, hand_size, active)
+        ref = generative_declaration_prior(decls, hand_size, active)
+        max_diff = max(max_diff, np.max(np.abs(got - ref)))
+    assert max_diff < 1e-9, f"max diff vs generative oracle = {max_diff}"
+
+
+def test_generative_oracle_self_check():
+    # Bless the oracle itself against a hand-computed value (the ADR case).
+    ref = generative_declaration_prior(np.array([2., 2., 1.]), 3, 4)
+    assert np.allclose(ref, [3 / 7, 3 / 7, 1 / 7])
+
+
+def test_probdeclaration_degeneracy_falls_back_to_uniform():
+    # Impossible declarations (no single liar can absorb the excess): A3 says fall
+    # back to uniform, never an all-zeros vector.
+    decls = np.array([0., 0., 0.])  # sum 0 but 6 active wires demanded
+    p = ob.ProbDeclaration(decls, hand_size=3, active_wires=6)
+    assert is_distribution(p)
+    assert np.allclose(p, 1 / 3)
 
 
 def test_probdeclaration_invariants_sweep():
@@ -153,10 +230,8 @@ def test_probdeclaration_invariants_sweep():
         active = rng.randint(0, n)
         decls = np.array([float(rng.randint(0, hand_size)) for _ in range(n)])
         p = ob.ProbDeclaration(decls, hand_size, active)
-        # Either a proper distribution or all-zeros (impossible declarations).
-        assert not np.any(np.isnan(p))
-        assert np.all(p >= -TOL) and np.all(p <= 1 + TOL)
-        assert abs(p.sum() - 1) < 1e-6 or abs(p.sum()) < 1e-6
+        # Always a proper distribution -- degeneracy falls back to uniform (A3).
+        assert is_distribution(p)
 
 
 # --- ProbCut -------------------------------------------------------------------

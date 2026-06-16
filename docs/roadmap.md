@@ -56,9 +56,9 @@ the rationale behind each settled choice is recorded as an ADR in
 1. **Declaration prior (§3.3): uniform-lie joint-Bayes.** The bad guy declares
    uniformly at random; the prior is the multivariate-hypergeometric likelihood of
    the deal each configuration forces — `P(bad=i) ∝ C(H, t_i)/C(H, decls[i])`, with a
-   closed-form `B > 1` generalisation. Replaces the old card-count heuristic. (Until
-   it is implemented + validated, every variant's `ProbDeclaration` — including the
-   "done" `OneBadGuyNoBomb` — still ships the heuristic.)
+   closed-form `B > 1` generalisation. Replaces the old card-count heuristic.
+   (Implemented and validated against a generative oracle in `OneBadGuyNoBomb`; the
+   remaining variants still ship the heuristic until cleaned.)
 2. **`B > 1` prior and `P_wire` marginal** use the §3.4.1 uniform-placement
    (multivariate-hypergeometric) model, so prior and cut update share one
    wire-placement law. No `excess = 0` special case for `B > 1`.
@@ -87,16 +87,14 @@ Meets all four criteria. Highlights:
   removed.
 - `P_wire` denominator corrected to remaining face-down cards, and both branches
   feasibility-gated (fixing a negative-probability bug found during testing).
+- `ProbDeclaration` migrated from the old card-count heuristic to the uniform-lie
+  joint-Bayes prior (§3.3), validated against an independent `itertools.product`
+  generative oracle; degeneracy falls back to uniform (Cross-cutting foundations
+  items 1 and 3).
 - `PlayAuto` integer-array crash, `ProbSus` `NameError`, and `Play` input
   validation all fixed.
-- Docstrings on every public function; `test_OneBadGuyNoBomb.py` (16 tests) checks
+- Docstrings on every public function; `test_OneBadGuyNoBomb.py` (20 tests) checks
   the math against independent `math.comb` brute-force references.
-
-**Review caveat:** the suite validates `ProbCut` / `P_wire` (and `ProbSus`) against
-brute force, but `ProbDeclaration`'s *correctness* depends on the model.md §3.3
-heuristic, which is not yet validated against a generative oracle. The done bar is
-met for the cut/ranking math; the declaration prior is invariant-checked only. See
-Cross-cutting foundations, item 1.
 
 ### 2. `TwoBadGuysNoBomb.py` — ⏭ next
 

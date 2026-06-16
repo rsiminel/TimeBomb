@@ -30,12 +30,14 @@ brute-force validation — no code has been touched yet.
 
 - [x] **Lie support fixed:** bad guy declares uniformly over `{0..H}` ⇒ joint-Bayes
       prior `P(bad=i) ∝ C(H, t_i)/C(H, decls[i])` (closed-form `B>1` generalisation).
-- [ ] **Validate against a generative brute force.** Independent oracle (deal →
-      truthful goods → uniform bad-guy lie) confirming the closed form equals the
-      enumerated posterior `P(i bad | decls)`. **Do not** derive from `General.py`.
-- [ ] **Re-check `OneBadGuyNoBomb`.** It currently ships the old card-count heuristic;
-      determine whether its output already matches the uniform-lie prior or needs the
-      swap, and add a generative-oracle test. May re-open variant 1.
+- [x] **Validate against a generative brute force.** Independent `itertools.product`
+      oracle (deal → truthful goods → uniform bad-guy lie) in
+      `test_OneBadGuyNoBomb.py` confirms the closed form equals the enumerated
+      posterior `P(i bad | decls)`.
+- [x] **Re-check `OneBadGuyNoBomb`.** It shipped the old card-count heuristic and
+      genuinely diverged (e.g. `[2,2,1]` → `[0.4,0.4,0.2]` vs correct `[3/7,3/7,1/7]`).
+      Swapped `ProbDeclaration` to the uniform-lie closed form; generative-oracle test
+      added (TDD: red → green).
 
 ### A2 — `B > 1` prior and `P_wire` marginal — *model decided: §3.4.1 uniform placement*
 
@@ -48,6 +50,7 @@ brute-force validation — no code has been touched yet.
 
 - [ ] Apply uniformly: `ProbCut` returns the incoming prior, `ProbDeclaration`
       returns uniform, on a zero marginal. Replace `ProbDeclaration`'s all-zeros.
+      *(Done in `OneBadGuyNoBomb`; apply to each remaining variant as it is cleaned.)*
 
 ### A4 — Bomb model (deferred to the `*OneBomb` variants)
 
@@ -110,6 +113,7 @@ code's `C(bg_wires,k)` Binomial-½ weighting is wrong — e.g. `bg=2,H=2`: code
 
 ## Done
 
-- [x] **`OneBadGuyNoBomb.py`** — meets the done bar for the cut/ranking math (see
-      [docs/roadmap.md](docs/roadmap.md#1-onebadguynobombpy--done)), pending the
-      Axis A1 declaration-prior re-check.
+- [x] **`OneBadGuyNoBomb.py`** — meets the full done bar (see
+      [docs/roadmap.md](docs/roadmap.md#1-onebadguynobombpy--done)). `ProbDeclaration`
+      now ships the uniform-lie joint-Bayes prior, validated against an independent
+      generative oracle (Axis A1); degeneracy falls back to uniform (A3).
