@@ -74,6 +74,28 @@ brute-force validation — no code has been touched yet.
 - [ ] **Deferred (not now):** the strategic bomb-declaration model (under/over-declare)
       to A/B-test against this, and the risk-aware cut strategy.
 
+### A5 — Cross-round combination (`CombineProbs`, ADR 0005) — *model decided: exact product*
+
+The elementwise-product-and-renormalise rule is **exact Bayes**, not a heuristic: the
+redeal makes rounds conditionally independent given the fixed roles, and the per-round
+factor is a likelihood (uniform per-round role prior), so the product is the true
+posterior. Informativeness is **not** weighted — it is already carried endogenously by
+each round's vector shape (KL-from-uniform); an external exponent would double-count.
+
+- [x] **Justification recorded** as [ADR 0005](docs/decisions/0005-cross-round-evidence-combination.md):
+      exact product, per-round factor must stay a likelihood (not a prior-contaminated
+      posterior), `P(bomb)` never combined, no informativeness weighting.
+- [ ] **Robustness — ε-floor.** Mix each per-round vector with `ε · uniform` before
+      multiplying so a single round's hard `0` cannot *permanently* eliminate a player
+      under lie-model misspecification. Land in `General.py`.
+- [ ] **Robustness — log-space accumulation.** Sum `log` per-round vectors and
+      softmax-normalise to avoid underflow over many rounds / large `N` (which currently
+      trips the `total == 0` → uniform branch and discards real evidence). Land in
+      `General.py`; makes the ε-floor trivial to express.
+- [ ] **Deferred (gated on calibration):** per-round tempering `wᵣ` to down-weight
+      *distrusted* (declaration-dominated) rounds — only if a calibration test shows
+      systematic overconfidence, and a single global temper is preferred first.
+
 ---
 
 ## Axis B — Variant pipeline

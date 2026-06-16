@@ -76,6 +76,16 @@ the rationale behind each settled choice is recorded as an ADR in
    treats the bomb as a must-not-draw card conditioned on "no bomb cut yet", and the
    bomb is **per-round**: `P(bad)` accumulates across rounds, `P(bomb)` does not. See
    [decisions/0004](decisions/0004-uniform-lie-bomb-model.md).
+5. **Cross-round combination (`CombineProbs`): exact elementwise product.** The redeal
+   makes rounds conditionally independent given the fixed roles, and each per-round
+   factor is a likelihood (uniform per-round role prior), so multiply-and-renormalise is
+   the *exact* posterior — not a heuristic. The per-round factor must stay a likelihood
+   (never feed the accumulated belief back as the round's prior); `P(bomb)` is never
+   combined; round informativeness is **not** weighted (it is already carried by each
+   round's vector shape — an external coefficient would double-count). Two robustness
+   hardenings (ε-floor against permanent `0`-pinning under misspecification; log-space
+   accumulation against underflow) are warranted and land in `General.py`. See
+   [decisions/0005](decisions/0005-cross-round-evidence-combination.md).
 
 **Deferred refinements (not scheduled).**
 
@@ -88,6 +98,11 @@ the rationale behind each settled choice is recorded as an ADR in
 - **Risk-aware cut strategy.** Fold `P(bomb)` into the cut recommendation (expected
   wire progress vs. bomb risk, §3.6). The bomb sub-model itself stops at the `P(bomb)`
   readout.
+- **Per-round tempering in `CombineProbs`.** A weight `wᵣ` down-weighting *distrusted*
+  (declaration-dominated) rounds — only if a calibration test reveals systematic
+  overconfidence, and a single global temper is preferred before a per-round one. This
+  encodes model distrust, not informativeness (which is already handled); see
+  [decisions/0005](decisions/0005-cross-round-evidence-combination.md).
 
 ## Status detail
 
