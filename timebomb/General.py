@@ -1,762 +1,299 @@
-#%%
+# -*- coding: utf-8 -*-
+"""General Time Bomb model — arbitrary ``B`` bad guys and ``M in {0, 1}`` bomb.
+
+This is the unification target the four hardcoded variants converge toward
+(docs/roadmap.md): the same uniform-lie model (docs/model.md §3.1–§3.5), written once
+over the **general configuration space**. A configuration is a bad set ``S`` of size
+``num_bad`` plus, when ``M = 1``, the player ``h`` holding the bomb this round; the
+belief state is the ``[N]*(num_bad + num_bom)`` tensor indexed by the sorted bad-set
+tuple followed by the bomb tuple (so only sorted-index cells are populated, e.g. lower
+triangle for ``num_bad = 2``).
+
+Every hardcoded variant is a projection of these functions: ``OneBadGuyNoBomb`` is
+``(num_bad, num_bom) = (1, 0)``, ``TwoBadGuysOneBomb`` is ``(2, 1)``, etc. The closed
+forms here are the corrected ones — the declaration prior carries the lie-count factor
+``(H+1)^{-|F|}`` (ADR 0007), which is what makes per-configuration weights absolute and
+comparable across different bad counts (needed for joint ``num_bad`` inference).
+
+Vectorisation: the iteration over configurations is an ``itertools.combinations`` loop
+(there is no numpy primitive that sums over all ``B``-subsets with a per-subset free
+set), but the per-hand likelihoods, the §3.4.1 bad-group collapse, and the tensor
+assembly/normalisation inside it are numpy/array operations.
+"""
+
+# Imports
+import itertools
 import numpy as np
-from copy import deepcopy
-from random import randint
-from tabulate import tabulate
-from math import factorial, comb
-from sympy.utilities.iterables import multiset_permutations
-from itertools import combinations, combinations_with_replacement
+from random import randint, sample, randrange
+import UsefulFunctions as uf
 
 
-def Lklhd(n, m, k, p):
-  c = comb(n, m)
-  if c == 0:
-    return 0
-  return comb(k, p) * comb(n - k, m - p) / c
+# --- per-hand cut likelihood atoms (docs/model.md §3.2, §3.4.1) ----------------
+
+def L_bomb_hand(found_h, revealed_h, bomb_wires, hand_size):
+  """Cut likelihood for the bomb hand: P(find ``found_h`` wires AND draw no bomb in
+  ``revealed_h`` cuts) given the hand holds ``bomb_wires`` wires, one bomb, and
+  ``H-1-bomb_wires`` blanks — the must-not-draw hypergeometric of model.md §3.2,
+  ``C(bomb_wires, found_h)·C(H-1-bomb_wires, revealed_h-found_h)/C(H, revealed_h)``.
+  Returns 0.0 on an infeasible wire count or an empty denominator.
+  """
+  H = int(hand_size)
+  if not (0 <= bomb_wires <= H - 1):
+    return 0.0
+  denom = uf.C(revealed_h, H)
+  if denom == 0:
+    return 0.0
+  return uf.C(found_h, bomb_wires) * uf.C(revealed_h - found_h, H - 1 - bomb_wires) / denom
 
 
-def Cn(distribution):
-  prod = 1
-  for i in distribution:
-    prod *= factorial(i)
-  return factorial(np.sum(distribution)) / prod
+def L_bad(hand_size, group_wires, revealed, found, group):
+  """§3.4.1 collapse for a group ``G`` of bomb-free bad hands holding ``group_wires``
+  wires between them. Under uniform placement over the ``|G|·H`` combined slots the
+  per-hand split collapses to one multivariate-hypergeometric term:
+
+    Π_{g in G} C(revealed[g], found[g]) · C(|G|·H − Σrevealed, group_wires − Σfound)
+                                        / C(|G|·H, group_wires)
+
+  Reduces to a single ``Lklhd`` when ``|G| = 1`` and to ``1`` for an empty group with
+  ``group_wires = 0`` (and ``0`` otherwise). Returns 0.0 for an infeasible split.
+  """
+  H = int(hand_size)
+  slots = len(group) * H
+  hidden_slots = slots - sum(int(revealed[g]) for g in group)
+  hidden_wires = group_wires - sum(int(found[g]) for g in group)
+  if not (0 <= group_wires <= slots) or not (0 <= hidden_wires <= hidden_slots):
+    return 0.0
+  denom = uf.C(group_wires, slots)
+  if denom == 0:
+    return 0.0
+  num = 1.0
+  for g in group:
+    num *= uf.C(int(found[g]), int(revealed[g]))
+  return num * uf.C(hidden_wires, hidden_slots) / denom
 
 
-def Flatten(probabilities):
-  num_players = len(probabilities)
-  num_dims = len(probabilities.shape)
-  probability_line = np.zeros(num_players)
-  for indices in combinations(range(num_players), num_dims):
-    for index in indices:
-      probability_line[index] += probabilities[indices]
-  return probability_line
+def _free_splits(free, t_free, slots):
+  """Yield every wire split ``{g: w_g}`` of the free hands summing to ``t_free`` with
+  each ``w_g`` within ``slots[g]`` (the hand's non-bomb slot count). Used to enumerate
+  the free-hand wire placement where no closed form collapses it (``P_wire``)."""
+  free = list(free)
+  caps = [slots[g] for g in free]
+
+  def rec(i, remaining):
+    if i == len(free) - 1:
+      if 0 <= remaining <= caps[i]:
+        yield {free[i]: remaining}
+      return
+    for w in range(min(caps[i], remaining) + 1):
+      for rest in rec(i + 1, remaining - w):
+        rest[free[i]] = w
+        yield rest
+
+  if free:
+    yield from rec(0, t_free)
+  elif t_free == 0:
+    yield {}
 
 
-def Separate(probabilities, num_bad, num_bom):
-  num_players = len(probabilities)
-  probability_bad = np.zeros([num_players]*num_bad)
-  probability_bom = np.zeros([num_players]*num_bom)
-  for bad_indices in combinations(range(num_players), num_bad):
-    for bom_indices in combinations(range(num_players), num_bom):
-        probability_bad[bad_indices] += probabilities[bad_indices + bom_indices]
-        probability_bom[bom_indices] += probabilities[bad_indices + bom_indices]
-  return (probability_bad, probability_bom)
+def L_config(decls, revealed, found, hand_size, active_wires, bad_set, bom_set):
+  """Likelihood of the cut observation under config ``(bad_set, bom_set)`` (model.md
+  §3.4), conditioned on "no bomb cut yet". Truthful hands (good, bomb-free, pinned to
+  their declared count) each contribute a plain hypergeometric; the free hands'
+  wire total ``t_free`` is split under the §3.4.1 uniform-placement law.
 
-
-def CombineProbs(probabilities_list):
-  if probabilities_list == []:
-    return np.array([])
-  num_tests = len(probabilities_list)
-  num_players = probabilities_list[0].shape[0]
-  num_dims = len(probabilities_list[0].shape)
-  probabilities = np.zeros([num_players]*num_dims)
-  for bad_set in combinations(range(num_players), num_dims):
-    probabilities[bad_set] = 1
-    for test in range(num_tests):
-      probabilities[bad_set] *= probabilities_list[test][bad_set]
-  if np.sum(probabilities) != 0:
-    probabilities /= np.sum(probabilities)
-  return probabilities
-
-
-def CombineNonHomoProbs(prob_bad, probs, num_bad, num_bom):
-  if prob_bad.size == 0:
-    return probs
-  num_players = prob_bad[0].size
-  new_probs = deepcopy(probs)
-  for bad_set in combinations(range(num_players), num_bad):
-    for bom_set in combinations(range(num_players), num_bom):
-      new_probs[bad_set + bom_set] *= prob_bad[bad_set]
-  if np.sum(new_probs) != 0:
-    new_probs /= np.sum(new_probs)
-  return new_probs
-
-
-def DisplayProbs(players, probs, probs_list, decls, revealed, found, hand_size, active_wires, pos_bad, num_bom):
+  ``M = 0``: the free set is exactly ``bad_set`` and ``L_bad`` collapses the whole
+  split in closed form. ``M = 1``: the bomb hand (``H-1`` slots, ``L_bomb_hand``) cannot
+  join the collapse, so the split between the bomb-free bad group and the bomb hand is
+  summed explicitly while ``L_bad`` still collapses the bad group internally.
+  Returns 0.0 when ``t_free`` is infeasible.
+  """
   num_players = decls.size
-  p_wire = np.zeros(num_players)
-  p_bomb = np.zeros(num_players)
-  comb_probs = np.zeros(num_players)
-  score = np.zeros(num_players)
-  p_wir_rand = 0
-  p_bom_rand = 0
-  p_bad_rand = 0
-  for i in range(len(pos_bad)):
-    _, prob_bomb = Separate(probs[i], pos_bad[i][0], num_bom)
-    for bom_set in combinations(range(num_players), num_bom):
-      for bom in bom_set:
-        if hand_size - revealed[bom] != 0:
-          p_bomb[bom] += pos_bad[i][1] * prob_bomb[bom_set] / (hand_size - revealed[bom])
-    comb_probs += pos_bad[i][1] * Flatten(CombineProbs(probs_list[i]))
-    total_probs = CombineNonHomoProbs(CombineProbs(probs_list[i][0:-1]), probs[i], pos_bad[i][0], num_bom)
-    p_wire += pos_bad[i][1] * P_wire(decls, total_probs, revealed, found, hand_size, active_wires + np.sum(found), pos_bad[i][0], num_bom)
-    curr_points = num_players - active_wires
-    score += pos_bad[i][1] * ((1 - p_bomb) * (p_wire * (curr_points + 1) + (1 - p_wire) * curr_points))
-    p_wir_rand += pos_bad[i][1] * active_wires / (num_players * hand_size - np.sum(revealed))
-    p_bom_rand += pos_bad[i][1] * num_bom / (num_players * hand_size - np.sum(revealed))
-    p_bad_rand += pos_bad[i][1] * pos_bad[i][0] / num_players
-  table = [["Player", "P_wire", "P_bomb", "P_bad", "Score"]] + [
-            [players[i], p_wire[i]*100, p_bomb[i]*100, comb_probs[i]*100, score[i]] for i in range(num_players)] + [
-            ["Average", p_wir_rand*100, p_bom_rand*100, p_bad_rand*100, np.sum(score)/num_players]]
-  print(tabulate(table, headers='firstrow', tablefmt='fancy_grid', floatfmt=(".1f", ".1f", ".1f", ".1f", ".3f")))
-  return
+  H = int(hand_size)
+  free = set(bad_set) | set(bom_set)
+  like = 1.0
+  for j in range(num_players):
+    if j not in free:
+      like *= uf.Lklhd(H, int(decls[j]), int(revealed[j]), int(found[j]))
+  truthful = sum(int(decls[j]) for j in range(num_players) if j not in free)
+  t_free = int(active_wires) + int(np.sum(found)) - truthful
+  if len(bom_set) == 0:  # M = 0: the free hands are the bad set; closed-form collapse
+    if not (0 <= t_free <= len(bad_set) * H):
+      return 0.0
+    return like * L_bad(H, t_free, revealed, found, bad_set)
+  # M = 1: one bomb holder h; split t_free between the bad group and the bomb hand
+  h = bom_set[0]
+  group = [g for g in bad_set if g != h]  # bomb-free bad hands
+  group_slots = len(group) * H
+  free_slots = group_slots + (H - 1)
+  if not (0 <= t_free <= free_slots):
+    return 0.0
+  denom = uf.C(t_free, free_slots)
+  if denom == 0:
+    return 0.0
+  split = 0.0
+  for w_bomb in range(t_free + 1):
+    w_grp = t_free - w_bomb
+    place = uf.C(w_grp, group_slots) * uf.C(w_bomb, H - 1)  # 0 when out of range
+    if place == 0:
+      continue
+    split += (place * L_bad(H, w_grp, revealed, found, group)
+              * L_bomb_hand(int(found[h]), int(revealed[h]), w_bomb, H))
+  return like * split / denom
 
+
+# --- the three belief functions (model.md §3.3, §3.4, §3.5) --------------------
 
 def ProbDeclaration(decls, hand_size, active_wires, num_bad, num_bom):
+  """Prior over configurations from the round's declarations alone (model.md §3.3).
+
+  Closed form (ADR 0007, with the lie-count factor kept):
+
+    P(config) ∝ (H+1)^{-|F|} · C(free_slots, t_free) / Π_{g in F} C(H, decls[g])
+
+  for the free set ``F = bad_set ∪ bom_set``, ``free_slots = Σ_{g in F}(H − [g bomb])``,
+  ``t_free = A − Σ_{truthful} decls[j]``. The ``(H+1)^{-|F|}`` factor cancels for
+  ``M = 0`` (``|F| = num_bad`` constant) but not for ``M = 1`` (it penalises a good
+  bomb-holder's extra liar). Falls back to the uniform distribution over valid configs
+  on a fully degenerate observation (§3.3). Returns a ``[N]*(num_bad+num_bom)`` tensor
+  summing to 1, non-zero only on sorted-index cells.
+  """
   num_players = decls.shape[0]
-  probs = np.zeros([num_players]*(num_bad + num_bom))
-  for bad_set in combinations(range(num_players), num_bad):
-    bad_wires = int(active_wires - np.sum(decls))
-    for bad in bad_set:
-      bad_wires += int(decls[bad])
-    for bom_set in combinations(range(num_players), num_bom):
-      bad_bom_set = tuple(set(bad_set) & set(bom_set))
-      bad_nbom_set = tuple(set(bad_set) - set(bom_set))
-      nbad_bom_set = tuple(set(bom_set) - set(bad_set))
-      liars_impossible = False
-      for nbad_bom in nbad_bom_set:
-        if hand_size - decls[nbad_bom] - 1 < 0:  # The bomb is not hidden in nbad_bom's hand
-          liars_impossible = True
-          break
-      if liars_impossible:
+  H = int(hand_size)
+  decls = decls.astype(int)
+  total = int(np.sum(decls))
+  probs = np.zeros([num_players] * (num_bad + num_bom))
+  for bad_set in itertools.combinations(range(num_players), num_bad):
+    for bom_set in itertools.combinations(range(num_players), num_bom):
+      free = set(bad_set) | set(bom_set)
+      t_free = int(active_wires) - (total - sum(int(decls[g]) for g in free))
+      free_slots = sum(H - (1 if g in bom_set else 0) for g in free)
+      if not (0 <= t_free <= free_slots):
         continue
-      combs = 0
-      liar_set = bad_bom_set + bad_nbom_set + nbad_bom_set
-      for short_ord_wires_dist in combinations_with_replacement(range(bad_wires + 1), len(liar_set)):
-        if sum(short_ord_wires_dist) != bad_wires:
-          continue
-        for short_wires_dist in multiset_permutations(short_ord_wires_dist):
-          wires_dist = decls.copy()
-          for wire in range(len(short_wires_dist)):
-            wires_dist[liar_set[wire]] = short_wires_dist[wire]
-          prob = 1
-          wires_impossible = False
-          for bad_bom in bad_bom_set:
-            if wires_dist[bad_bom] > decls[bad_bom]:  # bad_bom has more wires than declared
-              wires_impossible = True
-              break
-            else:  # bad_bom has =fewer wires than declared
-              prob *= comb(decls[bad_bom], wires_dist[bad_bom])
-          if wires_impossible:
-            continue
-          for bad_nbom in bad_nbom_set:
-            if wires_dist[bad_nbom] < decls[bad_nbom]:  # bad_nbom has fewer wires than declared
-              prob *= comb(decls[bad_nbom], wires_dist[bad_nbom])
-            else:  # bad_nbom has =more wires than declared
-              prob *= comb(hand_size - decls[bad_nbom], wires_dist[bad_nbom] - decls[bad_nbom])
-          for nbad_bom in nbad_bom_set:
-            wires_dist[nbad_bom] += decls[nbad_bom]
-            prob *= comb(hand_size - decls[nbad_bom] - 1, wires_dist[nbad_bom] - decls[nbad_bom])
-          new_combs = Cn(wires_dist)
-          probs[bad_set + bom_set] += prob * new_combs
-          combs += new_combs
-      if combs != 0:
-        probs[bad_set + bom_set] /= combs
-  if np.sum(probs) != 0:
-    probs /= np.sum(probs)
-  return probs
+      denom = 1.0
+      for g in free:
+        denom *= uf.C(int(decls[g]), H)
+      if denom == 0:
+        continue
+      lie_factor = (H + 1.0) ** (-len(free))  # each free hand is a uniform liar (ADR 0007)
+      probs[bad_set + bom_set] = lie_factor * uf.C(t_free, free_slots) / denom
+  total_mass = np.sum(probs)
+  if total_mass == 0:  # degeneracy: uniform over the valid configs (§3.3, ADR 0002)
+    for bad_set in itertools.combinations(range(num_players), num_bad):
+      for bom_set in itertools.combinations(range(num_players), num_bom):
+        probs[bad_set + bom_set] = 1.0
+    return probs / np.sum(probs)
+  return probs / total_mass
 
 
 def ProbCut(decls, prior, revealed, found, hand_size, active_wires, num_bad, num_bom):
+  """Bayesian posterior over configurations after a cut (model.md §3.4):
+
+    posterior(c) = prior(c) · L_config(c) / Σ_c′ prior(c′) · L_config(c′)
+
+  conditioned on "no bomb cut yet". ``active_wires`` is the **post-cut remaining**
+  safe-wire total. Returns the prior unchanged on a zero marginal (impossible
+  observation) or once a configuration is already certain. Returns a
+  ``[N]*(num_bad+num_bom)`` tensor summing to 1.
+  """
   num_players = decls.size
-  lklhds = np.zeros([num_players]*(num_bad + num_bom))
-  marginal = 0
-  for bad_set in combinations(range(num_players), num_bad):
-    bad_wires = int(active_wires - np.sum(decls))
-    for bad in bad_set:
-      bad_wires += int(decls[bad])
-    for bom_set in combinations(range(num_players), num_bom):
-      if prior[bad_set + bom_set] == 1:  # Bad guys and the bomb found
+  decls = decls.astype(int)
+  lklhd = np.zeros([num_players] * (num_bad + num_bom))
+  marginal = 0.0
+  for bad_set in itertools.combinations(range(num_players), num_bad):
+    for bom_set in itertools.combinations(range(num_players), num_bom):
+      idx = bad_set + bom_set
+      if prior[idx] == 1:  # configuration already certain; nothing to update
         return prior
-      liars_impossible = False
-      for bom in bom_set:
-        if revealed[bom] >= hand_size:  # All of bomber's hand is not bomb
-          liars_impossible = True
-          break
-        if bom in bad_set and hand_size + decls[bom] < bad_wires:
-          liars_impossible = True
-          break
-      if liars_impossible:
-        continue
-      combs = 0
-      liar_set = tuple(set(bad_set) | set(bom_set) - set(bad_set) & set(bom_set))
-      for short_ord_wires_dist in combinations_with_replacement(range(bad_wires + 1), len(liar_set)):
-        if sum(short_ord_wires_dist) != bad_wires:
-          continue
-        for short_wires_dist in multiset_permutations(short_ord_wires_dist):
-          wires_dist = decls.copy()
-          for wire in range(len(short_wires_dist)):
-            wires_dist[liar_set[wire]] = short_wires_dist[wire]
-          lklhd = 1
-          for player in range(num_players):
-            if wires_dist[player] < found[player]:
-              lklhd = 0
-              break
-            if player in bom_set:
-              if player in bad_set:
-                lklhd *= Lklhd(hand_size - 1, wires_dist[player], revealed[player], found[player])
-              else:
-                lklhd *= Lklhd(hand_size - 1, wires_dist[player] + decls[player], revealed[bom], found[bom])
-            else:
-              lklhd *= Lklhd(hand_size, wires_dist[player], revealed[player], found[player])
-          new_combs = Cn(wires_dist)
-          combs += new_combs
-          lklhds[bad_set + bom_set] += new_combs * lklhd
-      if combs != 0:
-        lklhds[bad_set + bom_set] /= combs
-      marginal += prior[bad_set + bom_set] * lklhds[bad_set + bom_set]
-  if marginal == 0:
+      lklhd[idx] = L_config(decls, revealed, found, hand_size, active_wires, bad_set, bom_set)
+      marginal += prior[idx] * lklhd[idx]
+  if marginal == 0:  # observation impossible under every config: keep the prior
     return prior
-  return prior * lklhds / marginal
+  return prior * lklhd / marginal
 
 
 def P_wire(decls, probs, revealed, found, hand_size, active_wires, num_bad, num_bom):
+  """Probability that cutting one of player i's face-down cards reveals a wire
+  (model.md §3.5). Mix over the config posterior: in each config a player is truthful
+  (``decls[i] − found[i]`` remaining wires) or a free hand (expected remaining wires
+  under the §3.4.1 split posterior given the observation, the bomb hand using the
+  must-not-draw weights). Each contribution is divided by the remaining face-down
+  cards ``H − revealed[i]`` (still counting the bomb card) and gated to a feasible
+  wire count. Players with no cards left score 0.
+  """
   num_players = decls.size
+  H = int(hand_size)
+  decls = decls.astype(int)
+  sum_found = int(np.sum(found))
   p_wire = np.zeros(num_players)
-  for bad_set in combinations(range(num_players), num_bad):
-    bad_wires = int(active_wires - np.sum(decls))
-    for bad in bad_set:
-      bad_wires += int(decls[bad])
-    for bom_set in combinations(range(num_players), num_bom):
-      combs = 0
-      wires_avg = np.zeros(num_players)
-      liar_set = tuple(set(bad_set) | set(bom_set) - set(bad_set) & set(bom_set))
-      for short_ord_wires_dist in combinations_with_replacement(range(bad_wires + 1), len(liar_set)):
-        if sum(short_ord_wires_dist) != bad_wires:
-          continue
-        for short_wires_dist in multiset_permutations(short_ord_wires_dist):
-          wires_dist = decls.copy()
-          for wire in range(len(short_wires_dist)):
-            wires_dist[liar_set[wire]] = short_wires_dist[wire]
-          new_combs = Cn(wires_dist)
-          wires_impossible = False
-          for player in liar_set:
-            if (
-              (wires_dist[player] > hand_size - revealed[player] - int(player in bom_set)) or
-              (player in bom_set and (
-                (player in bad_set and wires_dist[player] + found[player] > decls[player]) or
-                (player not in bad_set and wires_dist[player] + found[player] < decls[player])))
-            ):
-              wires_impossible = True
-              break
-          if wires_impossible:
+  for bad_set in itertools.combinations(range(num_players), num_bad):
+    for bom_set in itertools.combinations(range(num_players), num_bom):
+      p = probs[bad_set + bom_set]
+      if p == 0:
+        continue
+      free = sorted(set(bad_set) | set(bom_set))
+      bomb = bom_set[0] if num_bom else None
+      slots = {g: H - (1 if g == bomb else 0) for g in free}
+      free_slots = sum(slots.values())
+      truthful = sum(int(decls[j]) for j in range(num_players) if j not in free)
+      t_free = int(active_wires) + sum_found - truthful
+      remaining = np.full(num_players, np.nan)  # nan = skip this hand for this config
+      for j in range(num_players):
+        if j not in free:
+          remaining[j] = decls[j] - found[j]
+      sums = {g: 0.0 for g in free}
+      norm = 0.0
+      if 0 <= t_free <= free_slots:
+        for split in _free_splits(free, t_free, slots):
+          place = 1.0
+          obs = 1.0
+          for g in free:
+            wg = split[g]
+            place *= uf.C(wg, slots[g])
+            obs *= (L_bomb_hand(int(found[g]), int(revealed[g]), wg, H) if g == bomb
+                    else uf.Lklhd(H, wg, int(revealed[g]), int(found[g])))
+          weight = place * obs
+          if weight == 0:
             continue
-          wires_avg += wires_dist * new_combs
-          combs += new_combs
-      if combs != 0:
-        wires_avg /= combs
-      p_wire += wires_avg * probs[bad_set + bom_set]
-  (p_bad, _) = Separate(probs, num_bad, num_bom)
-  lin_probs = Flatten(p_bad)
-  for good in range(num_players):
-    p_wire[good] += (1 - lin_probs[good]) * (decls[good] - found[good])
-    if hand_size - revealed[good] > 0:
-      p_wire[good] /= hand_size - revealed[good]
+          for g in free:
+            sums[g] += weight * (split[g] - found[g])
+          norm += weight
+      if norm > 0:
+        for g in free:
+          remaining[g] = sums[g] / norm
+      for i in range(num_players):
+        cards_left = H - revealed[i]
+        r = remaining[i]
+        if cards_left > 0 and not np.isnan(r) and 0 <= r <= cards_left:
+          p_wire[i] += p * r / cards_left
   return p_wire
 
 
-def Play(players=["Alice", "Bob", "Clara", "Darryl", "Erica", "Fred"], initial_hand_size=5):
-  num_players = len(players)
-  num_bom = 1
-  if num_players < 4:
-    print("Not enough players")
-    return
-  elif num_players == 4:
-    pos_bad = [[1, 2/5], [2, 3/5]]
-  elif num_players < 7:
-    pos_bad = [[2, 1.0]]
-  elif num_players == 7:
-    pos_bad = [[2, 3/8], [3, 5/8]]
-  elif num_players == 8:
-    pos_bad = [[3, 1.0]]
-  else:
-    print("Too many players")
-    return
-  hand_size = initial_hand_size
-  num_wires = num_players * hand_size
-  active_wires = num_players
-  zeros = np.zeros(num_players)
-  # Initialize probabilities
-  probabilities_list = [[] for _ in range(len(pos_bad))]
-  # Starting turns
-  while hand_size > 1:
-    print("\n\n Round ", initial_hand_size - hand_size + 1)
-    # Declare your wires
-    declarations = zeros.copy()
-    for i in range(num_players):
-      declarations[i] = int(input("How many wires does " + players[i] + " say they have? "))
-    print("d:", declarations)
-    # Calculate probabilities
-    probabilities = [0 for _ in range(len(pos_bad))]
-    prob_bad = [0 for _ in range(len(pos_bad))]
-    for i in range(len(pos_bad)):
-      probabilities[i] = ProbDeclaration(declarations, hand_size, active_wires, pos_bad[i][0], num_bom)
-      prob_bad[i], _ = Separate(probabilities[i], pos_bad[i][0], num_bom)
-      probabilities_list[i].append(deepcopy(prob_bad[i]))
-    DisplayProbs(players, probabilities, probabilities_list, declarations, zeros, zeros, hand_size, active_wires, pos_bad, num_bom)
-    # Cut wires
-    found = zeros.copy()
-    revealed = zeros.copy()
-    for cut in range(num_players):
-      print("\n Cut number", cut + 1)
-      cutee_str = input("Who's wire has been cut? ")
-      while cutee_str not in players:
-        cutee_str = input("You must have made a typo. Who? ")
-      for player in range(num_players):
-        if players[player] == cutee_str:
-          cutee = player
-      revealed[cutee] += 1
-      num_wires -= 1
-      shown = int(input("Did you reveal\n" + " 0- an inactive wire\n 1- an active wire\n 2- the bomb"))
-      while shown not in [0, 1, 2]:
-        shown = int(input("Sorry, I'm looking for a 0, a 1 or a 2 here."))
-      if shown == 2:
-        print("The Bomb was detonated. Bad guys win!")
-        return
-      if shown == 1:
-        found[cutee] += 1
-        active_wires -= 1
-      print("r:", revealed)
-      print("f:", found)
-      # Update probabilities
-      probs = [0 for _ in range(len(pos_bad))]
-      prob_bad = [0 for _ in range(len(pos_bad))]
-      for i in range(len(pos_bad)):
-        probs[i] = ProbCut(declarations, probabilities[i], revealed, found, hand_size, active_wires + np.sum(found), pos_bad[i][0], num_bom)
-        prob_bad[i], _ = Separate(probs[i], pos_bad[i][0], num_bom)
-        probabilities_list[i][-1] = deepcopy(prob_bad[i])
-      DisplayProbs(players, probs, probabilities_list, declarations, revealed, found, hand_size, active_wires, pos_bad, num_bom)
-      # Test for victory
-      if active_wires <= 0:
-        print("All wires have been cut. Good guys win!")
-        return
-    # Next round
-    hand_size -= 1
-  print("Out of time. Bad guys win!")
-  return
+# --- marginals (model.md §3.5) -------------------------------------------------
+
+def Separate(probabilities, num_bad, num_bom):
+  """Marginalise the config tensor into ``(prob_bad, prob_bom)``: the bad-set marginal
+  ``[N]*num_bad`` (``P(bad set) = Σ_bomb probs``, the **persistent** belief) and the
+  bomb marginal ``[N]*num_bom`` (``P(bomb holders) = Σ_bad probs``, read **per round**;
+  never combined across rounds, §3.5). For ``num_bom = 0`` the bomb marginal is the
+  scalar total."""
+  num_players = probabilities.shape[0]
+  prob_bad = np.zeros([num_players] * num_bad)
+  prob_bom = np.zeros([num_players] * num_bom)
+  for bad in itertools.combinations(range(num_players), num_bad):
+    for bom in itertools.combinations(range(num_players), num_bom):
+      prob_bad[bad] += probabilities[bad + bom]
+      prob_bom[bom] += probabilities[bad + bom]
+  return prob_bad, prob_bom
 
 
-def PlaySubjective(other_players=["Alice", "Bob", "Clara", "Darryl", "Erica"], initial_hand_size=5):
-  # Initialize game
-  num_players = len(other_players)
-  hand_size = initial_hand_size
-  num_wires = (num_players + 1) * hand_size
-  active_wires = num_players + 1
-  is_bad = int(input("Are you a\n 0- good guy\n 1- bad guy"))
-  while is_bad not in [0, 1]:
-    is_bad = int(input("Sorry, I'm looking for a 0 or a 1 here."))
-  num_bom = 1
-  if num_players < 4:
-    print("Not enough players")
-    return
-  elif num_players == 4:
-    pos_bad = [[1, 2/5], [2, 3/5]]
-  elif num_players < 7:
-    pos_bad = [[2, 1.0]]
-  elif num_players == 7:
-    pos_bad = [[2, 3/8], [3, 5/8]]
-  elif num_players == 8:
-    pos_bad = [[3, 1.0]]
-  else:
-    print("Too many players")
-    return
-  for i in range(len(pos_bad)):
-    pos_bad[i][0] -= is_bad
-  zeros = np.zeros(num_players)
-  probabilities_list = [[] for _ in range(len(pos_bad))]
-  # Starting turns
-  while hand_size > 1:
-    print("\n\n Round ", initial_hand_size - hand_size + 1)
-    # Wire declarations
-    player_bomb = int(input("Do you\n 0- not have the bomb\n 1- have the bomb"))
-    while player_bomb not in [0, 1]:
-      player_bomb = int(input("Sorry, I'm looking for a 0 or a 1 here."))
-    pos_bomb = num_bom - player_bomb
-    player_wires = int(input("How many wires do you have?"))
-    pos_wires = active_wires - player_wires
-    decls = zeros.copy()
-    for i in range(num_players):
-      decls[i] = int(input("How many wires does " + other_players[i] + " say they have? "))
-    print("d:", decls)
-    # Calculate probabilities
-    probabilities = [0 for _ in range(len(pos_bad))]
-    prob_bad = [0 for _ in range(len(pos_bad))]
-    for i in range(len(pos_bad)):
-      probabilities[i] = ProbDeclaration(decls, hand_size, pos_wires, pos_bad[i][0], pos_bomb)
-      prob_bad[i], _ = Separate(probabilities[i], pos_bad[i][0], pos_bomb)
-      probabilities_list[i].append(deepcopy(prob_bad[i]))
-    DisplayProbs(other_players, probabilities, probabilities_list, decls, zeros, zeros, hand_size, pos_wires, pos_bad, pos_bomb)
-    # Cut wires
-    found = zeros.copy()
-    revealed = zeros.copy()
-    for cut in range(num_players):
-      print("\n Cut number", cut + 1)
-      cutee_str = input("Who's wire has been cut? ")
-      num_wires -= 1
-      if cutee_str == "me":
-        shown = int(input("Did you reveal\n 0- an inactive wire\n 1- an active wire\n 2- the bomb"))
-        while shown not in [0, 1, 2]:
-          shown = int(input("Sorry, I'm looking for a 0, a 1 or a 2 here."))
-        if shown == 2:
-          print("The Bomb was detonated. Bad guys win!")
-          return
-        if shown == 1:
-          active_wires -= 1
-        continue
-      while cutee_str not in other_players:
-        cutee_str = input("You must have made a typo. Who? ")
-      for player in range(num_players):
-        if other_players[player] == cutee_str:
-          cutee = player
-      shown = int(input("Did you reveal\n 0- an inactive wire\n 1- an active wire\n 2- the bomb"))
-      while shown not in [0, 1, 2]:
-        shown = int(input("Sorry, I'm looking for a 0, a 1 or a 2 here."))
-      if shown == 2:
-        print("The Bomb was detonated. Bad guys win!")
-        return
-      if shown == 1:
-        active_wires -= 1
-        found[cutee] += 1
-      print("r:", revealed)
-      print("f:", found)
-      # Update probabilities
-      probs = [0 for _ in range(len(pos_bad))]
-      prob_bad = [0 for _ in range(len(pos_bad))]
-      for i in range(len(pos_bad)):
-        probs[i] = ProbCut(decls, probabilities[i], revealed, found, hand_size, pos_wires + np.sum(found), pos_bad[i][0], pos_bomb)
-        prob_bad[i], _ = Separate(probs[i], pos_bad[i][0], pos_bomb)
-        probabilities_list[i][-1] = deepcopy(prob_bad[i])
-      DisplayProbs(other_players, probs, probabilities_list, decls, revealed, found, hand_size, pos_wires, pos_bad, pos_bomb)
-      # Test for victory
-      if active_wires <= 0:
-        print("All wires have been cut. Good guys win!")
-        return
-    # Next round
-    hand_size -= 1
-  print("Out of time. Bad guys win!")
-  return
-
-def DistributeWires(num_players, hand_size, active_wires, num_bom):
-  wires = np.zeros(num_players, dtype=np.int8)
-  given = 0
-  while given < active_wires:
-    randy = randint(0, num_players - 1)
-    if wires[randy] < hand_size:
-      wires[randy] += 1
-      given += 1
-  bombs = np.zeros(num_players, dtype=np.int8)
-  bom = 0
-  while bom < num_bom:
-    randy = randint(0, num_players - 1)
-    if bombs[randy] == 0 and wires[randy] < hand_size:
-      bombs[randy] = 1
-      bom += 1
-  return wires, bombs
-
-def PlayAuto(CutStrategy, num_players, initial_hand_size=5, verbosity=2):
-  num_bom = 1
-  if num_players < 4:
-    print("Not enough players")
-    return
-  elif num_players == 4:
-    # num_bad = 2 - int(randint(0, 4) < 2)
-    # pos_bad = [[1, 2/5], [2, 3/5]]
-    num_bad = 1
-    pos_bad = [[1, 1.0]]
-  elif num_players < 7:
-    num_bad = 2
-    pos_bad = [[2, 1.0]]
-  elif num_players == 7:
-    num_bad = 3 - int(randint(0, 7) < 3)
-    pos_bad = [[2, 3/8], [3, 5/8]]
-  elif num_players == 8:
-    num_bad = 3
-    pos_bad = [[3, 1.0]]
-  else:
-    print("Too many players")
-    return
-  hand_size = initial_hand_size
-  num_wires = num_players * hand_size
-  active_wires = num_players
-  zeros = np.zeros(num_players, dtype=np.int8)
-  # Distributing roles
-  roles = zeros.copy()
-  evil = 0
-  while evil < num_bad:
-    randy = randint(0, num_players - 1)
-    if roles[randy] == 0:
-      roles[randy] = 1
-      evil += 1
-  if verbosity > 0:
-    print("Roles : ",  roles)
-  # Initialize probabilities
-  probabilities_list = [[] for _ in range(len(pos_bad))]
-  # Starting turns
-  while hand_size > 1:
-    if verbosity > 0:
-      print("Round ", initial_hand_size - hand_size + 1)
-    # Distribute wires
-    wires, bombs = DistributeWires(num_players, hand_size, active_wires, num_bom)
-    if verbosity > 0:
-      print("w:", wires)
-      print("b:", bombs)
-    # Declare your wires
-    declarations = wires.copy()
-    for player in range(num_players):
-      maxx = min(hand_size, active_wires)
-      if roles[player] == 1:
-        if bombs[player] == 1:
-          declarations[player] = randint(wires[player], maxx)
-        else:
-          declarations[player] = randint(0, maxx)
-      elif bombs[player] == 1:
-        declarations[player] = randint(0, wires[player])
-    if verbosity > 0:
-      print("d:", declarations)
-    # Calculate probabilities
-    probabilities = [0 for _ in range(len(pos_bad))]
-    prob_bad = [0 for _ in range(len(pos_bad))]
-    for i in range(len(pos_bad)):
-      probabilities[i] = ProbDeclaration(declarations, hand_size, active_wires, pos_bad[i][0], num_bom)
-      prob_bad[i], _ = Separate(probabilities[i], pos_bad[i][0], num_bom)
-      probabilities_list[i].append(deepcopy(prob_bad[i]))
-    if verbosity > 1:
-      players = []
-      for player in range(num_players):
-        if roles[player] == 1:
-          if bombs[player] == 1:
-            players += ["liar - bomb"]
-          else:
-            players += ["liar"]
-        elif bombs[player] == 1:
-          players += ["good - bomb"]
-        else:
-          players += ["good"]
-      DisplayProbs(players, probabilities, probabilities_list, declarations, zeros, zeros, hand_size, active_wires, pos_bad, num_bom)
-    # Cut wires
-    found = zeros.copy()
-    revealed = zeros.copy()
-    probs = deepcopy(probabilities)
-    cutee = -1
-    for cut in range(num_players):
-      if verbosity > 0:
-        print("Cut number", cut + 1)
-      new_cutee = CutStrategy(declarations, probabilities_list, probs, revealed, found, hand_size, active_wires, cut, cutee, pos_bad, num_bom)
-      if new_cutee == cutee or revealed[cutee] >= hand_size:
-        if verbosity > 0:
-          print("CutStrategy broke the rules. Bad guys win!")
-        final_probs = np.zeros(num_players)
-        for i in range(len(pos_bad)):
-          final_probs += pos_bad[i][1] * Flatten(CombineProbs(probabilities_list[i]))
-        return (0, final_probs, roles)
-      else: cutee = new_cutee
-      randy = randint(1, hand_size - revealed[cutee])
-      if bombs[cutee] == 1 and randy == hand_size - revealed[cutee]:
-        if verbosity > 0:
-          print("The Bomb was detonated. Bad guys win!")
-        final_probs = np.zeros(num_players)
-        for i in range(len(pos_bad)):
-          final_probs += pos_bad[i][1] * Flatten(CombineProbs(probabilities_list[i]))
-        return (0, final_probs, roles)
-      elif randy <= wires[cutee] - found[cutee]:
-        found[cutee] += 1
-        active_wires -= 1
-      revealed[cutee] += 1
-      num_wires -= 1
-      if verbosity > 0:
-        print("r:", revealed)
-        print("f:", found)
-      # Update probabilities
-      probs = [0 for _ in range(len(pos_bad))]
-      prob_bad = [0 for _ in range(len(pos_bad))]
-      for i in range(len(pos_bad)):
-        probs[i] = ProbCut(declarations, probabilities[i], revealed, found, hand_size, active_wires + np.sum(found), pos_bad[i][0], num_bom)
-        prob_bad[i], _ = Separate(probs[i], pos_bad[i][0], num_bom)
-        probabilities_list[i][-1] = deepcopy(prob_bad[i])
-      if verbosity > 1:
-        DisplayProbs(players, probs, probabilities_list, declarations, revealed, found, hand_size, active_wires, pos_bad, num_bom)
-      # Test for victory
-      if active_wires <= 0:
-        if verbosity > 0:
-          print("Good guys win!")
-        final_probs = np.zeros(num_players)
-        for i in range(len(pos_bad)):
-          final_probs += pos_bad[i][1] * Flatten(CombineProbs(probabilities_list[i]))
-        return (1, final_probs, roles)
-    # Next round
-    hand_size -= 1
-    if verbosity > 0:
-      print("\n")
-  if verbosity > 0:
-    print("Bad guys win!")
-  final_probs = np.zeros(num_players)
-  for i in range(len(pos_bad)):
-    final_probs += pos_bad[i][1] * Flatten(CombineProbs(probabilities_list[i]))
-  return (0, final_probs, roles)
-
-
-def CutRandom(decls, probs_list, probs, revealed, found, hand_size, active_wires, cut, curr_cut, pos_bad, num_bom):
-  num_players = revealed.size
-  cutee = randint(0, num_players - 1)
-  while revealed[cutee] >= hand_size or cutee == curr_cut:
-    cutee = randint(0, num_players - 1)
-  return cutee
-
-
-def CutMaxScore(decls, probs_list, probs, revealed, found, hand_size, active_wires, cut, curr_cut, pos_bad, num_bom):
-  num_players = decls.size
-  score = np.zeros(num_players)
-  for i in range(len(pos_bad)):
-    p_wire = P_wire(decls, probs[i], revealed, found, hand_size, active_wires + np.sum(found), pos_bad[i][0], num_bom)
-    _, prob_bomb = Separate(probs[i], pos_bad[i][0], num_bom)
-    p_bomb = np.zeros(num_players)
-    for j in range(num_players):
-      if hand_size - revealed[j] != 0:
-        p_bomb[j] = prob_bomb[j] / (hand_size - revealed[j])
-    curr_points = num_players - active_wires
-    score += pos_bad[i][1] * ((1 - p_bomb) * (p_wire * (curr_points + 1) + (1 - p_wire) * curr_points))
-  cutee = -1
-  max_score = 0
-  for i in range(num_players):
-    if revealed[i] < hand_size and i != curr_cut:
-      if score[i] > max_score:
-        cutee = i
-        max_score = score[i]
-  return cutee
-
-
-def Test(strategies, num_players, num_games, init_hand_size=5):
-  win_rate = [0]  * len(strategies)
-  suspicion = [0] * len(strategies)
-  for strat in range(len(strategies)):
-    for _ in range(num_games):
-      (is_win, probs, roles) = PlayAuto(strategies[strat], num_players, init_hand_size, 0)
-      win_rate[strat] += is_win
-      culprits = []
-      for player in range(num_players):
-        if roles[player] == 1:
-          culprits.append(player)
-      for j in range(len(culprits)):
-        suspicion[strat] += probs[culprits[j]] / len(culprits)
-    win_rate[strat] /= num_games
-    suspicion[strat] /= num_games
-  return (win_rate, suspicion)
-
-# %%
-
-# print(PlayAuto(CutMaxScore, 5))
-
-def UnitTest(num_players=5, hand_size=5, active_wires=5, num_bad=2, num_bom=1):
-  zeros = np.zeros(num_players)
-  pos_bad = [[2, 1.0]]
-  decls = np.array([5, 1, 4, 0, 0])
-  prior = ProbDeclaration(decls, hand_size, active_wires, num_bad, num_bom)
-  revealed = np.array([0, 3, 2, 0, 0])
-  found = np.array([0, 0, 0, 0, 0])
-  prob_bad_old, _ = Separate(ProbCut(decls, prior, revealed, found, hand_size, active_wires, num_bad, num_bom), num_bad, num_bom)
-  probabilities_list = [[prob_bad_old]]
-  hand_size -= 1
-  declarations = np.array([2, 0, 2, 0, 1])
-  probabilities = [ProbDeclaration(declarations, hand_size, active_wires, num_bad, num_bom)]
-  prob_bad, _ = Separate(probabilities[0], num_bad, num_bom)
-  probabilities_list[0].append(deepcopy(prob_bad))
-  DisplayProbs(["liar", "good", "liar", "good", "good - bomb"], probabilities, probabilities_list, declarations, zeros, zeros, hand_size, active_wires, pos_bad, num_bom)
-
-def UnitTestDeclarationSimple():
-  num_bom = 1
-  num_bad = 1
-  for hand_size in [2, 3, 4, 5]:
-    for active_wires in range(4):
-      for wires_dist_ord in combinations_with_replacement(range(hand_size), 4):
-        if sum(wires_dist_ord) != active_wires:
-          continue
-        for wires_dist in multiset_permutations(wires_dist_ord):
-          for bad_lie in range(hand_size):
-            for bom_lie in range(wires_dist[1]):
-              decls = np.array([bad_lie, bom_lie, wires_dist[2], wires_dist[3]])
-              prob = ProbDeclaration(decls, hand_size, active_wires, num_bad, num_bom)
-              assert np.isclose(np.sum(prob), 1.0), f"ProbDeclaration {prob} does not sum to 1 for {num_bad} bad, {hand_size} hand size, {active_wires} wires, and {decls}"
-              assert np.all(prob >= 0), f"ProbDeclaration {prob} has negative probabilities for {num_bad} bad, {hand_size} hand size, {active_wires} wires, and {decls}"
-              assert np.all(prob <= 1), f"ProbDeclaration {prob} has probabilities greater than 1 for {num_bad} bad, {hand_size} hand size, {active_wires} wires, and {decls}"
-
-def UnitTestDeclaration():
-  num_bom = 1
-  for num_players in range(4, 7):  # Limited to 6 players due to combinatorial explosion
-    if num_players == 4:
-      pos_bad = [[1, 2/5], [2, 3/5]]
-    elif num_players < 7:
-      pos_bad = [[2, 1.0]]
-    elif num_players == 7:
-      pos_bad = [[2, 3/8], [3, 5/8]]
-    elif num_players == 8:
-      pos_bad = [[3, 1.0]]
-    for pos in range(len(pos_bad)):
-      num_bad = pos_bad[pos][0]
-      for hand_size in tqdm([2, 3, 4, 5]):
-        for active_wires in range(num_players):
-          for wires_dist_ord in combinations_with_replacement(range(hand_size), num_players):
-            if sum(wires_dist_ord) != active_wires:
-              continue
-            for wires_dist in multiset_permutations(wires_dist_ord):
-              for bad_lie_dist in combinations_with_replacement(range(hand_size), num_bad):
-                for bom_lie in range(wires_dist[num_bad]):
-                  decls = np.array(list(bad_lie_dist) + [bom_lie] + list(wires_dist[num_bad + 1:]))
-                  prob = ProbDeclaration(decls, hand_size, active_wires, num_bad, num_bom)
-                  assert np.isclose(np.sum(prob), 1.0), f"ProbDeclaration {prob} does not sum to 1 for {num_bad} bad, {hand_size} hand size, {active_wires} wires, and {decls}"
-                  assert np.all(prob >= 0), f"ProbDeclaration {prob} has negative probabilities for {num_bad} bad, {hand_size} hand size, {active_wires} wires, and {decls}"
-                  assert np.all(prob <= 1), f"ProbDeclaration {prob} has probabilities greater than 1 for {num_bad} bad, {hand_size} hand size, {active_wires} wires, and {decls}"
-
-def UnitTestCutSimple():
-  num_bom = 1
-  num_bad = 1
-  for hand_size in tqdm([2, 3, 4, 5]):
-    for active_wires in range(4):
-      for wires_dist_ord in combinations_with_replacement(range(hand_size), 4):
-        if sum(wires_dist_ord) != active_wires:
-          continue
-        for wires_dist in multiset_permutations(wires_dist_ord):
-          for bad_lie in range(hand_size):
-            for bom_lie in range(wires_dist[1]):
-              decls = np.array([bad_lie, bom_lie, wires_dist[2], wires_dist[3]])
-              prior = ProbDeclaration(decls, hand_size, active_wires, num_bad, num_bom)
-              for revealed_dist in combinations_with_replacement(range(hand_size), 4):
-                revealed = np.array(list(revealed_dist))
-                for found_dist in combinations_with_replacement(range(hand_size), 4):
-                  if sum(found_dist) > active_wires:
-                    continue
-                  found = np.array(list(found_dist))
-                  prob = ProbCut(decls, prior, revealed, found, hand_size, active_wires, num_bad, num_bom)
-                  assert np.isclose(np.sum(prob), 1.0), f"ProbCut {prob} does not sum to 1 for {num_bad} bad, {hand_size} hand size, {active_wires} wires, {decls} declared, {revealed} revealed, {found} found"
-                  assert np.all(prob >= 0), f"ProbCut {prob} has negative probabilities for {num_bad} bad, {hand_size} hand size, {active_wires} wires, {decls} declared, {revealed} revealed, {found} found"
-                  assert np.all(prob <= 1), f"ProbCut {prob} has probabilities greater than 1 for {num_bad} bad, {hand_size} hand size, {active_wires} wires, {decls} declared, {revealed} revealed, {found} found"
-
-def UnitTestCut():
-  num_bom = 1
-  num_players = 4  # Limited to 4 players due to combinatorial explosion
-  pos_bad = [[1, 2/5], [2, 3/5]]
-  for pos in range(len(pos_bad)):
-    num_bad = pos_bad[pos][0]
-    for hand_size in tqdm([2, 3, 4, 5]):
-      for active_wires in range(num_players):
-        for wires_dist_ord in combinations_with_replacement(range(hand_size), num_players):
-          if sum(wires_dist_ord) != active_wires:
-            continue
-          for wires_dist in multiset_permutations(wires_dist_ord):
-            for bad_lie_dist in combinations_with_replacement(range(hand_size), num_bad):
-              for bom_lie in range(wires_dist[num_bad]):
-                decls = np.array(list(bad_lie_dist) + [bom_lie] + list(wires_dist[num_bad + 1:]))
-                prior = ProbDeclaration(decls, hand_size, active_wires, num_bad, num_bom)
-                for revealed_dist in combinations_with_replacement(range(hand_size), num_players):
-                  revealed = np.array(list(revealed_dist))
-                  for found_dist in combinations_with_replacement(range(hand_size), num_players):
-                    if sum(found_dist) > active_wires:
-                      continue
-                    found = np.array(list(found_dist))
-                    prob = ProbCut(decls, prior, revealed, found, hand_size, active_wires, num_bad, num_bom)
-                    assert np.isclose(np.sum(prob), 1.0), f"ProbCut {prob} does not sum to 1 for {num_bad} bad, {hand_size} hand size, {active_wires} wires, {decls} declared, {revealed} revealed, {found} found"
-                    assert np.all(prob >= 0), f"ProbCut {prob} has negative probabilities for {num_bad} bad, {hand_size} hand size, {active_wires} wires, {decls} declared, {revealed} revealed, {found} found"
-                    assert np.all(prob <= 1), f"ProbCut {prob} has probabilities greater than 1 for {num_bad} bad, {hand_size} hand size, {active_wires} wires, {decls} declared, {revealed} revealed, {found} found"
-
-# from tqdm import tqdm
-# UnitTestDeclaration()
-# UnitTestCut()
+def DeMatrix(prob_bad):
+  """Reduce a bad-set marginal ``[N]*num_bad`` to a per-player ``P(player i bad)``
+  vector by summing every bad set that contains ``i``. The entries sum to ``num_bad``
+  (each bad set contributes to its members)."""
+  num_players = prob_bad.shape[0]
+  num_bad = prob_bad.ndim
+  line = np.zeros(num_players)
+  for bad in itertools.combinations(range(num_players), num_bad):
+    for i in bad:
+      line[i] += prob_bad[bad]
+  return line
