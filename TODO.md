@@ -161,10 +161,20 @@ weighting was wrong (e.g. `bg=2,H=2`: `(¼,½,¼)` vs correct `(⅙,⅔,⅙)`).
       per-round P(bomb) column is never combined (§3.8.3). The old strategic heuristics,
       the `tabulate`/`DisplayProbs`/`CombineNonHomoProbs` dead code, and the `uf.C`
       negative-argument trap are gone.
-- [ ] **`TwoBadGuysOneBomb.py`** (`B=2, M=1`) — ⏭ next; same playbook over the
-      `(bad pair, bomb)` config space, combining A2 (§3.4.1 pair split) + §3.8.
-- [ ] **`General.py`** — reconcile to the canonical forms; the end target. Carries
-      the `P_wire` ungated-good-branch bug (and likely more — not yet trusted).
+- [x] **`TwoBadGuysOneBomb.py`** (`B=2, M=1`) — ✅ done. All three functions migrated to
+      the unified model over the `N×N×N` `(bad pair, bomb)` config space, combining A2
+      (§3.4.1 pair split, reusing `L_bad_pair`) + §3.8 (the bomb as a must-not-draw card,
+      reusing `L_bomb_hand`). `ProbDeclaration` is the closed form
+      `C(free_slots, t_free)/Π C(H, decls)` (`free_slots = 2H−1` with the bomb on a bad
+      guy, `3H−1` on a good guy); `ProbCut`/`P_wire` split `t_free` between the bad pair
+      and the bomb hand. Validated against an independent `(b1,b2,h)`-enumeration oracle
+      (explicit free-hand split, no closed form) and two beats-random simulations
+      (P(bad) ~0.65 per true bad guy, per-round P(bomb) ~0.30 vs 0.167). `CombineProbs`
+      accumulates only the P(bad pair) matrix; the per-round P(bomb) column is never
+      combined (§3.8.3). The old strategic heuristics and the `tabulate`/`DisplayProbs`/
+      `CombineNonHomoProbs`/`ProbSus`/cut-strategy dead code are gone.
+- [ ] **`General.py`** — ⏭ next; reconcile to the canonical forms; the end target.
+      Carries the `P_wire` ungated-good-branch bug (and likely more — not yet trusted).
 
 ### B3 — Downstream (blocked until the backend is finalised)
 

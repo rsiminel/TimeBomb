@@ -15,8 +15,8 @@ canonical implementation they converge toward.
 | 1 | `OneBadGuyNoBomb.py`    | `B=1, M=0`   | ✅ done   |
 | 2 | `TwoBadGuysNoBomb.py`   | `B=2, M=0`   | ✅ done   |
 | 3 | `OneBadGuyOneBomb.py`   | `B=1, M=1`   | ✅ done   |
-| 4 | `TwoBadGuysOneBomb.py`  | `B=2, M=1`   | ⏭ next   |
-| 5 | `General.py`            | arbitrary    | pending  |
+| 4 | `TwoBadGuysOneBomb.py`  | `B=2, M=1`   | ✅ done   |
+| 5 | `General.py`            | arbitrary    | ⏭ next   |
 
 Downstream, **unblocked only after the backend is done**:
 
@@ -179,7 +179,33 @@ all five criteria. Highlights:
   bomb looks bad — and the per-round P(bomb) column puts ~0.30 on the true holder
   (top-1 ~0.42) vs the same baseline.
 
-### 4. `TwoBadGuysOneBomb.py` — ⏭ next
+### 4. `TwoBadGuysOneBomb.py` — ✅ done
 
 `B=2, M=1`: combines the `B>1` pair structure (§3.4.1) with the bomb sub-model (§3.8).
-Same playbook over the `(bad pair, bomb)` config space.
+The belief state is the `N×N×N` tensor `probs[b1][b2][h]` over the `(bad pair, bomb)`
+config space (`b1 > b2`, any `h`, `h` allowed to coincide with a bad guy). Meets all
+five criteria. Highlights:
+
+- All three model functions migrated to the unified model. `ProbDeclaration` is the
+  closed form `C(free_slots, t_free) / Π_{g free} C(H, decls[g])` with
+  `free_slots = 2H−1` when the bomb sits with a bad guy and `3H−1` when it sits with a
+  good guy (the bomb eats one slot). `ProbCut` reuses the verified `L_bad_pair`
+  (§3.4.1) and `L_bomb_hand` (§3.8) helpers, splitting `t_free` between the bad pair
+  and the bomb hand; `P_wire` takes the bomb-aware §3.4.1 split-posterior expected
+  wires. The old strategic over/under-declare heuristics, the `tabulate`/`DisplayProbs`,
+  the `CombineNonHomoProbs`/`ProbSus` dead code, and the cut-strategy zoo are gone.
+- `CombineProbs` accumulates only the P(bad **pair**) matrix marginal — the per-round
+  P(bomb) column is never combined (§3.8.3); degeneracy falls back to uniform over
+  pairs. `DeTensor` yields `(pair matrix, bomb vector)`; `DeMatrix` reduces the pair
+  matrix to per-player P(bad). Integer arrays throughout; clean `PlayAuto`.
+- `test_TwoBadGuysOneBomb.py` (12 tests) checks the math against an independent
+  `(b1, b2, h)`-enumeration `math.comb` oracle that sums the free-hand wire split
+  explicitly (no closed form, no `L_bad_pair` reuse), plus two end-to-end accuracy
+  tests: over 400 games the combined belief puts ~0.65 on each true bad guy vs ~0.18
+  on the good ones (baseline 0.33), and the per-round P(bomb) column puts ~0.30 on the
+  true holder vs the 0.167 baseline.
+
+### 5. `General.py` — ⏭ next
+
+Reconcile to the canonical forms validated across variants 1–4; the end target. Still
+carries the `P_wire` ungated-good-branch bug (and likely more — not yet trusted).
