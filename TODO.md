@@ -279,10 +279,23 @@ infrastructure).
 
 ### D4 — Broader test coverage
 
-- [ ] Beyond the brute-force-correctness + beats-random pair: property-based / fuzz tests
-      over the distribution invariants; a `P(bad)`/`P(bomb)` calibration test (shared
-      prerequisite for the A6 panel and A5 tempering); cross-variant consistency checks
-      against `General.py`; and regression fixtures pinning known belief vectors.
+- [x] **`P(bad)`/`P(bomb)` calibration** (the shared prerequisite for the A6 panel and A5
+      tempering) — `timebomb/Calibration.py` (reliability table + ECE + collectors) and
+      `tests/test_calibration.py`. `P(bad)` ECE ≈ 0.009 and `P(bomb)` ≈ 0.008 at N=5: the
+      belief is calibrated, so the panel's risk numbers can be trusted and **A5 tempering
+      stays unwarranted** (no overconfidence). Building it **found and fixed two
+      simulator/model mismatches** (the inference was already oracle-correct): `General.PlayAuto`
+      dealt wires uniformly over *players* not *slots* (`DistributeWires`), and folded the
+      bomb-detonating cut into the role belief as a "no-bomb" observation — together they had
+      inflated `P(bad)` ECE to ~0.026. Cross-variant consistency is also covered (the
+      `test_General.py` panel/marginal checks against `TwoBadGuysOneBomb`).
+- [ ] Still open: property-based / fuzz tests over the distribution invariants; regression
+      fixtures pinning known belief vectors; calibration at the joint-`num_bad` counts (N=4/N=7)
+      and a `P(num_bad)` reliability check.
+- [ ] **Carry to the four variants (minor):** their `PlayAuto` simulators share the
+      player-uniform deal bug (`DistributeWires`-style loop). It does not affect their
+      oracle-validated inference or change their beats-random verdicts, so it is low priority,
+      but worth aligning to the slot-uniform deal for consistency.
 
 ### D5 — Packaging
 

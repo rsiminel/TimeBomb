@@ -139,13 +139,18 @@ is correct and trusted.
   elementwise `CombineProbs` product. Harden it: ε-floor (no unrecoverable hard `0`),
   log-space accumulation (underflow), and a graceful response to inconsistent
   declarations. The first two land with `General.py` (ADR 0005); the third is new.
-- **Broader test coverage.** The suites today pair an independent `math.comb` brute force
-  (correctness) with an end-to-end beats-random simulation (predictive usefulness). Worth
-  adding: property-based / fuzz testing (e.g. Hypothesis) over the distribution
-  invariants; a calibration test (do stated `P(bad)`/`P(bomb)` match empirical
-  frequencies? — a shared prerequisite for the cut panel and tempering); cross-variant
-  consistency checks (a variant must agree with `General.py` on its own config); and
-  regression fixtures pinning known belief vectors.
+- **Broader test coverage.** The suites pair an independent `math.comb` brute force
+  (correctness) with an end-to-end beats-random simulation (predictive usefulness).
+  - **Calibration — done** (`Calibration.py` + `test_calibration.py`): stated `P(bad)`/
+    `P(bomb)` match empirical frequencies (ECE ≈ 0.01 at N=5), so the cut panel's risk
+    numbers are trustworthy and A5 tempering stays unwarranted. Building it caught two
+    simulator/model mismatches in `General.PlayAuto` — a player-uniform (not slot-uniform)
+    wire deal, and folding the bomb-detonating cut as a "no-bomb" observation — both fixed.
+  - **Cross-variant consistency — done** for the panel/marginals (`General` at `(2,1)` vs
+    `TwoBadGuysOneBomb`); worth extending to every projection.
+  - Still worth adding: property-based / fuzz testing (e.g. Hypothesis) over the
+    distribution invariants; regression fixtures pinning known belief vectors; and a
+    `P(num_bad)` reliability check at N=4/N=7.
 - **Principled `beats_random` thresholds.** The end-to-end accuracy tests currently
   assert hand-tuned cutoffs (e.g. `P(bad|true) > 0.55`), set empirically per variant and
   prone to drift. Replace them with a principled rule, either: **(a)** assert only the

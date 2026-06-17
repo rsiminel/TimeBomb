@@ -630,20 +630,24 @@ def JointBadBelief(log_u_by_b, prior_b):
 # --- simulation + interactive play ---------------------------------------------
 
 def DistributeWires(num_players, hand_size, active_wires, num_bom):
-  """Deal one bomb to a random hand (M=1) then ``active_wires`` wires uniformly among
-  the remaining non-bomb slots. Returns ``(wires, bombs)`` integer vectors.
-  Simulation-only helper for ``PlayAuto``."""
+  """Deal ``num_bom`` bombs to random hands then ``active_wires`` wires uniformly among
+  the remaining non-bomb **slots** — the multivariate-hypergeometric deal the inference
+  assumes (model.md §3.1/§3.4.1). Returns ``(wires, bombs)`` integer vectors.
+
+  This must place wires uniformly over *slots*, not over *players*: a "pick a random
+  player, add a wire if under capacity" loop is uniform over players and only matches
+  the slot-uniform model when every hand has equal capacity. The bomb hand has one fewer
+  slot, so the player-uniform shortcut over-deals wires to it and makes the simulated
+  games diverge from the model — which shows up as a systematic `P(bad)` miscalibration
+  (see ``Calibration.py``). Simulation-only helper for ``PlayAuto``.
+  """
   bombs = np.zeros(num_players, dtype=int)
   for h in sample(range(num_players), num_bom):
     bombs[h] = 1
-  capacity = np.full(num_players, hand_size, dtype=int) - bombs
+  slots = [(g, s) for g in range(num_players) for s in range(hand_size - int(bombs[g]))]
   wires = np.zeros(num_players, dtype=int)
-  given = 0
-  while given < active_wires:
-    c = randrange(num_players)
-    if wires[c] < capacity[c]:
-      wires[c] += 1
-      given += 1
+  for (g, _s) in sample(slots, int(active_wires)):  # uniform over non-bomb slots
+    wires[g] += 1
   return wires, bombs
 
 
@@ -697,9 +701,8 @@ def PlayAuto(num_players=4, initial_hand_size=5, verbosity=0, cut_strategy=CutRa
                            active_wires, candidate_bs[0], num_bom)
       randy = randint(1, hand_size - revealed[cutee])
       if bombs[cutee] == 1 and randy == hand_size - revealed[cutee]:
-        bomb_cut = True
-        revealed[cutee] += 1
-        break
+        bomb_cut = True  # game over; do NOT fold this cut into the role belief --
+        break            # its likelihood conditions on "no bomb drawn", now false
       if randy <= wires[cutee] - found[cutee]:
         found[cutee] += 1
         active_wires -= 1
