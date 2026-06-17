@@ -40,6 +40,12 @@ brute-force validation — no code has been touched yet.
       genuinely diverged (e.g. `[2,2,1]` → `[0.4,0.4,0.2]` vs correct `[3/7,3/7,1/7]`).
       Swapped `ProbDeclaration` to the uniform-lie closed form; generative-oracle test
       added (TDD: red → green).
+- [x] **Lie-count factor `(H+1)^{−|F|}` restored** ([ADR 0007](docs/decisions/0007-declaration-lie-count-factor.md)).
+      The General.py reconciliation showed the bomb variants (B3/B4) and their oracles
+      dropped this factor; it cancels only for `M=0` (`|F|=B` constant), so `M=1`
+      `P(bomb)`/`P(bad)` were miscalibrated. Fixed at the root (model.md §3.3 + B3/B4 +
+      oracles), verified by a generative Monte Carlo; B1/B2 unaffected. The corrected
+      *absolute* weight is the prerequisite for joint `num_bad` inference (ADR 0008).
 
 ### A2 — `B > 1` prior and `P_wire` marginal — *model decided: §3.4.1 uniform placement*
 
@@ -93,14 +99,13 @@ each round's vector shape (KL-from-uniform); an external exponent would double-c
       posterior), `P(bomb)` never combined, no informativeness weighting.
 - [x] **Robustness — ε-floor.** Mix each per-round vector with `ε · uniform` before
       multiplying so a single round's hard `0` cannot *permanently* eliminate a player
-      under lie-model misspecification. **Prototyped + tested in `TwoBadGuysOneBomb`**
-      (B4 `CombineProbs`, an authorised deviation from "don't retrofit the variants" to
-      de-risk General); General.py mirrors it.
+      under lie-model misspecification. Prototyped + tested in B4; **landed + tested in
+      `General.py`** (`CombineProbs`).
 - [x] **Robustness — log-space accumulation.** Sum `log` per-round vectors and
-      softmax-normalise to avoid underflow over many rounds / large `N` (which currently
-      trips the `total == 0` → uniform branch and discards real evidence).
-      **Prototyped + tested in B4** (same `CombineProbs`; the ε-floor rides along in the
-      log form); General.py mirrors it.
+      softmax-normalise to avoid underflow over many rounds / large `N`. Prototyped + tested
+      in B4; **landed + tested in `General.py`** (same `CombineProbs`; the ε-floor rides
+      along in the log form). The log-space machinery is also reused by the joint `num_bad`
+      evidence (A1/ADR 0008).
 - [ ] **Deferred (gated on calibration):** per-round tempering `wᵣ` to down-weight
       *distrusted* (declaration-dominated) rounds — only if a calibration test shows
       systematic overconfidence, and a single global temper is preferred first.
@@ -122,10 +127,11 @@ backend, so not scheduled before `General.py`.
       object the **pair-distribution** entropy (`EntropyBad`) and the rollout reusing the
       bomb-aware `ProbCut` (ignores bomb risk per ADR 0006). Stat 3 validated against an
       independent oracle; range/assembly/depth-1 invariants covered; `PrintPanel` shows
-      it in `Play`. Known carry-over: the round-horizon lookahead is `O((2N)^stop)` —
-      General should beam/approximate it.
-- [ ] **Land in `General.py`**, mirroring the B4 reference, against the cleaned belief
-      functions; stat 4 displayed beside stat 2 (it ignores bomb risk).
+      it in `Play`.
+- [x] **Landed in `General.py`** (B5), generalised from the B4 reference to the bad-set
+      tensor; cross-variant panel check confirms it matches B4 at `(2,1)`. Carried-forward
+      open issue: the round-horizon lookahead is `O((2N)^stop)` — depth-capped for display,
+      a beam/analytic approximation is the follow-up.
 - [ ] **Prerequisite — calibration.** Verify `P(bad)`/`P(bomb)` are calibrated before the
       panel is trusted (shared with A5's calibration check).
 - [ ] **Open (to debate):** the horizon-weighted VOI upgrade — swap stat 4's objective
@@ -204,15 +210,24 @@ weighting was wrong (e.g. `bg=2,H=2`: `(¼,½,¼)` vs correct `(⅙,⅔,⅙)`).
       heuristics and the `tabulate`/`DisplayProbs`/`CombineNonHomoProbs`/`ProbSus`/
       cut-strategy dead code are gone.
 
-### B5 — `General.py` (arbitrary `B, M`) — ⏭ next
+### B5 — `General.py` (arbitrary `B`, `M ∈ {0,1}`) — ✅ done
 
-- [ ] Reconcile to the canonical forms validated across B1–B4; the end target. Carries
-      the `P_wire` ungated-good-branch bug (and likely more — not yet trusted). This is
-      where the Axis A robustness hardenings (ε-floor, log-space `CombineProbs`) and the
-      A6 cut panel land — both now **pre-implemented and tested in B4
-      (`TwoBadGuysOneBomb`)** as the reference to mirror, so this is reconciliation, not
-      fresh design. Address the round-horizon lookahead's exponential cost here
-      (beam/analytic approximation).
+- [x] Rewritten to the validated uniform-lie model over the general `(S, h)` config space;
+      every variant is now its `(num_bad, num_bom)` projection. `ProbDeclaration`/`ProbCut`/
+      `P_wire` vectorised within the config loop, validated against an independent
+      fully-generative `math.comb` oracle (incl. the ADR-0007 lie factor) and shown identical
+      to corrected B4 at `(2,1)`. The robust `CombineProbs` (ε-floor + log-space, A5) and the
+      four-stat cut panel (A6) are generalised from B4. `sympy`/`tabulate` dropped; the old
+      strategic-lie bodies, `DisplayProbs`/`CombineNonHomoProbs`/`Cn`/`UnitTest*` removed.
+- [x] **Joint `num_bad` inference** ([ADR 0008](docs/decisions/0008-joint-num-bad-inference.md),
+      §3.5.1): N=4/N=7 update the bad count from evidence (replacing the fixed-weight
+      `pos_bad` mixture). Validated against an independent re-derivation, agreement with
+      `CombineProbs` within `B`, and beats-random at N=4/N=7.
+- [x] The reconciliation surfaced and fixed the `(H+1)^{−|F|}` declaration lie-factor bug at
+      the root (A1/ADR 0007) rather than carrying it into General. (The historical `P_wire`
+      ungated-good-branch bug was already fixed across B1–B4 and does not exist in the rewrite.)
+- [ ] **Open (carried forward):** the round-horizon cut lookahead is `O((2N)^stop)` —
+      depth-capped for display today; a beam/analytic approximation is the follow-up (D-axis).
 
 ---
 

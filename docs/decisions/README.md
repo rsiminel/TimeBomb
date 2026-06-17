@@ -20,6 +20,7 @@ record. The mathematics each decision feeds into lives in [model.md](../model.md
 | [0005](0005-cross-round-evidence-combination.md) | Cross-round evidence combination: exact product, no informativeness weighting | Accepted |
 | [0006](0006-cut-recommendation-output.md) | Cut-recommendation output: quantities-only four-stat panel (VOI upgrade open) | Accepted |
 | [0007](0007-declaration-lie-count-factor.md) | Declaration prior keeps the lie-count factor `(H+1)^{−|F|}` (corrects B3/B4) | Accepted |
+| [0008](0008-joint-num-bad-inference.md) | Joint inference over the number of bad guys (N=4, N=7) | Accepted |
 
 Format: lightweight [Nygard-style](https://cognitect.com/blog/2011/11/15/documenting-architecture-decisions)
 ADRs — Context / Options considered / Decision / Consequences.

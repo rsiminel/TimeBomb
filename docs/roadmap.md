@@ -16,7 +16,12 @@ canonical implementation they converge toward.
 | 2 | `TwoBadGuysNoBomb.py`   | `B=2, M=0`   | ✅ done   |
 | 3 | `OneBadGuyOneBomb.py`   | `B=1, M=1`   | ✅ done   |
 | 4 | `TwoBadGuysOneBomb.py`  | `B=2, M=1`   | ✅ done   |
-| 5 | `General.py`            | arbitrary    | ⏭ next   |
+| 5 | `General.py`            | arbitrary    | ✅ done   |
+
+The backend is now complete: all five modules implement the same validated uniform-lie
+model, and `General.py` subsumes the four variants (each is its `(num_bad, num_bom)`
+projection) while adding **joint inference over the bad count** for the player counts where
+it is uncertain (N=4, N=7; [ADR 0008](decisions/0008-joint-num-bad-inference.md)).
 
 Downstream, **unblocked only after the backend is done**:
 
@@ -271,13 +276,31 @@ five criteria. Highlights:
     de-risk General; covered by three robustness tests (equals the exact product on
     positive input, revives a hard-zeroed pair, no collapse over 1100 peaked rounds).
 
-### 5. `General.py` — ⏭ next
+### 5. `General.py` — ✅ done
 
-Reconcile to the canonical forms validated across variants 1–4; the end target. Still
-carries the `P_wire` ungated-good-branch bug (and likely more — not yet trusted). The
-two General-bound additions are now pre-implemented and tested in `TwoBadGuysOneBomb`
-(B4) so this step mirrors a verified reference: the **four-stat cut panel** (`CutPanel`
-/`NextHBad`/`RoundHorizonH`/`H_Min`/`EntropyBad`, A6/§3.5) and the **robust
-`CombineProbs`** (ε-floor + log-space, A5/ADR 0005). The known open issue to carry over
-is the exponential cost of the round-horizon lookahead (`O((2N)^stop)`), which General
-should address with a beam/analytic approximation rather than the exact recursion.
+Rewritten from the bug-ridden strategic-lie implementation (which also could not import —
+`sympy`/`tabulate`) to the validated uniform-lie model over the general `(bad set S, bomb
+holder h)` configuration space, for arbitrary `num_bad` and `num_bom ∈ {0,1}`. Highlights:
+
+- **Reconciliation that surfaced a real bug.** Deriving the absolute likelihood for joint
+  `num_bad` inference exposed the dropped `(H+1)^{−|F|}` lie factor in the declaration
+  prior — fixed at the root across model.md §3.3, the `*OneBomb` variants, and their oracles
+  ([ADR 0007](decisions/0007-declaration-lie-count-factor.md)); verified by a generative
+  Monte Carlo. B1/B2 were unaffected.
+- **Core math** (`ProbDeclaration`/`ProbCut`/`P_wire`) is the corrected uniform-lie closed
+  form, vectorised within the `itertools.combinations` config loop; the §3.4.1 `L_bad`
+  collapse and the must-not-draw bomb term generalise the variant helpers. Validated against
+  an independent fully-generative `math.comb` oracle (incl. the lie factor) across
+  `(num_bad,num_bom) ∈ {(1,0),(2,0),(1,1),(2,1)}`, and shown identical to the corrected
+  `TwoBadGuysOneBomb` on its projection.
+- **Robust `CombineProbs`** (ε-floor + log-space, A5/ADR 0005) and the **four-stat cut
+  panel** (`CutPanel`/`NextHBad`/`RoundHorizonH`/`H_Min`/`EntropyBad`, A6/§3.5) ported and
+  generalised from the B4 reference.
+- **Joint `num_bad` inference** ([ADR 0008](decisions/0008-joint-num-bad-inference.md), §3.5.1):
+  for N=4/N=7 the bad count updates from evidence — `P(B|D) ∝ P(B)·(1/C(N,B))·Σ_S Π_r u_r(S;B)`
+  in log-space — instead of the old fixed-weight `pos_bad` mixture.
+- `test_General.py` (17 tests): the generative oracle sweeps, panel invariants + a
+  cross-variant panel check against B4, `CombineProbs` robustness, the joint posterior vs an
+  independent re-derivation, within-`B` agreement with `CombineProbs`, and beats-random at
+  N=4/N=7. Open issue carried forward: the round-horizon lookahead is `O((2N)^stop)` — a
+  beam/analytic approximation is the follow-up (depth-capped for display today).
