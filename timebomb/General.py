@@ -297,3 +297,216 @@ def DeMatrix(prob_bad):
     for i in bad:
       line[i] += prob_bad[bad]
   return line
+
+
+# --- cross-round combination (ADR 0005) ----------------------------------------
+
+def _badset_mask(shape):
+  """Boolean mask of the valid sorted bad-set cells of a ``[N]*num_bad`` tensor."""
+  num_players, num_bad = shape[0], len(shape)
+  mask = np.zeros(shape, dtype=bool)
+  for bad in itertools.combinations(range(num_players), num_bad):
+    mask[bad] = True
+  return mask
+
+
+def CombineProbs(probabilities_list, eps=1e-9):
+  """Combine per-round P(bad set) marginals into one accumulated belief (ADR 0005).
+
+  Roles are fixed while wires and the bomb are re-dealt each round, so the per-round
+  bad-set marginals are conditionally independent evidence about the same fixed bad
+  set: the exact posterior is their elementwise product, renormalised. The bomb
+  marginal is per-round and is **never** passed in here (§3.5).
+
+  Robust form (the same hardenings prototyped in `TwoBadGuysOneBomb`): each round's
+  vector is ``eps``-floored toward uniform (so one round's hard 0 cannot permanently
+  eliminate a bad set) and the product is accumulated in log-space then softmax-
+  normalised (so many rounds / large N cannot underflow to uniform). Numerically
+  identical to the plain product for normal play. Falls back to uniform over the
+  ``C(N, num_bad)`` sets only for a genuinely all-zero round.
+  """
+  if probabilities_list == []:
+    return np.array([])
+  shape = probabilities_list[0].shape
+  mask = _badset_mask(shape)
+  uniform = mask / mask.sum()
+  log_acc = np.zeros(shape)
+  for round_probs in probabilities_list:
+    r = np.where(mask, np.asarray(round_probs, dtype=float), 0.0)
+    s = r.sum()
+    r = r / s if s > 0 else uniform.copy()  # defensively normalise each round
+    r = (1 - eps) * r + eps * uniform        # eps-floor: no set ever hard-zeroed
+    log_acc[mask] += np.log(r[mask])
+  shifted = log_acc[mask] - log_acc[mask].max()  # log-space => underflow-proof
+  weights = np.zeros(shape)
+  weights[mask] = np.exp(shifted)
+  return weights / weights.sum()
+
+
+# --- the quantities-only four-stat cut panel (model.md §3.5, ADR 0006) ----------
+
+def H(probs):
+  """Shannon entropy in bits of a 1-D probability vector (0 for certain, log2(k) for
+  uniform over k outcomes). Distinct from the hand size ``H`` of §2 (the code reuses
+  the letter, as model.md warns); masses <= 1e-12 are skipped to avoid 0*log0."""
+  h = 0.0
+  for p in np.asarray(probs).ravel():
+    if p > 1e-12:
+      h -= p * np.log2(p)
+  return h
+
+
+def EntropyBad(probabilities, num_bad, num_bom):
+  """Shannon entropy (bits) of the role posterior P(bad set) — the genuine role
+  uncertainty over the ``C(N, num_bad)`` candidate bad sets (model.md §3.5). The bomb
+  axis is marginalised out first (via ``Separate``), so it measures persistent-role
+  uncertainty, not per-round bomb noise. Maximum ``log2(C(N, num_bad))``."""
+  prob_bad, _ = Separate(probabilities, num_bad, num_bom)
+  return H(prob_bad[_badset_mask(prob_bad.shape)])
+
+
+def NextHBad(decls, probs, revealed, found, hand_size, active_wires, num_bad, num_bom):
+  """Stat 3 — the 1-ply expected post-cut role entropy (model.md §3.5, ADR 0006).
+
+  For each player with a face-down card, average ``EntropyBad`` over the two
+  non-terminal outcomes of cutting one uniformly random face-down card: a wire (weight
+  ``P_wire``; the safe-wire total drops by one) or a non-wire dud (weight
+  ``1 - P_wire``). Both branches use the bomb-aware ``ProbCut`` conditioned on "no bomb
+  cut yet", so detonation is excluded — the information stats ignore bomb risk by design
+  (ADR 0006). Lower = the cut teaches more about the fixed roles. Players with no
+  face-down card left are ``np.nan``.
+  """
+  num_players = decls.size
+  p_wire = P_wire(decls, probs, revealed, found, hand_size, active_wires, num_bad, num_bom)
+  exp_h = np.full(num_players, np.nan)
+  for cutee in range(num_players):
+    if revealed[cutee] >= hand_size:
+      continue
+    reveal = np.zeros(num_players, dtype=int)
+    reveal[cutee] = 1
+    h_wire = h_dud = 0.0
+    if p_wire[cutee] > 1e-9 and active_wires > 0:
+      probs_wire = ProbCut(decls, probs, revealed + reveal, found + reveal,
+                           hand_size, active_wires - 1, num_bad, num_bom)
+      h_wire = EntropyBad(probs_wire, num_bad, num_bom)
+    if p_wire[cutee] < 1 - 1e-9:
+      probs_dud = ProbCut(decls, probs, revealed + reveal, found,
+                          hand_size, active_wires, num_bad, num_bom)
+      h_dud = EntropyBad(probs_dud, num_bad, num_bom)
+    exp_h[cutee] = p_wire[cutee] * h_wire + (1 - p_wire[cutee]) * h_dud
+  return exp_h
+
+
+def H_Min(decls, probs, revealed, found, hand_size, active_wires, stop, num_bad, num_bom):
+  """Information-greedy min-entropy lookahead over the role posterior (model.md §3.5):
+  the minimum expected ``EntropyBad`` reachable in ``stop`` maximally-informative cuts.
+  Each cut branches into a wire (weight ``P_wire``; safe-wire total -1) and a dud, both
+  via the bomb-aware ``ProbCut`` (ignores bomb risk, ADR 0006). Cost is ``O((2N)^stop)``
+  ``ProbCut`` calls, so callers cap the depth for large N (a beam/analytic approximation
+  is the follow-up). Returns ``EntropyBad`` when ``stop <= 0`` or nothing is cuttable.
+  """
+  if stop <= 0:
+    return EntropyBad(probs, num_bad, num_bom)
+  num_players = decls.size
+  p_wire = P_wire(decls, probs, revealed, found, hand_size, active_wires, num_bad, num_bom)
+  best = None
+  for cutee in range(num_players):
+    if revealed[cutee] >= hand_size:
+      continue
+    reveal = np.zeros(num_players, dtype=int)
+    reveal[cutee] = 1
+    h_wire = h_dud = 0.0
+    if p_wire[cutee] > 1e-9 and active_wires > 0:
+      probs_wire = ProbCut(decls, probs, revealed + reveal, found + reveal,
+                           hand_size, active_wires - 1, num_bad, num_bom)
+      h_wire = H_Min(decls, probs_wire, revealed + reveal, found + reveal,
+                     hand_size, active_wires - 1, stop - 1, num_bad, num_bom)
+    if p_wire[cutee] < 1 - 1e-9:
+      probs_dud = ProbCut(decls, probs, revealed + reveal, found,
+                          hand_size, active_wires, num_bad, num_bom)
+      h_dud = H_Min(decls, probs_dud, revealed + reveal, found,
+                    hand_size, active_wires, stop - 1, num_bad, num_bom)
+    expected = p_wire[cutee] * h_wire + (1 - p_wire[cutee]) * h_dud
+    if best is None or expected < best:
+      best = expected
+  return EntropyBad(probs, num_bad, num_bom) if best is None else best
+
+
+def RoundHorizonH(decls, probs, revealed, found, hand_size, active_wires,
+                  num_bad, num_bom, max_depth=None):
+  """Stat 4 — the round-horizon expected role entropy under info-greedy continuation
+  (model.md §3.5, ADR 0006). For each player with a face-down card, value opening with
+  a cut there (its wire/dud outcomes) then ``H_Min`` for the rest of the round. A round
+  is N cuts, so the horizon is ``cuts_left = N - sum(revealed)``; ``max_depth`` caps it
+  for a responsive display. Lower = the cut best opens an information-gathering line.
+  Ships with two caveats (ADR 0006): it is an information *potential*, and the rollout
+  ignores bomb risk — always read beside stat 2. Players with no card left are ``nan``.
+  """
+  num_players = decls.size
+  cuts_left = num_players - int(np.sum(revealed))
+  depth = cuts_left if max_depth is None else min(cuts_left, max_depth)
+  p_wire = P_wire(decls, probs, revealed, found, hand_size, active_wires, num_bad, num_bom)
+  round_h = np.full(num_players, np.nan)
+  for cutee in range(num_players):
+    if revealed[cutee] >= hand_size:
+      continue
+    reveal = np.zeros(num_players, dtype=int)
+    reveal[cutee] = 1
+    h_wire = h_dud = 0.0
+    if p_wire[cutee] > 1e-9 and active_wires > 0:
+      probs_wire = ProbCut(decls, probs, revealed + reveal, found + reveal,
+                           hand_size, active_wires - 1, num_bad, num_bom)
+      h_wire = H_Min(decls, probs_wire, revealed + reveal, found + reveal,
+                     hand_size, active_wires - 1, depth - 1, num_bad, num_bom)
+    if p_wire[cutee] < 1 - 1e-9:
+      probs_dud = ProbCut(decls, probs, revealed + reveal, found,
+                          hand_size, active_wires, num_bad, num_bom)
+      h_dud = H_Min(decls, probs_dud, revealed + reveal, found,
+                    hand_size, active_wires, depth - 1, num_bad, num_bom)
+    round_h[cutee] = p_wire[cutee] * h_wire + (1 - p_wire[cutee]) * h_dud
+  return round_h
+
+
+def CutPanel(decls, probs, revealed, found, hand_size, active_wires,
+             num_bad, num_bom, max_depth=None):
+  """Assemble the quantities-only four-stat cut panel (model.md §3.5, ADR 0006).
+
+  Returns an ``N x 4`` array whose row i (for a player with a face-down card) is
+  ``[P(safe wire), P(bomb), 1-ply E[H(bad)], round-horizon H(bad)]`` — exploit, risk,
+  immediate role-info, strategic role-info. Rows for players with no card left are all
+  ``np.nan``. The stats are deliberately *not* combined into one score: the
+  explore/exploit/risk tradeoff needs a risk appetite that belongs to the human.
+  """
+  num_players = decls.size
+  p_safe = P_wire(decls, probs, revealed, found, hand_size, active_wires, num_bad, num_bom)
+  if num_bom:
+    _, prob_bom = Separate(probs, num_bad, num_bom)
+    p_bomb = np.asarray(prob_bom).reshape(-1)[:num_players] if num_bom == 1 else np.zeros(num_players)
+  else:
+    p_bomb = np.zeros(num_players)
+  one_ply = NextHBad(decls, probs, revealed, found, hand_size, active_wires, num_bad, num_bom)
+  horizon = RoundHorizonH(decls, probs, revealed, found, hand_size, active_wires,
+                          num_bad, num_bom, max_depth)
+  panel = np.full((num_players, 4), np.nan)
+  for i in range(num_players):
+    if revealed[i] >= hand_size:
+      continue
+    panel[i] = [p_safe[i], p_bomb[i], one_ply[i], horizon[i]]
+  return panel
+
+
+def PrintPanel(players, decls, probs, revealed, found, hand_size, active_wires,
+               num_bad, num_bom, max_depth=3):
+  """Pretty-print the four-stat cut panel (model.md §3.5) before a human chooses a cut.
+  Stat 4's round-horizon entropy is depth-capped at ``max_depth`` (the exact lookahead
+  is exponential, see ``H_Min``)."""
+  decls = np.asarray(decls)
+  panel = CutPanel(decls, probs, revealed, found, hand_size, active_wires,
+                   num_bad, num_bom, max_depth)
+  print("  cut panel   [ P(safe wire) | P(bomb) | 1-ply H(bad) | round-horizon H(bad) ]")
+  for i in range(len(players)):
+    if np.all(np.isnan(panel[i])):
+      print(f"    {players[i]:<8} (no face-down cards left)")
+    else:
+      ps, pb, dh, rh = panel[i]
+      print(f"    {players[i]:<8} {ps:11.3f}   {pb:6.3f}   {dh:9.3f}   {rh:14.3f}")

@@ -365,6 +365,197 @@ def test_pwire_matches_bruteforce_sweep():
         assert max_diff < 1e-9, f"(B={num_bad},M={num_bom}) max diff vs brute = {max_diff}"
 
 
+# --- cut panel + CombineProbs: independent references --------------------------
+
+def brute_role_entropy(probs, num_bad, num_bom):
+    """Entropy (bits) of the role posterior P(bad set), recomputed independently."""
+    n = probs.shape[0]
+    prob_bad = np.zeros([n] * num_bad)
+    for idx in configs(n, num_bad, num_bom):
+        bad, _ = split_indices(idx, num_bad)
+        prob_bad[bad] += probs[idx]
+    ent = 0.0
+    for bad in combinations(range(n), num_bad):
+        p = prob_bad[bad]
+        if p > 0:
+            ent -= p * math.log2(p)
+    return ent
+
+
+def brute_expected_post_entropy_1ply(decls, probs, revealed, found, hand_size,
+                                     active_wires, num_bad, num_bom):
+    """Stat-3 quantity recomputed entirely from the oracle (P_wire + ProbCut +
+    role entropy); a wire drops active_wires by one, a dud leaves it."""
+    n, H = len(decls), int(hand_size)
+    pw = brute_pwire(decls, probs, revealed, found, hand_size, active_wires, num_bad, num_bom)
+    out = np.full(n, np.nan)
+    for i in range(n):
+        if revealed[i] >= H:
+            continue
+        e = np.zeros(n, dtype=int)
+        e[i] = 1
+        h_wire = h_dud = 0.0
+        if pw[i] > 1e-9 and active_wires > 0:
+            post_w = brute_probcut(decls, probs, revealed + e, found + e, H, active_wires - 1, num_bad, num_bom)
+            h_wire = brute_role_entropy(post_w, num_bad, num_bom)
+        if pw[i] < 1 - 1e-9:
+            post_d = brute_probcut(decls, probs, revealed + e, found, H, active_wires, num_bad, num_bom)
+            h_dud = brute_role_entropy(post_d, num_bad, num_bom)
+        out[i] = pw[i] * h_wire + (1 - pw[i]) * h_dud
+    return out
+
+
+def test_entropybad_known_values():
+    for num_bad, num_bom in CASES:
+        n = num_bad + 2
+        sets = list(combinations(range(n), num_bad))
+        # certain on one bad set -> entropy 0
+        certain = np.zeros([n] * (num_bad + num_bom))
+        idx = configs(n, num_bad, num_bom)[0]
+        certain[idx] = 1.0
+        assert abs(gen.EntropyBad(certain, num_bad, num_bom)) < TOL
+        # uniform over all bad sets (bomb fixed if any) -> log2(#sets)
+        uni = np.zeros([n] * (num_bad + num_bom))
+        for bad in sets:
+            bom = (0,) if num_bom else ()
+            uni[bad + bom] = 1.0 / len(sets)
+        assert abs(gen.EntropyBad(uni, num_bad, num_bom) - math.log2(len(sets))) < 1e-9
+
+
+def test_nexthbad_matches_oracle_sweep():
+    rng = Random(7)
+    for num_bad, num_bom in CASES:
+        max_diff = 0.0
+        for _ in range(150):
+            decls, revealed, found, hand_size, active, total = random_consistent_state(rng, num_bad, num_bom)
+            prior = gen.ProbDeclaration(decls, hand_size, total, num_bad, num_bom)
+            if prior.sum() == 0:
+                continue
+            probs = gen.ProbCut(decls, prior, revealed, found, hand_size, active, num_bad, num_bom)
+            got = gen.NextHBad(decls, probs, revealed, found, hand_size, active, num_bad, num_bom)
+            ref = brute_expected_post_entropy_1ply(decls, probs, revealed, found, hand_size, active, num_bad, num_bom)
+            for i in range(len(decls)):
+                if np.isnan(got[i]) and np.isnan(ref[i]):
+                    continue
+                assert not (np.isnan(got[i]) or np.isnan(ref[i]))
+                max_diff = max(max_diff, abs(got[i] - ref[i]))
+        assert max_diff < 1e-9, f"(B={num_bad},M={num_bom}) NextHBad vs oracle = {max_diff}"
+
+
+def test_cutpanel_invariants_and_assembly_sweep():
+    rng = Random(8)
+    for num_bad, num_bom in CASES:
+        for _ in range(80):
+            decls, revealed, found, hand_size, active, total = random_consistent_state(rng, num_bad, num_bom)
+            prior = gen.ProbDeclaration(decls, hand_size, total, num_bad, num_bom)
+            if prior.sum() == 0:
+                continue
+            probs = gen.ProbCut(decls, prior, revealed, found, hand_size, active, num_bad, num_bom)
+            n = len(decls)
+            num_sets = comb(n, num_bad)
+            max_ent = math.log2(num_sets) if num_sets > 1 else 0.0
+            # cap the round-horizon lookahead: the exact depth is O((2N)^cuts_left)
+            panel = gen.CutPanel(decls, probs, revealed, found, hand_size, active,
+                                 num_bad, num_bom, max_depth=2)
+            ps_ref = gen.P_wire(decls, probs, revealed, found, hand_size, active, num_bad, num_bom)
+            for i in range(n):
+                if revealed[i] >= hand_size:
+                    assert np.all(np.isnan(panel[i]))
+                    continue
+                psafe, pbomb, dh, rh = panel[i]
+                assert -TOL <= psafe <= 1 + TOL
+                assert -TOL <= pbomb <= 1 + TOL
+                assert -TOL <= dh <= max_ent + 1e-6
+                assert -TOL <= rh <= max_ent + 1e-6
+                assert abs(psafe - ps_ref[i]) < TOL
+
+
+def test_roundhorizon_depth1_equals_nexthbad():
+    rng = Random(9)
+    for num_bad, num_bom in CASES:
+        for _ in range(80):
+            decls, revealed, found, hand_size, active, total = random_consistent_state(rng, num_bad, num_bom)
+            prior = gen.ProbDeclaration(decls, hand_size, total, num_bad, num_bom)
+            if prior.sum() == 0:
+                continue
+            probs = gen.ProbCut(decls, prior, revealed, found, hand_size, active, num_bad, num_bom)
+            nh = gen.NextHBad(decls, probs, revealed, found, hand_size, active, num_bad, num_bom)
+            rh = gen.RoundHorizonH(decls, probs, revealed, found, hand_size, active, num_bad, num_bom, max_depth=1)
+            for i in range(len(decls)):
+                if np.isnan(nh[i]) and np.isnan(rh[i]):
+                    continue
+                assert abs(nh[i] - rh[i]) < 1e-12
+
+
+def test_panel_matches_twobadguysonebomb():
+    """Cross-variant: General at (num_bad,num_bom)=(2,1) must produce the same per-player
+    cut panel as the dedicated TwoBadGuysOneBomb module (convention-independent)."""
+    import TwoBadGuysOneBomb as b4
+    rng = Random(21)
+    for _ in range(40):
+        decls, revealed, found, hand_size, active, total = random_consistent_state(rng, 2, 1)
+        prior_g = gen.ProbDeclaration(decls, hand_size, total, 2, 1)
+        prior_b = b4.ProbDeclaration(decls, hand_size, total)
+        if prior_g.sum() == 0:
+            continue
+        probs_g = gen.ProbCut(decls, prior_g, revealed, found, hand_size, active, 2, 1)
+        probs_b = b4.ProbCut(decls, prior_b, revealed, found, hand_size, active)
+        pg = gen.CutPanel(decls, probs_g, revealed, found, hand_size, active, 2, 1, max_depth=2)
+        pb = b4.CutPanel(decls, probs_b, revealed, found, hand_size, active, max_depth=2)
+        both_nan = np.isnan(pg) & np.isnan(pb)
+        assert np.all(both_nan | (np.abs(np.nan_to_num(pg) - np.nan_to_num(pb)) < 1e-9))
+
+
+# --- CombineProbs robustness (eps-floor + log-space, ADR 0005) -----------------
+
+def test_combineprobs_matches_exact_product_when_positive():
+    rng = Random(11)
+    for num_bad in (1, 2):
+        for _ in range(60):
+            n = rng.randint(num_bad + 1, num_bad + 3)
+            mats, ref = [], np.ones([n] * num_bad)
+            for _ in range(rng.randint(1, 6)):
+                m = np.zeros([n] * num_bad)
+                for bad in combinations(range(n), num_bad):
+                    m[bad] = rng.uniform(0.05, 1.0)  # strictly positive
+                m /= m.sum()
+                mats.append(m)
+                ref = ref * m
+            mask = np.zeros([n] * num_bad, dtype=bool)
+            for bad in combinations(range(n), num_bad):
+                mask[bad] = True
+            ref = np.where(mask, ref, 0.0)
+            ref /= ref.sum()
+            got = gen.CombineProbs(mats)
+            assert np.allclose(got, ref, atol=1e-7)
+
+
+def test_combineprobs_eps_floor_revives_zeroed_set():
+    # General uses ascending-index bad sets (itertools.combinations, i < j).
+    n = 4
+    r1 = np.zeros((n, n)); r1[0][1] = 0.5; r1[2][3] = 0.5  # set (1,2) is hard-zeroed
+    r2 = np.zeros((n, n)); r2[1][2] = 1.0
+    r3 = np.zeros((n, n)); r3[1][2] = 1.0
+    got = gen.CombineProbs([r1, r2, r3])
+    assert got[1][2] > 0.0
+    assert np.unravel_index(np.argmax(got), got.shape) == (1, 2)
+    assert abs(got.sum() - 1.0) < 1e-9
+
+
+def test_combineprobs_logspace_no_collapse():
+    n = 4
+    base = np.zeros((n, n))
+    for bad in combinations(range(n), 2):
+        base[bad] = 0.1
+    base[0][3] = 0.5  # dominant set (0,3); max 0.5 underflows the raw product at depth 1100
+    base /= base.sum()
+    top = np.unravel_index(np.argmax(base), base.shape)
+    got = gen.CombineProbs([base] * 1100)
+    assert not np.any(np.isnan(got))
+    assert got[top] > 0.999
+    assert abs(got.sum() - 1.0) < 1e-9
+
+
 # --- standalone runner ---------------------------------------------------------
 
 if __name__ == "__main__":
