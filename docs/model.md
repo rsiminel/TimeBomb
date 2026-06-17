@@ -357,6 +357,37 @@ rollout **ignores bomb risk**, so it must always be displayed beside stat 2.
 (`H(·)` here is Shannon entropy — the code reuses the name `H`, which §2's table also uses
 for the hand size; they are unrelated.)
 
+#### 3.5.1 Joint inference over the number of bad guys
+
+For most player counts the number of bad guys `B` is fixed and known, but for **N=4** it is
+1 or 2 and for **N=7** it is 2 or 3 — the role-card deal leaves `B` itself uncertain, with a
+known prior `P(B)`. `B` is then another hidden variable, and the same declarations and cuts
+are informative about it. Treat `(B, S, h)` jointly; with rounds conditionally independent
+given the fixed roles (§3.1):
+
+```
+P(B, S | D₁..D_R)  ∝  P(B) · (1 / C(N, B)) · Π_r u_r(S; B)
+u_r(S; B)          =  Σ_h  ŵ_decl(S, h) · L_config(S, h ; round-r final cuts)
+```
+
+where `ŵ_decl` is the **unnormalised** declaration weight `(H+1)^{−|F|}·C(free_slots,t_free)/
+Π_{g∈F} C(H, decls[g])` of §3.3. The `(H+1)^{−|F|}` lie factor is exactly what makes `u_r`
+an *absolute*, cross-`B`-comparable quantity (the per-round, `B`-independent constants
+`Π_all C(H,decls)/C(N·H−1, A)` and the `1/N` bomb prior cancel). Read-outs:
+
+```
+P(S | B, D)  ∝  Π_r u_r(S; B)                       (this is what CombineProbs gives, per B)
+P(B | D)     ∝  P(B) · (1/C(N,B)) · Σ_S Π_r u_r(S; B)
+P(player i bad)  =  Σ_B P(B | D) · Σ_{S ∋ i} P(S | B, D)
+```
+
+The `1/C(N, B)` prior is load-bearing — a larger `B` spreads its prior over more subsets, each
+individually less likely a priori — and the products are accumulated in log-space
+(`logsumexp`/softmax) to avoid underflow. `P(bomb)` stays per-round and never enters the
+cross-round product (§3.1). For the fixed-`B` counts (one candidate `B`) this collapses
+exactly to the single-`B` pipeline. See [decisions/0008](decisions/0008-joint-num-bad-inference.md);
+its prerequisite, the absolute likelihood, is [decisions/0007](decisions/0007-declaration-lie-count-factor.md).
+
 ### 3.6 Open modelling gaps
 
 The declaration prior (§3.3), the wire-split (§3.4.1), the bomb sub-model (§3.2/§3.3/§3.4),

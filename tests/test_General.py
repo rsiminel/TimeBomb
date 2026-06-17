@@ -556,6 +556,172 @@ def test_combineprobs_logspace_no_collapse():
     assert abs(got.sum() - 1.0) < 1e-9
 
 
+# --- joint num_bad inference (ADR 0008) ----------------------------------------
+
+def brute_joint_one_round(decls, revealed, found, hand_size, active_total, active_now,
+                          num_bom, prior_b):
+    """Independent re-derivation of the joint num_bad posterior after one round:
+    u(S;B) = Σ_h ŵ_decl(S,h)·L_config(S,h), with ŵ_decl the lie-factored declaration
+    weight and L_config from `cut_likelihood_ref` — then
+    P(B) ∝ prior(B)·(1/C(N,B))·Σ_S u(S;B), P(S|B) ∝ u(S;B). Returns
+    (p_bad, p_num_bad)."""
+    n, H = len(decls), int(hand_size)
+    decls = [int(round(d)) for d in decls]
+    log_ev, p_set = {}, {}
+    for B in prior_b:
+        u = np.zeros([n] * B)
+        for bad in combinations(range(n), B):
+            tot = 0.0
+            for bom in combinations(range(n), num_bom):
+                free = set(bad) | set(bom)
+                t_free = active_total - (sum(decls) - sum(decls[g] for g in free))
+                free_slots = sum(H - (1 if g in bom else 0) for g in free)
+                if not (0 <= t_free <= free_slots):
+                    continue
+                denom = 1.0
+                for g in free:
+                    denom *= comb(H, decls[g])
+                if denom == 0:
+                    continue
+                wdecl = (H + 1.0) ** (-len(free)) * comb(free_slots, t_free) / denom
+                tot += wdecl * cut_likelihood_ref(decls, revealed, found, H, active_now, bad, bom)
+            u[bad] = tot
+        s = u.sum()
+        p_set[B] = (u / s) if s > 0 else None
+        log_ev[B] = (math.log(prior_b[B]) - math.log(comb(n, B)) + math.log(s)) if s > 0 else -math.inf
+    bs = list(prior_b)
+    evs = np.array([log_ev[B] for B in bs])
+    mm = evs[np.isfinite(evs)].max()
+    ww = np.where(np.isfinite(evs), np.exp(evs - mm), 0.0)
+    ww /= ww.sum()
+    p_num_bad = {bs[k]: ww[k] for k in range(len(bs))}
+    p_bad = np.zeros(n)
+    for k, B in enumerate(bs):
+        if p_set[B] is not None:
+            for bad in combinations(range(n), B):
+                for i in bad:
+                    p_bad[i] += ww[k] * p_set[B][bad]
+    return p_bad, p_num_bad
+
+
+def test_joint_one_round_matches_independent_formula():
+    """JointBadBelief after one RoundLogU equals an independent re-derivation of the
+    ADR-0008 cross-B formula, for the player counts where num_bad is uncertain."""
+    rng = Random(31)
+    for n, prior_b in [(4, gen.NUM_BAD_PRIOR(4)), (7, {2: 3 / 8, 3: 5 / 8})]:
+        max_diff = 0.0
+        for _ in range(60):
+            num_bom = 1
+            # a single consistent round at this n
+            hand_size = rng.randint(2, 3)
+            cap_total = n * hand_size - 1
+            total = rng.randint(0, min(cap_total, n + 2))
+            decls, revealed, found, _, active_now, _ = _round_at(rng, n, hand_size, total, num_bom)
+            log_u = {B: gen.RoundLogU(decls, revealed, found, hand_size, total, active_now, B, num_bom)
+                     for B in prior_b}
+            p_bad, p_nb, _ = gen.JointBadBelief(log_u, prior_b)
+            rb, rnb = brute_joint_one_round(decls, revealed, found, hand_size, total, active_now, num_bom, prior_b)
+            max_diff = max(max_diff, np.max(np.abs(p_bad - rb)))
+            for B in prior_b:
+                max_diff = max(max_diff, abs(p_nb[B] - rnb[B]))
+        assert max_diff < 1e-9, f"n={n} joint vs independent formula = {max_diff}"
+
+
+def _round_at(rng, n, hand_size, total_active, num_bom):
+    """A single consistent round's (decls, revealed, found, hand_size, active_now,
+    total) at fixed n / hand_size / total_active (helper for the joint tests)."""
+    bomb = rng.randrange(n) if num_bom else None
+    cap = [hand_size - (1 if g == bomb else 0) for g in range(n)]
+    total_active = min(total_active, sum(cap))
+    wires = np.zeros(n, dtype=int)
+    given = 0
+    while given < total_active:
+        c = rng.randrange(n)
+        if wires[c] < cap[c]:
+            wires[c] += 1
+            given += 1
+    bad_set = rng.sample(range(n), rng.randint(1, min(3, n)))
+    decls = wires.astype(float).copy()
+    for i in range(n):
+        if i in bad_set or i == bomb:
+            decls[i] = rng.randint(0, hand_size)
+    revealed = np.zeros(n, dtype=int)
+    found = np.zeros(n, dtype=int)
+    active = total_active
+    for _ in range(rng.randint(0, n)):
+        c = rng.randrange(n)
+        bomb_here = 1 if c == bomb else 0
+        nonbomb_left = (hand_size - revealed[c]) - bomb_here
+        if nonbomb_left <= 0:
+            continue
+        if rng.randint(1, nonbomb_left) <= wires[c] - found[c]:
+            found[c] += 1
+            active -= 1
+        revealed[c] += 1
+    return decls, revealed, found, hand_size, active, total_active
+
+
+def test_joint_within_b_matches_combineprobs():
+    """Within a fixed num_bad, JointBadBelief's P(S|B) equals CombineProbs over the
+    per-round normalised bad-set marginals (the two code paths must agree)."""
+    rng = Random(32)
+    for B in (1, 2):
+        for _ in range(40):
+            n = rng.randint(B + 1, B + 2)
+            hand_size = rng.randint(2, 3)
+            num_bom = 1
+            log_u = np.zeros([n] * B)
+            per_round = []
+            for _ in range(rng.randint(1, 4)):
+                total = rng.randint(0, n + 1)
+                decls, revealed, found, _, active, _ = _round_at(rng, n, hand_size, total, num_bom)
+                log_u = log_u + gen.RoundLogU(decls, revealed, found, hand_size, total, active, B, num_bom)
+                prior = gen.ProbDeclaration(decls, hand_size, total, B, num_bom)
+                post = gen.ProbCut(decls, prior, revealed, found, hand_size, active, B, num_bom)
+                per_round.append(gen.Separate(post, B, num_bom)[0])
+            _, _, p_set = gen.JointBadBelief({B: log_u}, {B: 1.0})
+            combined = gen.CombineProbs(per_round)
+            # both may hit the all-ruled-out fallback; compare only when both are proper
+            if np.all(np.isfinite(log_u[gen._badset_mask(log_u.shape)])):
+                assert np.allclose(p_set[B], combined, atol=1e-9)
+
+
+def test_joint_beats_random():
+    """Over many games the joint belief concentrates P(num_bad) on the true count and
+    P(bad) on the true bad guys, at the player counts where num_bad is uncertain."""
+    import random as _random
+    for N in (4, 7):
+        _random.seed(100 + N)
+        np.random.seed(100 + N)
+        K = 250
+        true_nbad_mass = 0.0
+        bad_mass = good_mass = 0.0
+        n_bad_total = n_good_total = 0
+        for _ in range(K):
+            _, p_bad, roles, p_nb = gen.PlayAuto(num_players=N, verbosity=0)
+            true_b = int(roles.sum())
+            true_nbad_mass += p_nb.get(true_b, 0.0)
+            bad_idx = set(int(i) for i in np.where(roles == 1)[0])
+            for i in range(N):
+                if i in bad_idx:
+                    bad_mass += p_bad[i]
+                    n_bad_total += 1
+                else:
+                    good_mass += p_bad[i]
+                    n_good_total += 1
+        avg_true_nbad = true_nbad_mass / K
+        p_bad_on_bad = bad_mass / n_bad_total
+        p_bad_on_good = good_mass / n_good_total
+        # No-information baseline: echoing the prior gives mean P(true B) = Σ_B prior(B)^2
+        # (true B ~ prior). Beating it shows the model learns about the bad *count*.
+        no_info = sum(p * p for p in gen.NUM_BAD_PRIOR(N).values())
+        assert avg_true_nbad > no_info + 0.02, \
+            f"N={N} mean P(num_bad=true)={avg_true_nbad:.3f} <= no-info {no_info:.3f}"
+        # P(bad) must clearly separate true bad guys from good ones.
+        assert p_bad_on_bad > p_bad_on_good + 0.2, \
+            f"N={N} P(bad|bad)={p_bad_on_bad:.3f} not well above P(bad|good)={p_bad_on_good:.3f}"
+
+
 # --- standalone runner ---------------------------------------------------------
 
 if __name__ == "__main__":

@@ -143,19 +143,17 @@ def L_config(decls, revealed, found, hand_size, active_wires, bad_set, bom_set):
 
 # --- the three belief functions (model.md §3.3, §3.4, §3.5) --------------------
 
-def ProbDeclaration(decls, hand_size, active_wires, num_bad, num_bom):
-  """Prior over configurations from the round's declarations alone (model.md §3.3).
+def _decl_weights(decls, hand_size, active_wires, num_bad, num_bom):
+  """Unnormalised declaration weights over configurations (ADR 0007):
 
-  Closed form (ADR 0007, with the lie-count factor kept):
+    w(config) = (H+1)^{-|F|} · C(free_slots, t_free) / Π_{g in F} C(H, decls[g])
 
-    P(config) ∝ (H+1)^{-|F|} · C(free_slots, t_free) / Π_{g in F} C(H, decls[g])
-
-  for the free set ``F = bad_set ∪ bom_set``, ``free_slots = Σ_{g in F}(H − [g bomb])``,
-  ``t_free = A − Σ_{truthful} decls[j]``. The ``(H+1)^{-|F|}`` factor cancels for
-  ``M = 0`` (``|F| = num_bad`` constant) but not for ``M = 1`` (it penalises a good
-  bomb-holder's extra liar). Falls back to the uniform distribution over valid configs
-  on a fully degenerate observation (§3.3). Returns a ``[N]*(num_bad+num_bom)`` tensor
-  summing to 1, non-zero only on sorted-index cells.
+  These are **absolute** — comparable across different bad counts ``num_bad`` (the
+  per-round, B-independent constants ``Π_all C(H,decls)/C(N·H−M, A)`` and the ``1/N``
+  bomb prior are dropped because they cancel in any posterior over configs *or* over B).
+  ``ProbDeclaration`` renormalises these; the joint num_bad layer (ADR 0008) keeps them
+  unnormalised to weigh one ``num_bad`` against another. Returns a
+  ``[N]*(num_bad+num_bom)`` tensor.
   """
   num_players = decls.shape[0]
   H = int(hand_size)
@@ -176,8 +174,31 @@ def ProbDeclaration(decls, hand_size, active_wires, num_bad, num_bom):
         continue
       lie_factor = (H + 1.0) ** (-len(free))  # each free hand is a uniform liar (ADR 0007)
       probs[bad_set + bom_set] = lie_factor * uf.C(t_free, free_slots) / denom
+  return probs
+
+
+def ProbDeclaration(decls, hand_size, active_wires, num_bad, num_bom):
+  """Prior over configurations from the round's declarations alone (model.md §3.3).
+
+  Wraps ``_decl_weights`` (which carries the absolute, cross-B-comparable weights used
+  by the joint num_bad layer of ADR 0008) and renormalises, with the §3.3/ADR 0002
+  uniform fallback on a fully degenerate observation.
+
+  Closed form (ADR 0007, with the lie-count factor kept):
+
+    P(config) ∝ (H+1)^{-|F|} · C(free_slots, t_free) / Π_{g in F} C(H, decls[g])
+
+  for the free set ``F = bad_set ∪ bom_set``, ``free_slots = Σ_{g in F}(H − [g bomb])``,
+  ``t_free = A − Σ_{truthful} decls[j]``. The ``(H+1)^{-|F|}`` factor cancels for
+  ``M = 0`` (``|F| = num_bad`` constant) but not for ``M = 1`` (it penalises a good
+  bomb-holder's extra liar). Falls back to the uniform distribution over valid configs
+  on a fully degenerate observation (§3.3). Returns a ``[N]*(num_bad+num_bom)`` tensor
+  summing to 1, non-zero only on sorted-index cells.
+  """
+  probs = _decl_weights(decls, hand_size, active_wires, num_bad, num_bom)
   total_mass = np.sum(probs)
   if total_mass == 0:  # degeneracy: uniform over the valid configs (§3.3, ADR 0002)
+    num_players = decls.shape[0]
     for bad_set in itertools.combinations(range(num_players), num_bad):
       for bom_set in itertools.combinations(range(num_players), num_bom):
         probs[bad_set + bom_set] = 1.0
@@ -510,3 +531,258 @@ def PrintPanel(players, decls, probs, revealed, found, hand_size, active_wires,
     else:
       ps, pb, dh, rh = panel[i]
       print(f"    {players[i]:<8} {ps:11.3f}   {pb:6.3f}   {dh:9.3f}   {rh:14.3f}")
+
+
+# --- joint inference over the number of bad guys (ADR 0008) --------------------
+
+def NUM_BAD_PRIOR(num_players):
+  """Prior P(num_bad) from the role-card composition by player count. For most counts
+  the bad count is fixed; for N=4 it is 1 or 2 and for N=7 it is 2 or 3 (the deal leaves
+  it uncertain). Returns a dict {num_bad: probability}."""
+  if num_players == 4:
+    return {1: 2 / 5, 2: 3 / 5}
+  if num_players in (5, 6):
+    return {2: 1.0}
+  if num_players == 7:
+    return {2: 3 / 8, 3: 5 / 8}
+  if num_players == 8:
+    return {3: 1.0}
+  raise ValueError("Time Bomb supports 4-8 players")
+
+
+def _cut_likelihoods(decls, revealed, found, hand_size, active_wires, num_bad, num_bom):
+  """The ``L_config`` likelihood of the cut observation for every configuration, as a
+  ``[N]*(num_bad+num_bom)`` tensor (the per-config factors ``ProbCut`` multiplies the
+  prior by)."""
+  num_players = decls.size
+  lk = np.zeros([num_players] * (num_bad + num_bom))
+  for bad_set in itertools.combinations(range(num_players), num_bad):
+    for bom_set in itertools.combinations(range(num_players), num_bom):
+      lk[bad_set + bom_set] = L_config(decls, revealed, found, hand_size,
+                                       active_wires, bad_set, bom_set)
+  return lk
+
+
+def RoundLogU(decls, revealed, found, hand_size, total_active, active_wires, num_bad, num_bom):
+  """Per-round log unnormalised bad-set marginal ``log u_r(S; B)`` (ADR 0008): the
+  absolute declaration weight (at the round-start ``total_active``) times the cut
+  likelihood (at the round's final cut state), summed over the bomb axis. ``-inf`` marks
+  a bad set ruled out this round. Accumulating these across rounds and feeding them to
+  ``JointBadBelief`` gives the joint posterior over how many bad guys there are.
+  """
+  decl_w = _decl_weights(decls, hand_size, total_active, num_bad, num_bom)
+  cut_lk = _cut_likelihoods(decls, revealed, found, hand_size, active_wires, num_bad, num_bom)
+  u_bad, _ = Separate(decl_w * cut_lk, num_bad, num_bom)  # sum over the bomb axis
+  mask = _badset_mask(u_bad.shape)
+  log_u = np.full(u_bad.shape, -np.inf)
+  pos = mask & (u_bad > 0)
+  log_u[pos] = np.log(u_bad[pos])
+  return log_u
+
+
+def JointBadBelief(log_u_by_b, prior_b):
+  """Combine per-num_bad accumulated ``log u`` tensors into one belief (ADR 0008).
+
+  ``log_u_by_b`` maps each candidate ``num_bad`` to ``Σ_r log u_r(S; B)`` (from
+  ``RoundLogU``); ``prior_b`` maps it to ``P(num_bad)``. Returns
+  ``(p_bad, p_num_bad, p_set_by_b)``:
+
+    P(num_bad | D) ∝ P(num_bad) · (1/C(N,num_bad)) · Σ_S exp(Σ_r log u_r(S; B))
+    P(S | num_bad, D) ∝ exp(Σ_r log u_r(S; B))
+    P(player i bad) = Σ_B P(num_bad | D) · Σ_{S ∋ i} P(S | num_bad, D)
+
+  All sums are in log-space (logsumexp/softmax) to avoid underflow. The ``1/C(N,B)``
+  prior over which subset is bad is essential — a larger ``B`` spreads its prior over more
+  subsets. Falls back to ``prior_b`` if every candidate is ruled out (fully degenerate).
+  """
+  num_players = next(iter(log_u_by_b.values())).shape[0]
+  bs = list(log_u_by_b)
+  log_ev = {}
+  p_set = {}
+  for b in bs:
+    log_u = log_u_by_b[b]
+    mask = _badset_mask(log_u.shape)
+    vals = log_u[mask]
+    if not np.any(np.isfinite(vals)):  # this bad-count ruled out entirely
+      log_ev[b] = -np.inf
+      p_set[b] = (mask / mask.sum())
+      continue
+    m = vals[np.isfinite(vals)].max()
+    lse = m + np.log(np.sum(np.exp(vals - m)))  # Σ_S exp(Σ log u); exp(-inf)=0
+    log_ev[b] = np.log(prior_b[b]) - np.log(uf.C(b, num_players)) + lse
+    w = np.zeros(log_u.shape)
+    w[mask] = np.exp(vals - m)
+    p_set[b] = w / w.sum()
+  evs = np.array([log_ev[b] for b in bs])
+  if not np.any(np.isfinite(evs)):  # everything degenerate: fall back to the prior
+    p_num_bad = {b: prior_b[b] for b in bs}
+  else:
+    mm = evs[np.isfinite(evs)].max()
+    ww = np.where(np.isfinite(evs), np.exp(evs - mm), 0.0)
+    ww = ww / ww.sum()
+    p_num_bad = {bs[k]: float(ww[k]) for k in range(len(bs))}
+  p_bad = np.zeros(num_players)
+  for b in bs:
+    p_bad += p_num_bad[b] * DeMatrix(p_set[b])
+  return p_bad, p_num_bad, p_set
+
+
+# --- simulation + interactive play ---------------------------------------------
+
+def DistributeWires(num_players, hand_size, active_wires, num_bom):
+  """Deal one bomb to a random hand (M=1) then ``active_wires`` wires uniformly among
+  the remaining non-bomb slots. Returns ``(wires, bombs)`` integer vectors.
+  Simulation-only helper for ``PlayAuto``."""
+  bombs = np.zeros(num_players, dtype=int)
+  for h in sample(range(num_players), num_bom):
+    bombs[h] = 1
+  capacity = np.full(num_players, hand_size, dtype=int) - bombs
+  wires = np.zeros(num_players, dtype=int)
+  given = 0
+  while given < active_wires:
+    c = randrange(num_players)
+    if wires[c] < capacity[c]:
+      wires[c] += 1
+      given += 1
+  return wires, bombs
+
+
+def CutRandom(decls, probs, revealed, found, hand_size, active_wires, num_bad, num_bom):
+  """Cut a uniformly random face-down card (ignores the belief). The baseline policy
+  for the ``PlayAuto`` simulation; the quantities-only panel (``CutPanel``) is the
+  assistant's recommendation substrate, not an autonomous policy (ADR 0006)."""
+  num_players = revealed.size
+  cutee = randrange(num_players)
+  while revealed[cutee] >= hand_size:
+    cutee = randrange(num_players)
+  return cutee
+
+
+def PlayAuto(num_players=4, initial_hand_size=5, verbosity=0, cut_strategy=CutRandom):
+  """Simulate one full game with the joint num_bad model, tracking the belief.
+
+  Samples the true bad count from ``NUM_BAD_PRIOR`` and a random bad set, deals the bomb
+  and wires each round under the uniform-lie model, and cuts via ``cut_strategy`` until
+  the good guys clear every wire, the bomb is cut, or time runs out. Accumulates
+  ``RoundLogU`` per candidate num_bad and reduces to the joint belief each round
+  (``JointBadBelief``). Returns ``(good_guys_won, p_bad, roles, p_num_bad)``.
+  """
+  prior_b = NUM_BAD_PRIOR(num_players)
+  candidate_bs = list(prior_b)
+  true_num_bad = candidate_bs[0] if len(candidate_bs) == 1 else \
+      np.random.choice(candidate_bs, p=[prior_b[b] for b in candidate_bs])
+  roles = np.zeros(num_players, dtype=int)
+  for i in sample(range(num_players), int(true_num_bad)):
+    roles[i] = 1
+  if verbosity > 0:
+    print("Roles:", roles, " true num_bad:", int(true_num_bad))
+  log_u_by_b = {b: np.zeros([num_players] * b) for b in candidate_bs}
+  num_bom = 1
+  hand_size = initial_hand_size
+  active_wires = num_players
+  p_bad = np.full(num_players, sum(b * prior_b[b] for b in candidate_bs) / num_players)
+  while hand_size > 1:
+    total_active = active_wires
+    wires, bombs = DistributeWires(num_players, hand_size, active_wires, num_bom)
+    declarations = wires.copy()
+    for i in range(num_players):
+      if roles[i] == 1 or bombs[i] == 1:  # bad or bomb-holder => uniform lie
+        declarations[i] = randint(0, hand_size)
+    found = np.zeros(num_players, dtype=int)
+    revealed = np.zeros(num_players, dtype=int)
+    bomb_cut = False
+    for _ in range(num_players):
+      probs = ProbDeclaration(declarations, hand_size, total_active, candidate_bs[0], num_bom)
+      cutee = cut_strategy(declarations, probs, revealed, found, hand_size,
+                           active_wires, candidate_bs[0], num_bom)
+      randy = randint(1, hand_size - revealed[cutee])
+      if bombs[cutee] == 1 and randy == hand_size - revealed[cutee]:
+        bomb_cut = True
+        revealed[cutee] += 1
+        break
+      if randy <= wires[cutee] - found[cutee]:
+        found[cutee] += 1
+        active_wires -= 1
+      revealed[cutee] += 1
+      if active_wires <= 0:
+        break
+    # Fold this round's evidence into the joint belief (ADR 0008).
+    for b in candidate_bs:
+      log_u_by_b[b] = log_u_by_b[b] + RoundLogU(declarations, revealed, found,
+                                                hand_size, total_active, active_wires, b, num_bom)
+    p_bad, p_num_bad, _ = JointBadBelief(log_u_by_b, prior_b)
+    if verbosity > 1:
+      print("  P(bad):    ", np.round(p_bad, 3))
+      print("  P(num_bad):", {b: round(p_num_bad[b], 3) for b in candidate_bs})
+    if bomb_cut:
+      if verbosity > 0:
+        print("The Bomb was detonated. Bad guys win!")
+      return (0, p_bad, roles, p_num_bad)
+    if active_wires <= 0:
+      if verbosity > 0:
+        print("Good guys win!")
+      return (1, p_bad, roles, p_num_bad)
+    hand_size -= 1
+  if verbosity > 0:
+    print("Out of time. Bad guys win!")
+  return (0, p_bad, roles, JointBadBelief(log_u_by_b, prior_b)[1])
+
+
+def Play(players=["Alice", "Bob", "Clara", "Darryl"], initial_hand_size=5):
+  """Interactive assistant for a real game: prompts for declarations and cut results and
+  prints the joint belief (per-player P(bad), P(num_bad), P(bomb)) and the cut panel
+  after each event. Handles the player counts where the bad count is uncertain
+  (N=4, N=7) via the joint num_bad model (ADR 0008)."""
+  num_players = len(players)
+  prior_b = NUM_BAD_PRIOR(num_players)
+  candidate_bs = list(prior_b)
+  num_bom = 1
+  log_u_by_b = {b: np.zeros([num_players] * b) for b in candidate_bs}
+  hand_size = initial_hand_size
+  active_wires = num_players
+  while hand_size > 1:
+    print("\n\n Round", initial_hand_size - hand_size + 1)
+    total_active = active_wires
+    declarations = np.zeros(num_players, dtype=int)
+    for i in range(num_players):
+      declarations[i] = int(input("How many wires does " + players[i] + " say they have? "))
+    found = np.zeros(num_players, dtype=int)
+    revealed = np.zeros(num_players, dtype=int)
+    for cut in range(num_players):
+      probs = ProbDeclaration(declarations, hand_size, total_active, candidate_bs[0], num_bom)
+      probs = ProbCut(declarations, probs, revealed, found, hand_size, active_wires,
+                      candidate_bs[0], num_bom)
+      # joint belief readout (this round folded in provisionally for display)
+      provisional = dict(log_u_by_b)
+      for b in candidate_bs:
+        provisional[b] = log_u_by_b[b] + RoundLogU(declarations, revealed, found,
+                                                   hand_size, total_active, active_wires, b, num_bom)
+      p_bad, p_num_bad, _ = JointBadBelief(provisional, prior_b)
+      _, p_bomb = Separate(probs, candidate_bs[0], num_bom)
+      print(" P(bad):    ", np.round(p_bad, 3))
+      print(" P(num_bad):", {b: round(p_num_bad[b], 3) for b in candidate_bs})
+      print(" P(bomb):   ", np.round(np.asarray(p_bomb).reshape(-1), 3))
+      PrintPanel(players, declarations, probs, revealed, found, hand_size,
+                 active_wires, candidate_bs[0], num_bom)
+      cutee_str = input("\nWhose wire has been cut? ")
+      while cutee_str not in players:
+        cutee_str = input("You must have made a typo. Who? ")
+      cutee = players.index(cutee_str)
+      revealed[cutee] += 1
+      shown = int(input("Did you reveal:\n 0- an inactive wire\n 1- an active wire\n 2- the bomb\n"))
+      while shown not in (0, 1, 2):
+        shown = int(input("Sorry, I'm looking for a 0, a 1 or a 2 here. "))
+      if shown == 2:
+        print("The Bomb was detonated. Bad guys win!")
+        return
+      if shown == 1:
+        found[cutee] += 1
+        active_wires -= 1
+      if active_wires <= 0:
+        print("All wires have been cut. Good guys win!")
+        return
+    for b in candidate_bs:
+      log_u_by_b[b] = log_u_by_b[b] + RoundLogU(declarations, revealed, found,
+                                                hand_size, total_active, active_wires, b, num_bom)
+    hand_size -= 1
+  print("Out of time. Bad guys win!")
