@@ -507,6 +507,193 @@ def test_bomb_inference_beats_random_chance():
     assert top1 / K > 0.3, f"top-1 bomb accuracy={top1 / K:.3f} not above baseline {baseline:.3f}"
 
 
+# --- four-stat cut panel: independent oracle -----------------------------------
+
+def brute_role_entropy(probs):
+    """Shannon entropy (bits) of the role posterior P(bad pair), recomputed straight
+    from the config tensor: marginalise the bomb axis to the pair distribution (sums
+    to 1) and sum -p*log2(p). Independent of EntropyBad / DeTensor."""
+    n = probs.shape[0]
+    pair = np.zeros((n, n))
+    for b1, b2, h in configs(n):
+        pair[b1][b2] += probs[b1][b2][h]
+    ent = 0.0
+    for b1 in range(n):
+        for b2 in range(b1):
+            p = pair[b1][b2]
+            if p > 0:
+                ent -= p * math.log2(p)
+    return ent
+
+
+def brute_expected_post_entropy_1ply(decls, probs, revealed, found, hand_size, active_wires):
+    """The stat-3 quantity (1-ply expected post-cut role entropy) recomputed entirely
+    from the independent oracle: oracle P_wire for the wire/dud weights, oracle
+    ProbCut for each successor belief, oracle role entropy for the value. A wire drops
+    active_wires by one (and increments found); a dud leaves them. Shares no algebra
+    with the module's NextHBad."""
+    n, H = len(decls), int(hand_size)
+    pw = brute_pwire(decls, probs, revealed, found, hand_size, active_wires)
+    out = np.full(n, np.nan)
+    for i in range(n):
+        if revealed[i] >= H:
+            continue
+        e = np.zeros(n, dtype=int)
+        e[i] = 1
+        h_wire = h_dud = 0.0
+        if pw[i] > 1e-9 and active_wires > 0:
+            post_w = brute_probcut(decls, probs, revealed + e, found + e, H, active_wires - 1)
+            h_wire = brute_role_entropy(post_w)
+        if pw[i] < 1 - 1e-9:
+            post_d = brute_probcut(decls, probs, revealed + e, found, H, active_wires)
+            h_dud = brute_role_entropy(post_d)
+        out[i] = pw[i] * h_wire + (1 - pw[i]) * h_dud
+    return out
+
+
+# --- four-stat cut panel: tests ------------------------------------------------
+
+def test_entropybad_known_values():
+    n = 3
+    certain = np.zeros((n, n, n))
+    certain[1][0][2] = 1.0  # one pair, bomb somewhere -> no role uncertainty
+    assert abs(tb.EntropyBad(certain)) < TOL
+    uniform = np.zeros((n, n, n))
+    for b1, b2 in [(1, 0), (2, 0), (2, 1)]:
+        uniform[b1][b2][0] = 1.0 / 3  # uniform over the 3 pairs
+    assert abs(tb.EntropyBad(uniform) - math.log2(3)) < 1e-9
+
+
+def test_nexthbad_matches_oracle_sweep():
+    """Stat 3 against a fully independent oracle (no module call inside the reference):
+    a model can update beliefs correctly yet the information lookahead can still be
+    wrong, so this pins NextHBad to the generative definition."""
+    rng = Random(7)
+    max_diff = 0.0
+    for _ in range(600):
+        decls, revealed, found, hand_size, active, total = random_consistent_state(rng)
+        prior = tb.ProbDeclaration(decls, hand_size, total)
+        if prior.sum() == 0:
+            continue
+        probs = tb.ProbCut(decls, prior, revealed, found, hand_size, active)
+        got = tb.NextHBad(decls, probs, revealed, found, hand_size, active)
+        ref = brute_expected_post_entropy_1ply(decls, probs, revealed, found, hand_size, active)
+        for i in range(len(decls)):
+            if np.isnan(got[i]) and np.isnan(ref[i]):
+                continue
+            assert not (np.isnan(got[i]) or np.isnan(ref[i])), "nan mismatch"
+            max_diff = max(max_diff, abs(got[i] - ref[i]))
+    assert max_diff < 1e-9, f"max diff vs oracle = {max_diff}"
+
+
+def test_cutpanel_invariants_and_assembly_sweep():
+    """The panel's entries are in range (probabilities in [0,1], entropies in
+    [0, log2(C(N,2))]), non-cuttable rows are all-nan, and the assembled columns equal
+    the standalone stat functions."""
+    rng = Random(8)
+    for _ in range(400):
+        decls, revealed, found, hand_size, active, total = random_consistent_state(rng)
+        prior = tb.ProbDeclaration(decls, hand_size, total)
+        if prior.sum() == 0:
+            continue
+        probs = tb.ProbCut(decls, prior, revealed, found, hand_size, active)
+        n = len(decls)
+        num_pairs = n * (n - 1) // 2
+        max_ent = math.log2(num_pairs) if num_pairs > 1 else 0.0
+        panel = tb.CutPanel(decls, probs, revealed, found, hand_size, active)
+        ps_ref = tb.P_wire(decls, probs, revealed, found, hand_size, active)
+        _, pb_ref = tb.DeTensor(probs)
+        for i in range(n):
+            if revealed[i] >= hand_size:
+                assert np.all(np.isnan(panel[i]))
+                continue
+            ps, pb, dh, rh = panel[i]
+            assert -TOL <= ps <= 1 + TOL
+            assert -TOL <= pb <= 1 + TOL
+            assert -TOL <= dh <= max_ent + 1e-6
+            assert -TOL <= rh <= max_ent + 1e-6
+            assert abs(ps - ps_ref[i]) < TOL  # column 0 == P_wire
+            assert abs(pb - pb_ref[i]) < TOL  # column 1 == DeTensor bomb marginal
+
+
+def test_roundhorizon_depth1_equals_nexthbad():
+    """Stat 4 at lookahead depth 1 is exactly stat 3: a single opening cut expanded
+    over its two outcomes, with no further continuation."""
+    rng = Random(9)
+    for _ in range(300):
+        decls, revealed, found, hand_size, active, total = random_consistent_state(rng)
+        prior = tb.ProbDeclaration(decls, hand_size, total)
+        if prior.sum() == 0:
+            continue
+        probs = tb.ProbCut(decls, prior, revealed, found, hand_size, active)
+        nh = tb.NextHBad(decls, probs, revealed, found, hand_size, active)
+        rh = tb.RoundHorizonH(decls, probs, revealed, found, hand_size, active, max_depth=1)
+        for i in range(len(decls)):
+            if np.isnan(nh[i]) and np.isnan(rh[i]):
+                continue
+            assert abs(nh[i] - rh[i]) < 1e-12
+
+
+# --- CombineProbs robustness (eps-floor + log-space, ADR 0005) -----------------
+
+def test_combineprobs_matches_exact_product_when_positive():
+    """On strictly-positive per-round vectors (no hard zeros) the robust CombineProbs
+    is numerically identical to the plain elementwise-product-and-renormalise."""
+    rng = Random(11)
+    for _ in range(100):
+        n = rng.randint(3, 6)
+        mats = []
+        ref = np.ones((n, n))
+        for _ in range(rng.randint(1, 8)):
+            m = np.zeros((n, n))
+            for b1 in range(n):
+                for b2 in range(b1):
+                    m[b1][b2] = rng.uniform(0.05, 1.0)  # strictly positive
+            m /= m.sum()
+            mats.append(m)
+            ref = ref * m
+        ref = np.tril(ref, -1)
+        ref /= ref.sum()
+        got = tb.CombineProbs(mats)
+        assert np.allclose(got, ref, atol=1e-7), np.max(np.abs(got - ref))
+
+
+def test_combineprobs_eps_floor_revives_zeroed_pair():
+    """A pair a single round calls impossible (hard 0) is not permanently eliminated:
+    later rounds favouring it can revive it to the top suspect. The old bare product
+    would pin it at 0 forever."""
+    n = 3
+    r1 = np.zeros((n, n))
+    r1[1][0] = 0.5
+    r1[2][0] = 0.5            # pair (2,1) declared impossible this round
+    r2 = np.zeros((n, n))
+    r2[2][1] = 1.0           # later rounds point hard at (2,1)
+    r3 = np.zeros((n, n))
+    r3[2][1] = 1.0
+    got = tb.CombineProbs([r1, r2, r3])
+    assert got[2][1] > 0.0                              # revived from a hard zero
+    assert np.unravel_index(np.argmax(got), got.shape) == (2, 1)
+    assert abs(got.sum() - 1.0) < 1e-9
+
+
+def test_combineprobs_logspace_no_collapse():
+    """Many peaked rounds underflow the raw product to all-zeros (old code then dumps
+    to uniform, discarding the evidence); log-space stays exact and concentrated."""
+    n = 4
+    base = np.zeros((n, n))
+    for b1 in range(n):
+        for b2 in range(b1):
+            base[b1][b2] = 0.1
+    base[3][0] = 0.5         # dominant pair; max entry 0.5 underflows at this depth
+    base = np.tril(base, -1)
+    base /= base.sum()
+    top = np.unravel_index(np.argmax(base), base.shape)
+    got = tb.CombineProbs([base] * 1100)
+    assert not np.any(np.isnan(got))
+    assert got[top] > 0.999                             # concentrated, not collapsed
+    assert abs(got.sum() - 1.0) < 1e-9
+
+
 # --- standalone runner (no pytest required) ------------------------------------
 
 if __name__ == "__main__":

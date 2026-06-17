@@ -94,7 +94,8 @@ the rationale behind each settled choice is recorded as an ADR in
    combined; round informativeness is **not** weighted (it is already carried by each
    round's vector shape — an external coefficient would double-count). Two robustness
    hardenings (ε-floor against permanent `0`-pinning under misspecification; log-space
-   accumulation against underflow) are warranted and land in `General.py`. See
+   accumulation against underflow) are warranted and land in `General.py` — now
+   prototyped and tested in `TwoBadGuysOneBomb` (B4) to de-risk that work. See
    [decisions/0005](decisions/0005-cross-round-evidence-combination.md).
 
 **Deferred refinements (not scheduled).**
@@ -246,14 +247,37 @@ five criteria. Highlights:
   P(bomb) column is never combined (§3.5); degeneracy falls back to uniform over
   pairs. `DeTensor` yields `(pair matrix, bomb vector)`; `DeMatrix` reduces the pair
   matrix to per-player P(bad). Integer arrays throughout; clean `PlayAuto`.
-- `test_TwoBadGuysOneBomb.py` (12 tests) checks the math against an independent
+- `test_TwoBadGuysOneBomb.py` (19 tests) checks the math against an independent
   `(b1, b2, h)`-enumeration `math.comb` oracle that sums the free-hand wire split
   explicitly (no closed form, no `L_bad_pair` reuse), plus two end-to-end accuracy
   tests: over 400 games the combined belief puts ~0.65 on each true bad guy vs ~0.18
   on the good ones (baseline 0.33), and the per-round P(bomb) column puts ~0.30 on the
   true holder vs the 0.167 baseline.
+- **Carries the two General.py-bound references** (pre-implemented here so the B5 work
+  mirrors a verified reference rather than designing from scratch):
+  - **The four-stat cut panel (A6, §3.5, ADR 0006):** `CutPanel` returns per player
+    `[P(safe wire), P(bomb), 1-ply E[H(bad)], round-horizon H(bad)]`. Stats 3–4 are the
+    new information lookaheads — `NextHBad` (1-ply expected post-cut role entropy) and
+    `RoundHorizonH`/`H_Min` (the info-greedy min-entropy lookahead to end of round) —
+    defined with the bomb present: the role-uncertainty object is the **pair
+    distribution** entropy (`EntropyBad`, sums to 1), and the rollout reuses the
+    bomb-aware `ProbCut` (conditioned on "no bomb cut yet"), ignoring bomb risk per
+    ADR 0006. Validated by an independent oracle for stat 3 plus range/assembly/depth-1
+    invariants; surfaced to the human via `PrintPanel` in `Play`.
+  - **The robust `CombineProbs` (A5, ADR 0005):** the ε-floor + log-space form of the
+    exact product — numerically identical for normal play, but no single round can
+    permanently zero a pair and many rounds cannot underflow to uniform. An authorised
+    deviation from ADR 0005's "don't retrofit the pinned variants", prototyped here to
+    de-risk General; covered by three robustness tests (equals the exact product on
+    positive input, revives a hard-zeroed pair, no collapse over 1100 peaked rounds).
 
 ### 5. `General.py` — ⏭ next
 
 Reconcile to the canonical forms validated across variants 1–4; the end target. Still
-carries the `P_wire` ungated-good-branch bug (and likely more — not yet trusted).
+carries the `P_wire` ungated-good-branch bug (and likely more — not yet trusted). The
+two General-bound additions are now pre-implemented and tested in `TwoBadGuysOneBomb`
+(B4) so this step mirrors a verified reference: the **four-stat cut panel** (`CutPanel`
+/`NextHBad`/`RoundHorizonH`/`H_Min`/`EntropyBad`, A6/§3.5) and the **robust
+`CombineProbs`** (ε-floor + log-space, A5/ADR 0005). The known open issue to carry over
+is the exponential cost of the round-horizon lookahead (`O((2N)^stop)`), which General
+should address with a beam/analytic approximation rather than the exact recursion.

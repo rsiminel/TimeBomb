@@ -91,13 +91,16 @@ each round's vector shape (KL-from-uniform); an external exponent would double-c
 - [x] **Justification recorded** as [ADR 0005](docs/decisions/0005-cross-round-evidence-combination.md):
       exact product, per-round factor must stay a likelihood (not a prior-contaminated
       posterior), `P(bomb)` never combined, no informativeness weighting.
-- [ ] **Robustness — ε-floor.** Mix each per-round vector with `ε · uniform` before
+- [x] **Robustness — ε-floor.** Mix each per-round vector with `ε · uniform` before
       multiplying so a single round's hard `0` cannot *permanently* eliminate a player
-      under lie-model misspecification. Land in `General.py`.
-- [ ] **Robustness — log-space accumulation.** Sum `log` per-round vectors and
+      under lie-model misspecification. **Prototyped + tested in `TwoBadGuysOneBomb`**
+      (B4 `CombineProbs`, an authorised deviation from "don't retrofit the variants" to
+      de-risk General); General.py mirrors it.
+- [x] **Robustness — log-space accumulation.** Sum `log` per-round vectors and
       softmax-normalise to avoid underflow over many rounds / large `N` (which currently
-      trips the `total == 0` → uniform branch and discards real evidence). Land in
-      `General.py`; makes the ε-floor trivial to express.
+      trips the `total == 0` → uniform branch and discards real evidence).
+      **Prototyped + tested in B4** (same `CombineProbs`; the ε-floor rides along in the
+      log form); General.py mirrors it.
 - [ ] **Deferred (gated on calibration):** per-round tempering `wᵣ` to down-weight
       *distrusted* (declaration-dominated) rounds — only if a calibration test shows
       systematic overconfidence, and a single global temper is preferred first.
@@ -113,8 +116,16 @@ backend, so not scheduled before `General.py`.
       round-horizon H(bad)) in [ADR 0006](docs/decisions/0006-cut-recommendation-output.md)
       and model.md §3.5; dropped the combined "score" stat (smuggles a risk weight) and
       `EIG_bomb` (ephemeral + perverse).
-- [ ] **Implement** the panel against the cleaned `General.py` belief functions; stat 4
-      reuses the min-entropy lookahead, displayed beside stat 2 (it ignores bomb risk).
+- [x] **Reference implemented + tested in `TwoBadGuysOneBomb`** (B4): `CutPanel` returns
+      per player `[P(safe wire), P(bomb), 1-ply E[H(bad)], round-horizon H(bad)]`. Stats
+      3–4 are the new lookaheads `NextHBad` and `RoundHorizonH`/`H_Min`, with the role
+      object the **pair-distribution** entropy (`EntropyBad`) and the rollout reusing the
+      bomb-aware `ProbCut` (ignores bomb risk per ADR 0006). Stat 3 validated against an
+      independent oracle; range/assembly/depth-1 invariants covered; `PrintPanel` shows
+      it in `Play`. Known carry-over: the round-horizon lookahead is `O((2N)^stop)` —
+      General should beam/approximate it.
+- [ ] **Land in `General.py`**, mirroring the B4 reference, against the cleaned belief
+      functions; stat 4 displayed beside stat 2 (it ignores bomb risk).
 - [ ] **Prerequisite — calibration.** Verify `P(bad)`/`P(bomb)` are calibrated before the
       panel is trusted (shared with A5's calibration check).
 - [ ] **Open (to debate):** the horizon-weighted VOI upgrade — swap stat 4's objective
@@ -198,7 +209,10 @@ weighting was wrong (e.g. `bg=2,H=2`: `(¼,½,¼)` vs correct `(⅙,⅔,⅙)`).
 - [ ] Reconcile to the canonical forms validated across B1–B4; the end target. Carries
       the `P_wire` ungated-good-branch bug (and likely more — not yet trusted). This is
       where the Axis A robustness hardenings (ε-floor, log-space `CombineProbs`) and the
-      A6 cut panel land.
+      A6 cut panel land — both now **pre-implemented and tested in B4
+      (`TwoBadGuysOneBomb`)** as the reference to mirror, so this is reconciliation, not
+      fresh design. Address the round-horizon lookahead's exponential cost here
+      (beam/analytic approximation).
 
 ---
 
