@@ -111,7 +111,9 @@ def generative_declaration_prior(decls, hand_size, active_wires):
         slots ~ multivariate hypergeometric, so a wire vector w has weight
         Π_g C(slots_g, w[g]) with slots_g = H-1 if g==h else H;
       * truthful hands (g not in {b1,b2,h}) declare exactly w[g] == decls[g];
-      * the liars declare uniformly -> constant factor, cancels.
+      * each free hand is a uniform liar, contributing a factor (H+1)^{-|F|} for the
+        |F| free hands -- this does NOT cancel (ADR 0007): |F|=2 when the bomb sits on
+        a bad guy, |F|=3 when on a good guy, so it down-weights bomb-on-good configs.
 
     Enumerates every wire vector via itertools.product -- no closed form, no division
     -- so it shares no algebra with ProbDeclaration. Falls back to the uniform tensor
@@ -121,6 +123,7 @@ def generative_declaration_prior(decls, hand_size, active_wires):
     post = np.zeros((n, n, n))
     for b1, b2, h in configs(n):
         free = {b1, b2, h}
+        lie_factor = (H + 1) ** (-len(free))  # uniform-lie declaration probability
         for w in itertools.product(range(H + 1), repeat=n):
             if sum(w) != A:
                 continue
@@ -129,7 +132,7 @@ def generative_declaration_prior(decls, hand_size, active_wires):
             slots = [slots_of(g, h, H) for g in range(n)]
             if any(w[g] > slots[g] for g in range(n)):
                 continue
-            weight = 1
+            weight = lie_factor
             for g in range(n):
                 weight *= comb(slots[g], w[g])
             post[b1][b2][h] += weight

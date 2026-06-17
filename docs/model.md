@@ -140,8 +140,13 @@ Convert the round's declarations into a prior over configurations by Bayes on th
 **configuration space**, exactly parallel to `ProbCut` (§3.4). Under the **uniform-lie
 model** (§2) a hand is *truthful* iff its owner is good **and** bomb-free; every truthful
 hand declares its real wire count, while every liar — each bad guy, and the bomb holder
-when good — declares uniformly over `{0,…,H}`, contributing only a constant factor that
-cancels in normalisation.
+when good — declares uniformly over `{0,…,H}`, contributing a factor `(H+1)^{−1}` each, so
+`(H+1)^{−|F|}` for the `|F|` free (liar) hands. This factor cancels in normalisation **only
+when `|F|` is constant across configurations** — which holds for `M = 0` (`|F| = B` always)
+but **not** for `M = 1`, where `|F| = B` on the self-bomb diagonal (a bad guy holds his own
+bomb) and `|F| = B + 1` when a good guy holds the bomb (one extra good liar). Dropping it
+there over-weights the bomb-on-good configurations by `(H+1)` and miscalibrates
+`P(bomb)`/`P(bad)` (ADR 0007, verified by a generative Monte Carlo).
 
 Marking a configuration — bad set `S`, bomb holder `h` — pins every truthful hand to its
 declared count and leaves the **free hands** `F = S ∪ {h}` to hold the remaining wires:
@@ -161,11 +166,13 @@ Counting the consistent deals and collapsing the wire split via Vandermonde's id
 (§3.4.1) gives a single closed form:
 
 ```
-P(config | decls)  ∝  C(free_slots, t_free)  /  Π_{g ∈ F} C(H, decls[g])
+P(config | decls)  ∝  (H+1)^{−|F|} · C(free_slots, t_free)  /  Π_{g ∈ F} C(H, decls[g])
 ```
 
 with `C(n, k) = 0` for `k < 0` or `k > n` (zeroing any configuration that cannot account
-for the wires). Every variant is an instance of this one formula:
+for the wires). For `M = 0` the `(H+1)^{−|F|} = (H+1)^{−B}` is a global constant and drops
+out in normalisation, so the no-bomb instances below are unchanged; for `M = 1` it must be
+kept. Every variant is an instance of this one formula:
 
 - **`B=1, M=0`** — `F = {i}`, `free_slots = H`; with `excess = Σ decls − A` and
   `t_i = decls[i] − excess`:  `P(bad=i) ∝ C(H, t_i) / C(H, decls[i])`. When `excess = 0`
@@ -176,9 +183,11 @@ for the wires). Every variant is an instance of this one formula:
   does **not** give a uniform prior (two lies can cancel in aggregate while some bad sets
   stay more deal-plausible), so there is **no `excess = 0` special case**.
 - **`M=1`** — `F = S ∪ {h}`; the bomb hand contributes `H − 1` slots, dropping
-  `free_slots` by one. E.g. `B=1`: `b ≠ h` gives
-  `C(2H−1, …)/(C(H,decls[b])·C(H,decls[h]))` and the self-bomb case `b = h` gives
-  `C(H−1, …)/C(H, decls[b])`.
+  `free_slots` by one, and the `(H+1)^{−|F|}` lie factor is kept (it differs between the
+  `h ∈ S` and `h ∉ S` cases). E.g. `B=1`: `b ≠ h` (`|F| = 2`) gives
+  `(H+1)^{−2}·C(2H−1, …)/(C(H,decls[b])·C(H,decls[h]))` and the self-bomb case `b = h`
+  (`|F| = 1`) gives `(H+1)^{−1}·C(H−1, …)/C(H, decls[b])` — so a good bomb-holder hypothesis
+  is penalised by the extra `1/(H+1)`.
 
 **Degeneracy.** If every configuration has zero weight (declarations impossible under the
 model — unreachable with consistent game data) fall back to the uniform prior, never an

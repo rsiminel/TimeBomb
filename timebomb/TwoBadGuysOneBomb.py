@@ -85,6 +85,8 @@ def PlayAuto(num_players=6, initial_hand_size=5, verbosity=2):
     # Cut wires
     found = np.zeros(num_players, dtype=int)
     revealed = np.zeros(num_players, dtype=int)
+    if verbosity > 1:
+      PrintPanel(["A", "B", "C", "D", "E", "F"], declarations, probabilities, revealed, found, hand_size, active_wires)
     for i in range(num_players):
       if verbosity > 0:
         print("Cut number", i + 1)
@@ -115,6 +117,8 @@ def PlayAuto(num_players=6, initial_hand_size=5, verbosity=2):
         if verbosity > 0:
           print("Good guys win!")
         return (1, DeMatrix(CombineProbs(probabilities_list)), roles)
+      if verbosity > 1:
+        PrintPanel(["A", "B", "C", "D", "E", "F"], declarations, probs, revealed, found, hand_size, active_wires)
     # Next round
     hand_size -= 1
     if verbosity > 0:
@@ -270,11 +274,14 @@ def ProbDeclaration(decls, hand_size, active_wires):
   Marking the config ``(b1, b2, h)`` pins every truthful hand ``j not in {b1, b2, h}``
   to its declared count and forces the free hands' wire total
   ``t_free = A - Σ_{truthful} decls[j]`` into their non-bomb slots. Under a uniform
-  deal the prior is the multivariate-hypergeometric probability of that forced deal;
-  the liars' own declarations are constant factors (uniform lie) that cancel in
-  normalisation. Collapsing the split via Vandermonde gives the closed form
+  deal the prior is the multivariate-hypergeometric probability of that forced deal,
+  times the probability each free hand (a uniform liar over ``{0..H}``) declared what
+  it did -- a factor ``(H+1)^{-|F|}`` for the ``|F|`` free hands. That lie factor does
+  **not** cancel here (ADR 0007): ``|F| = 2`` when the bomb sits on a bad guy but
+  ``|F| = 3`` when it sits on a good guy (one extra good liar), so it down-weights the
+  bomb-on-good configs by ``1/(H+1)``. Collapsing the wire split via Vandermonde gives
 
-    P(b1, b2, h) ∝ C(free_slots, t_free) / Π_{g in {b1,b2,h}} C(H, decls[g])
+    P(b1, b2, h) ∝ (H+1)^{-|F|} · C(free_slots, t_free) / Π_{g in {b1,b2,h}} C(H, decls[g])
 
   where ``free_slots = Σ_{g free} (H - [g == h])`` -- the bomb eats one wire slot, so
   the free set offers ``2H-1`` slots when h is a bad guy and ``3H-1`` when h is a good
@@ -299,7 +306,8 @@ def ProbDeclaration(decls, hand_size, active_wires):
         for g in free:
           denom *= uf.C(decls[g], H)
         if denom != 0:
-          probs[b1][b2][h] = uf.C(t_free, free_slots) / denom
+          lie_factor = (H + 1) ** (-len(free))  # each free hand is a uniform liar (ADR 0007)
+          probs[b1][b2][h] = lie_factor * uf.C(t_free, free_slots) / denom
   total = np.sum(probs)
   if total == 0:  # Declarations impossible under the model: uniform over valid configs
     for b1 in range(num_players):

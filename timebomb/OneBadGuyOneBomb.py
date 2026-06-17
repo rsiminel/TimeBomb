@@ -210,12 +210,15 @@ def ProbDeclaration(decls, hand_size, active_wires):
 
   Marking the config ``(b, h)`` pins every truthful hand ``j not in {b, h}`` to its
   declared count and forces the liar/bomb hands' free wire total. Under a uniform deal
-  the prior is the multivariate-hypergeometric probability of that forced deal; the
-  liars' own declarations are constant factors (uniform lie) that cancel in
-  normalisation. With ``excess = sum(decls) - active_wires`` the closed form is
+  the prior is the multivariate-hypergeometric probability of that forced deal, times
+  the probability each free hand (a uniform liar over ``{0..H}``) declared what it did
+  -- a factor ``(H+1)^{-|F|}`` for the ``|F|`` free hands. That lie factor does **not**
+  cancel (ADR 0007): ``|F| = 1`` on the self-bomb diagonal but ``|F| = 2`` when a good
+  guy holds the bomb (an extra good liar), so it down-weights the bomb-on-good configs
+  by ``1/(H+1)``. With ``excess = sum(decls) - active_wires`` the closed form is
 
-    b != h:  P(b, h) ∝ C(2H-1, decls[b]+decls[h]-excess) / (C(H, decls[b])·C(H, decls[h]))
-    b == h:  P(b, b) ∝ C(H-1,  decls[b]-excess)          /  C(H, decls[b])
+    b != h:  P(b, h) ∝ (H+1)^{-2}·C(2H-1, decls[b]+decls[h]-excess) / (C(H,decls[b])·C(H,decls[h]))
+    b == h:  P(b, b) ∝ (H+1)^{-1}·C(H-1,  decls[b]-excess)          /  C(H, decls[b])
 
   The bomb eats one wire slot, so two distinct liar hands offer ``2H-1`` free slots for
   the free wires and the self-bomb case offers ``H-1`` (``C(n, k) = 0`` for ``k < 0``
@@ -233,12 +236,12 @@ def ProbDeclaration(decls, hand_size, active_wires):
         denom = uf.C(decls[bad], H)
         t = decls[bad] - excess
         if denom != 0 and 0 <= t <= H - 1:
-          probs[bad][bom] = uf.C(t, H - 1) / denom
+          probs[bad][bom] = (H + 1) ** (-1) * uf.C(t, H - 1) / denom
       else:  # A good guy holds the bomb: two free hands offering 2H-1 slots
         denom = uf.C(decls[bad], H) * uf.C(decls[bom], H)
         t = decls[bad] + decls[bom] - excess
         if denom != 0 and 0 <= t <= 2 * H - 1:
-          probs[bad][bom] = uf.C(t, 2 * H - 1) / denom
+          probs[bad][bom] = (H + 1) ** (-2) * uf.C(t, 2 * H - 1) / denom
   total = np.sum(probs)
   if total == 0:  # Declarations impossible under the model: fall back to uniform
     return np.full([num_players, num_players], 1 / num_players**2)
