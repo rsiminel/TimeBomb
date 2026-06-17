@@ -25,6 +25,16 @@ Downstream, **unblocked only after the backend is done**:
 | 6 | `web/`    | on hold — Flask API + browser assistant                    |
 | 7 | `AI.py`   | on hold — REINFORCE cut agent vs. the analytic strategies  |
 
+- **6. `web/` — fix up the website.** Re-port the cleaned `General.py` math behind the
+  Flask API (`web/app.py` currently duplicates an old, bug-ridden `General.py`-style
+  implementation) and update the browser assistant to present the quantities-only
+  four-stat panel (§3.5) instead of a single dictated cut. The UI is the natural home
+  for a real-table assistant: enter declarations and cut results, read the belief.
+- **7. `AI.py` — create the AI.** Train and benchmark the REINFORCE cut agent against
+  the cleaned-up analytic strategies (`CutMaxScore`, `CutRandom`, the info-greedy
+  lookahead). Goal: learn a cut policy that beats the hand-written heuristics, and use
+  it as an empirical yardstick for the horizon-weighted VOI question (§3.5/§3.6).
+
 ## Definition of done (per variant)
 
 1. **Works** — runs without errors; `ProbDeclaration` and `ProbCut` always return
@@ -51,7 +61,7 @@ Downstream, **unblocked only after the backend is done**:
 Some model work is **not owned by a single variant** — it touches the shared
 likelihoods and so cuts across the whole pipeline. This track runs alongside the
 per-variant work and, where noted, can re-open a variant already marked done. The
-gaps themselves are catalogued in [model.md §3.7](model.md#37-open-modelling-gaps);
+gaps themselves are catalogued in [model.md §3.6](model.md#36-open-modelling-gaps);
 the task breakdown is [TODO.md Axis A](../TODO.md#axis-a--foundations-cross-cutting);
 the rationale behind each settled choice is recorded as an ADR in
 [decisions/](decisions/).
@@ -69,7 +79,7 @@ the rationale behind each settled choice is recorded as an ADR in
    wire-placement law. No `excess = 0` special case for `B > 1`.
 3. **Degeneracy:** on a zero marginal, fall back to the prior/uniform — never an
    unnormalisable all-zeros vector.
-4. **Bomb sub-model (§3.8): uniform-lie bomb model.** A player declares truthfully iff
+4. **Bomb sub-model (§3.2–§3.4): uniform-lie bomb model.** A player declares truthfully iff
    good *and* bomb-free; everyone else lies uniformly over `{0..H}`. The config is the
    pair `(bad, bomb)`; the prior is the closed form
    `C(2H−1, …)/(C(H,d_b)·C(H,d_h))` (the bomb eats one wire slot), the cut likelihood
@@ -90,12 +100,12 @@ the rationale behind each settled choice is recorded as an ADR in
 **Deferred refinements (not scheduled).**
 
 - **Strategic / parametric lie models.** Replace the uniform lie — for the no-bomb bad
-  guy *and* for bomb-holders (§3.8: good-with-bomb under-declares, bad-with-bomb
+  guy *and* for bomb-holders (§3.6: good-with-bomb under-declares, bad-with-bomb
   over-declares) — with a strategic or tunable-bias model. Each adds a free parameter
   to fit and validate; weigh only well after the pipeline is correct and trusted. Once
   the uniform-lie bomb variant is validated, A/B-test the strategic bomb model against
   it on bad-guy and bomb identification accuracy.
-- **Cut recommendation — quantities-only four-stat panel (§3.6, ADR 0006).** Present
+- **Cut recommendation — quantities-only four-stat panel (§3.5, ADR 0006).** Present
   per player: P(safe wire), P(bomb), 1-ply ΔH(bad), and round-horizon H(bad) — exploit,
   risk, immediate-info, strategic-info — leaving the explore/exploit/risk integration to
   the human. Risk-awareness is the raw `P(bomb)` readout (no ad-hoc penalty: under the
@@ -110,6 +120,30 @@ the rationale behind each settled choice is recorded as an ADR in
   overconfidence, and a single global temper is preferred before a per-round one. This
   encodes model distrust, not informativeness (which is already handled); see
   [decisions/0005](decisions/0005-cross-round-evidence-combination.md).
+
+## Engineering & infrastructure (deferred)
+
+Not modelling decisions — project plumbing and robustness, scheduled after the backend
+is correct and trusted.
+
+- **Resilience to model-breaking play (§3.6).** Real tables violate the uniform-lie
+  model: miscounts, arithmetically impossible declarations, house-rule deals, strategic
+  liars producing ~0-probability observations. The degeneracy convention keeps the belief
+  *defined*, but a single impossible round can permanently zero a configuration under the
+  elementwise `CombineProbs` product. Harden it: ε-floor (no unrecoverable hard `0`),
+  log-space accumulation (underflow), and a graceful response to inconsistent
+  declarations. The first two land with `General.py` (ADR 0005); the third is new.
+- **Broader test coverage.** The suites today pair an independent `math.comb` brute force
+  (correctness) with an end-to-end beats-random simulation (predictive usefulness). Worth
+  adding: property-based / fuzz testing (e.g. Hypothesis) over the distribution
+  invariants; a calibration test (do stated `P(bad)`/`P(bomb)` match empirical
+  frequencies? — a shared prerequisite for the cut panel and tempering); cross-variant
+  consistency checks (a variant must agree with `General.py` on its own config); and
+  regression fixtures pinning known belief vectors.
+- **Packaging.** Turn the repo into an installable package (`pyproject.toml`, a
+  `timebomb` distribution, console entry points for `Play`/`PlayAuto`) so it no longer
+  relies on `PYTHONPATH=timebomb` and a hand-rolled `.venv`. Pins the numpy/scipy
+  dependency and makes the test/CI setup reproducible.
 
 ## Status detail
 
@@ -159,7 +193,7 @@ Meets all four criteria. Highlights:
 `probs[b][h]` = P(player `b` bad, player `h` holds the bomb), diagonal allowed. Meets
 all five criteria. Highlights:
 
-- All three model functions migrated to the §3.8 uniform-lie bomb model: the
+- All three model functions migrated to the §3.2–§3.4 uniform-lie bomb model: the
   `ProbDeclaration` closed form `C(2H−1, …)/(C(H,d_b)·C(H,d_h))` (with `C(H−1, …)` on
   the `b=h` diagonal), a new `L_config`/`L_bomb_hand` pair giving the cut likelihood
   with the bomb as a must-not-draw card conditioned on "no bomb yet", and the
@@ -170,7 +204,7 @@ all five criteria. Highlights:
   generates declarations under the uniform-lie model; `DisplayProbs`/`tabulate` and the
   dead `CombineNonHomoProbs` dropped; integer arrays throughout; `H_Min` `−1` sentinel
   fixed. `CombineProbs` accumulates only the P(bad) row marginal — the per-round
-  P(bomb) column is never combined (§3.8.3).
+  P(bomb) column is never combined (§3.5).
 - `test_OneBadGuyOneBomb.py` (10 tests) checks the math against an independent
   `(b, h)`-enumeration `math.comb` oracle (split-summed declaration prior, cut
   likelihood, and `P_wire` marginal), plus **two** end-to-end accuracy tests: over 400
@@ -181,7 +215,7 @@ all five criteria. Highlights:
 
 ### 4. `TwoBadGuysOneBomb.py` — ✅ done
 
-`B=2, M=1`: combines the `B>1` pair structure (§3.4.1) with the bomb sub-model (§3.8).
+`B=2, M=1`: combines the `B>1` pair structure (§3.4.1) with the bomb sub-model (§3.2–§3.4).
 The belief state is the `N×N×N` tensor `probs[b1][b2][h]` over the `(bad pair, bomb)`
 config space (`b1 > b2`, any `h`, `h` allowed to coincide with a bad guy). Meets all
 five criteria. Highlights:
@@ -190,12 +224,12 @@ five criteria. Highlights:
   closed form `C(free_slots, t_free) / Π_{g free} C(H, decls[g])` with
   `free_slots = 2H−1` when the bomb sits with a bad guy and `3H−1` when it sits with a
   good guy (the bomb eats one slot). `ProbCut` reuses the verified `L_bad_pair`
-  (§3.4.1) and `L_bomb_hand` (§3.8) helpers, splitting `t_free` between the bad pair
+  (§3.4.1) and `L_bomb_hand` (§3.2) helpers, splitting `t_free` between the bad pair
   and the bomb hand; `P_wire` takes the bomb-aware §3.4.1 split-posterior expected
   wires. The old strategic over/under-declare heuristics, the `tabulate`/`DisplayProbs`,
   the `CombineNonHomoProbs`/`ProbSus` dead code, and the cut-strategy zoo are gone.
 - `CombineProbs` accumulates only the P(bad **pair**) matrix marginal — the per-round
-  P(bomb) column is never combined (§3.8.3); degeneracy falls back to uniform over
+  P(bomb) column is never combined (§3.5); degeneracy falls back to uniform over
   pairs. `DeTensor` yields `(pair matrix, bomb vector)`; `DeMatrix` reduces the pair
   matrix to per-player P(bad). Integer arrays throughout; clean `PlayAuto`.
 - `test_TwoBadGuysOneBomb.py` (12 tests) checks the math against an independent

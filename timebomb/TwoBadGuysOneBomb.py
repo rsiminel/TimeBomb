@@ -3,7 +3,7 @@
 
 This variant unifies the two structures already validated separately: the B>1 bad
 *pair* (docs/model.md §3.4.1, uniform-placement multivariate hypergeometric) and the
-bomb sub-model (§3.8, the uniform-lie bomb model with the bomb as a must-not-draw
+bomb sub-model (§3.2–§3.4, the uniform-lie bomb model with the bomb as a must-not-draw
 card). A configuration is the triple ``(b1, b2, h)`` -- ``{b1, b2}`` is the unordered
 bad pair (stored lower-triangular, ``b1 > b2``) and ``h`` holds the bomb, with ``h``
 allowed to coincide with a bad guy. The belief state is the ``N x N x N`` tensor
@@ -16,7 +16,7 @@ uniformly over their non-bomb slots (the bomb hand offering ``H-1``, the others 
 P(bad pair) is the tensor's pair marginal and **accumulates** across rounds (via
 ``CombineProbs`` on the pair matrix, as the roles are fixed); P(bomb) is the bomb
 marginal, read from the **current round only** -- the bomb is re-dealt every round, so
-it must never be combined across rounds (§3.8.3).
+it must never be combined across rounds (§3.5).
 """
 
 # Imports
@@ -35,7 +35,7 @@ def PlayAuto(num_players=6, initial_hand_size=5, verbosity=2):
   active wire, the bomb is cut, or time runs out. Returns ``(good_guys_won,
   final_marginals, roles)``: ``good_guys_won`` is 1/0, ``final_marginals`` is the
   combined per-player P(bad) vector (the bomb marginalised out, then the pair matrix
-  combined across rounds and reduced to players, §3.8.3), ``roles`` marks the bad pair.
+  combined across rounds and reduced to players, §3.5), ``roles`` marks the bad pair.
 
   ``verbosity``: 0 silent, 1 prints game events, 2 also prints the belief marginals.
   """
@@ -185,7 +185,7 @@ def Play(players=["Alice", "Bob", "Clara", "Darryl", "Erica", "Fred"], initial_h
 
 
 def DeTensor(probabilities):
-  """Marginalise the N x N x N config tensor into its two readouts (§3.8.3):
+  """Marginalise the N x N x N config tensor into its two readouts (§3.5):
   the **pair matrix** ``P(bad pair = {b1, b2}) = Σ_h probs[b1][b2][h]`` (a
   lower-triangular N x N matrix) and the **bomb vector**
   ``P(bomb = h) = Σ_{b1 > b2} probs[b1][b2][h]``. Returns ``(prob_pair, prob_bomb)``.
@@ -223,7 +223,7 @@ def CombineProbs(probabilities_list):
   Roles are fixed for the game while wires and the bomb are re-dealt each round, so
   the per-round pair marginals are conditionally independent evidence about the same
   fixed bad pair: multiply them elementwise and renormalise. The bomb marginal is
-  per-round and is **never** passed in here (§3.8.3). Falls back to a uniform
+  per-round and is **never** passed in here (§3.5). Falls back to a uniform
   distribution over the C(N,2) pairs if every pair has been ruled out (degeneracy).
   """
   if probabilities_list == []:
@@ -241,7 +241,7 @@ def CombineProbs(probabilities_list):
 
 
 def ProbDeclaration(decls, hand_size, active_wires):
-  """Prior P(bad pair {b1, b2}, bomb in hand h) from declarations alone (§3.8.1).
+  """Prior P(bad pair {b1, b2}, bomb in hand h) from declarations alone (§3.3).
 
   Marking the config ``(b1, b2, h)`` pins every truthful hand ``j not in {b1, b2, h}``
   to its declared count and forces the free hands' wire total
@@ -289,7 +289,7 @@ def ProbDeclaration(decls, hand_size, active_wires):
 def L_bomb_hand(found_h, revealed_h, bomb_wires, hand_size):
   """Cut likelihood for the bomb hand: P(find ``found_h`` wires AND draw no bomb in
   ``revealed_h`` cuts) given the hand holds ``bomb_wires`` wires, one bomb, and
-  ``H-1-bomb_wires`` blanks -- the must-not-draw hypergeometric of model.md §3.8.2:
+  ``H-1-bomb_wires`` blanks -- the must-not-draw hypergeometric of model.md §3.2:
 
     C(bomb_wires, found_h) · C(H-1-bomb_wires, revealed_h-found_h) / C(H, revealed_h)
 
@@ -327,7 +327,7 @@ def L_bad_pair(hand_size, bg_wires, revealed, found, i, j):
 
 
 def L_config(decls, revealed, found, hand_size, active_wires, b1, b2, h):
-  """Likelihood of the cut observation under config ``(b1, b2, h)`` (model.md §3.8.2).
+  """Likelihood of the cut observation under config ``(b1, b2, h)`` (model.md §3.4).
 
   Truthful hands (pinned to their declared count, no bomb) contribute a plain
   hypergeometric each. The free hands' wire total ``t_free`` is split under the §3.4.1
@@ -388,7 +388,7 @@ def L_config(decls, revealed, found, hand_size, active_wires, b1, b2, h):
 
 
 def ProbCut(decls, prior, revealed, found, hand_size, active_wires):
-  """Bayesian posterior over the (bad pair, bomb) config after a cut (model.md §3.8.2).
+  """Bayesian posterior over the (bad pair, bomb) config after a cut (model.md §3.4).
 
   The configs ``(b1, b2, h)`` are mutually exclusive and exhaustive. Conditioned on a
   config, the observation factorises into the truthful hands' hypergeometrics and the

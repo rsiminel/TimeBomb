@@ -43,14 +43,18 @@ brute-force validation — no code has been touched yet.
 
 - [x] Declaration prior and `P_wire` for `B>1` use the §3.4.1 multivariate-
       hypergeometric model; **no `excess==0` special case** for `B>1`.
-- [ ] Implement the closed-form `B>1` declaration prior and the per-hand `P_wire`
-      marginal.
+- [x] Implement the closed-form `B>1` declaration prior and the per-hand `P_wire`
+      marginal — done in `TwoBadGuysNoBomb` (B2) and `TwoBadGuysOneBomb` (B4); the
+      `General.py` (B5) reconciliation is the only remaining home.
 
 ### A3 — Degeneracy convention — *decided: fall back to prior/uniform*
 
-- [ ] Apply uniformly: `ProbCut` returns the incoming prior, `ProbDeclaration`
-      returns uniform, on a zero marginal. Replace `ProbDeclaration`'s all-zeros.
-      *(Done in `OneBadGuyNoBomb`; apply to each remaining variant as it is cleaned.)*
+- [x] Apply uniformly: `ProbCut` returns the incoming prior, `ProbDeclaration` and
+      `CombineProbs` return uniform, on a zero marginal — never an unnormalisable
+      all-zeros vector. Done in all four cleaned variants (B1–B4); `General.py` (B5)
+      remains. *(The `CombineProbs` degeneracy in `OneBadGuyNoBomb` — bare `/= sum`,
+      NaN on all-zeros — and `TwoBadGuysNoBomb` — returned the all-zeros matrix — were
+      brought into line during the variant-4 cleanup.)*
 
 ### A3b — Backfill the end-to-end accuracy test on `OneBadGuyNoBomb` — ✅ done
 
@@ -58,9 +62,9 @@ brute-force validation — no code has been touched yet.
       games, N=5): belief puts ~0.95 on the true bad guy and ~0.96 top-1 accuracy vs
       the 0.20 random baseline. Variant 1 now meets the full done bar.
 
-### A4 — Bomb model — *model decided: uniform-lie bomb model (§3.8, ADR-0004)*
+### A4 — Bomb model — *model decided: uniform-lie bomb model (§3.2–§3.4, ADR-0004)*
 
-- [x] **Specified** the bomb sub-model in `docs/model.md` §3.8: declaration prior
+- [x] **Specified** the bomb sub-model in `docs/model.md` §3.2–§3.4: declaration prior
       `C(2H−1, …)/(C(H,d_b)·C(H,d_h))` (bomb eats one wire slot; `C(H−1, …)` on the
       `b=h` diagonal), the cut likelihood with the bomb as a must-not-draw card
       conditioned on "no bomb cut yet", and the `P(bad)`/`P(bomb)` readouts. §2
@@ -68,7 +72,7 @@ brute-force validation — no code has been touched yet.
       P(bomb) per-round). Recorded as ADR-0004.
 - [x] **Implement + validate** in `OneBadGuyOneBomb` (Axis B2): independent generative
       `(b, h)`-enumeration oracle (bomb as must-not-draw card), all three functions
-      migrated to §3.8, confirmed against the oracle and **two** beats-random
+      migrated to §3.2–§3.4, confirmed against the oracle and **two** beats-random
       simulations (P(bad) ~0.59 and per-round P(bomb) ~0.30 vs 0.167 baseline). Derived
       from `docs/model.md`, not `General.py`.
 - [ ] **Deferred (not now):** the strategic bomb-declaration model (under/over-declare)
@@ -96,7 +100,7 @@ each round's vector shape (KL-from-uniform); an external exponent would double-c
       *distrusted* (declaration-dominated) rounds — only if a calibration test shows
       systematic overconfidence, and a single global temper is preferred first.
 
-### A6 — Cut recommendation (`§3.6`, ADR 0006) — *model decided: quantities-only panel*
+### A6 — Cut recommendation (`§3.5`, ADR 0006) — *model decided: quantities-only panel*
 
 The cut decision is one POMDP (objective = P(win)); explore/exploit/risk are proxies.
 The assistant is **quantities-only**: present calibrated inputs, leave integration to the
@@ -105,7 +109,7 @@ backend, so not scheduled before `General.py`.
 
 - [x] **Decided + specified** the four-stat panel (P(safe wire), P(bomb), 1-ply ΔH(bad),
       round-horizon H(bad)) in [ADR 0006](docs/decisions/0006-cut-recommendation-output.md)
-      and model.md §3.6; dropped the combined "score" stat (smuggles a risk weight) and
+      and model.md §3.5; dropped the combined "score" stat (smuggles a risk weight) and
       `EIG_bomb` (ephemeral + perverse).
 - [ ] **Implement** the panel against the cleaned `General.py` belief functions; stat 4
       reuses the min-entropy lookahead, displayed beside stat 2 (it ignores bomb risk).
@@ -117,9 +121,19 @@ backend, so not scheduled before `General.py`.
 
 ---
 
-## Axis B — Variant pipeline
+## Axis B — Variant pipeline (one subsection per variant)
 
-### B1 — `TwoBadGuysNoBomb.py` — ✅ done
+### B1 — `OneBadGuyNoBomb.py` (`B=1, M=0`) — ✅ done
+
+Meets the full done bar (see
+[docs/roadmap.md](docs/roadmap.md#1-onebadguynobombpy--done)).
+- [x] `ProbDeclaration` ships the uniform-lie joint-Bayes prior, validated against an
+      independent generative oracle (Axis A1); degeneracy falls back to uniform (A3).
+- [x] `ProbCut` collapsed to the single canonical joint-Bayes form; `P_wire` denominator
+      and gating fixed; `test_OneBadGuyNoBomb.py` (21 tests) brute-force-backed + an
+      end-to-end accuracy test (~0.95 on the true bad guy vs 0.20 baseline).
+
+### B2 — `TwoBadGuysNoBomb.py` (`B=2, M=0`) — ✅ done
 
 The belief state is a lower-triangular matrix over *pairs* of bad guys. All findings
 below were confirmed numerically against the independent split-enumeration oracle,
@@ -152,41 +166,50 @@ weighting was wrong (e.g. `bg=2,H=2`: `(¼,½,¼)` vs correct `(⅙,⅔,⅙)`).
       accuracy test: ~0.94 on true bad guys vs 0.33 random baseline) + docstrings on
       every public function; `docs/roadmap.md` updated; committed.
 
-### B2 — Later variants
+### B3 — `OneBadGuyOneBomb.py` (`B=1, M=1`) — ✅ done
 
-- [x] **`OneBadGuyOneBomb.py`** (`B=1, M=1`) — ✅ done. All three functions migrated to
-      §3.8 over the `N×N` `(bad, bomb)` config space, validated against an independent
-      `(b, h)`-enumeration oracle (bomb as a must-not-draw card) and two beats-random
-      simulations. `CombineProbs` accumulates only the P(bad) row marginal; the
-      per-round P(bomb) column is never combined (§3.8.3). The old strategic heuristics,
-      the `tabulate`/`DisplayProbs`/`CombineNonHomoProbs` dead code, and the `uf.C`
+- [x] All three functions migrated to §3.2–§3.4 over the `N×N` `(bad, bomb)` config space,
+      validated against an independent `(b, h)`-enumeration oracle (bomb as a
+      must-not-draw card) and two beats-random simulations. `CombineProbs` accumulates
+      only the P(bad) row marginal; the per-round P(bomb) column is never combined
+      (§3.5). The old strategic heuristics, the
+      `tabulate`/`DisplayProbs`/`CombineNonHomoProbs` dead code, and the `uf.C`
       negative-argument trap are gone.
-- [x] **`TwoBadGuysOneBomb.py`** (`B=2, M=1`) — ✅ done. All three functions migrated to
-      the unified model over the `N×N×N` `(bad pair, bomb)` config space, combining A2
-      (§3.4.1 pair split, reusing `L_bad_pair`) + §3.8 (the bomb as a must-not-draw card,
-      reusing `L_bomb_hand`). `ProbDeclaration` is the closed form
-      `C(free_slots, t_free)/Π C(H, decls)` (`free_slots = 2H−1` with the bomb on a bad
-      guy, `3H−1` on a good guy); `ProbCut`/`P_wire` split `t_free` between the bad pair
-      and the bomb hand. Validated against an independent `(b1,b2,h)`-enumeration oracle
-      (explicit free-hand split, no closed form) and two beats-random simulations
-      (P(bad) ~0.65 per true bad guy, per-round P(bomb) ~0.30 vs 0.167). `CombineProbs`
-      accumulates only the P(bad pair) matrix; the per-round P(bomb) column is never
-      combined (§3.8.3). The old strategic heuristics and the `tabulate`/`DisplayProbs`/
-      `CombineNonHomoProbs`/`ProbSus`/cut-strategy dead code are gone.
-- [ ] **`General.py`** — ⏭ next; reconcile to the canonical forms; the end target.
-      Carries the `P_wire` ungated-good-branch bug (and likely more — not yet trusted).
 
-### B3 — Downstream (blocked until the backend is finalised)
+### B4 — `TwoBadGuysOneBomb.py` (`B=2, M=1`) — ✅ done
 
-- [ ] **`web/`** — re-port the math; `web/app.py` duplicates a `General.py`-style impl.
-- [ ] **`AI.py`** — retrain / benchmark the REINFORCE agent against the cleaned-up
-      analytic strategies (`CutMaxScore`, `CutRandom`).
+- [x] All three functions migrated to the unified model over the `N×N×N`
+      `(bad pair, bomb)` config space, combining A2 (§3.4.1 pair split, reusing
+      `L_bad_pair`) + §3.2–§3.4 (the bomb as a must-not-draw card, reusing `L_bomb_hand`).
+      `ProbDeclaration` is the closed form `C(free_slots, t_free)/Π C(H, decls)`
+      (`free_slots = 2H−1` with the bomb on a bad guy, `3H−1` on a good guy);
+      `ProbCut`/`P_wire` split `t_free` between the bad pair and the bomb hand. Validated
+      against an independent `(b1,b2,h)`-enumeration oracle (explicit free-hand split, no
+      closed form) and two beats-random simulations (P(bad) ~0.65 per true bad guy,
+      per-round P(bomb) ~0.30 vs 0.167). `CombineProbs` accumulates only the P(bad pair)
+      matrix; the per-round P(bomb) column is never combined (§3.5). The old strategic
+      heuristics and the `tabulate`/`DisplayProbs`/`CombineNonHomoProbs`/`ProbSus`/
+      cut-strategy dead code are gone.
+
+### B5 — `General.py` (arbitrary `B, M`) — ⏭ next
+
+- [ ] Reconcile to the canonical forms validated across B1–B4; the end target. Carries
+      the `P_wire` ungated-good-branch bug (and likely more — not yet trusted). This is
+      where the Axis A robustness hardenings (ε-floor, log-space `CombineProbs`) and the
+      A6 cut panel land.
 
 ---
 
-## Done
+## Axis C — Downstream (blocked until the backend is finalised)
 
-- [x] **`OneBadGuyNoBomb.py`** — meets the full done bar (see
-      [docs/roadmap.md](docs/roadmap.md#1-onebadguynobombpy--done)). `ProbDeclaration`
-      now ships the uniform-lie joint-Bayes prior, validated against an independent
-      generative oracle (Axis A1); degeneracy falls back to uniform (A3).
+### C1 — `web/` — fix up the website
+
+- [ ] Re-port the cleaned `General.py` math (`web/app.py` duplicates an old
+      `General.py`-style impl) and present the quantities-only four-stat panel (§3.5,
+      A6) in the browser assistant rather than a single dictated cut.
+
+### C2 — `AI.py` — create the AI
+
+- [ ] Retrain / benchmark the REINFORCE cut agent against the cleaned-up analytic
+      strategies (`CutMaxScore`, `CutRandom`, the info-greedy lookahead); use it as an
+      empirical yardstick for the horizon-weighted VOI question (A6).

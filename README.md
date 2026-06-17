@@ -1,11 +1,13 @@
 # Time Bomb Assistant
 
-A probabilistic assistant and AI for the social-deduction board game
-[**Time Bomb**](https://www.daysofwonder.com/). From only the *public* information
-at the table — each player's declared wire count and the result of each cut — it
-infers, for every player, the probability that they are a Terrorist, that they
-hold the Bomb, and that cutting one of their cards is safe, and recommends the next
-cut.
+A probabilistic assistant and AI for the social-deduction board game **Time Bomb**.
+From only the *public* information at the table — each player's declared wire count
+and the result of each cut — it infers, for every player, the probability that they
+are a bad guy, that they hold the Bomb, and that cutting one of their cards is safe.
+It is **quantities-only**: it surfaces these calibrated decision inputs and leaves the
+cut choice (and the player's own risk appetite) to the human, rather than dictating a
+move. See [docs/model.md §3.6](docs/model.md) and
+[ADR 0006](docs/decisions/0006-cut-recommendation-output.md).
 
 See **[docs/model.md](docs/model.md)** for the mathematics and
 **[docs/roadmap.md](docs/roadmap.md)** for the plan and status.
@@ -52,6 +54,9 @@ Run the tests (each test file also runs standalone without pytest):
 .venv/bin/python tests/test_OneBadGuyNoBomb.py
 ```
 
-Test suites reimplement the hypergeometric likelihood, the posterior, and the
-expected-wire calculation independently (via `math.comb`) so a shared bug cannot
-hide behind a matching assertion.
+Each suite has two layers. **Correctness:** it reimplements the hypergeometric
+likelihood, the posterior, and the expected-wire calculation independently (via
+`math.comb`) so a shared bug cannot hide behind a matching assertion. **Predictive
+usefulness:** an end-to-end test runs full simulated games and checks the final belief
+identifies the true bad guy(s) far above the random baseline — a model can be
+arithmetically correct yet uninformative, and only this catches that.

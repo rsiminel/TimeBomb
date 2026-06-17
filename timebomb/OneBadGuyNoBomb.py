@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Time Bomb assistant -- variant: 1 bad guy, no bomb.
 
-The simplest configuration: exactly one player is the bad guy (Terrorist) and
+The simplest configuration: exactly one player is the bad guy and
 there is no Bomb in play. Good guys always declare their true wire count; the bad
 guy declares a uniformly random count. The belief state is a length-N vector
 ``probs[i] = P(player i is the bad guy)``.
@@ -173,7 +173,9 @@ def CombineProbs(probabilities_list):
 
   Treats the rounds as independent evidence: multiply the per-round probabilities
   element-wise and renormalise. A player ruled out in any round (0) stays ruled
-  out; a player pinned in some round (1) dominates the product.
+  out; a player pinned in some round (1) dominates the product. Falls back to the
+  uniform distribution if every player has been ruled out (degeneracy convention,
+  never an unnormalisable all-zeros vector).
   """
   num_tests = len(probabilities_list)
   num_players = len(probabilities_list[0])
@@ -181,8 +183,10 @@ def CombineProbs(probabilities_list):
   for i in range(num_players):
     for j in range(num_tests):
       probabilities[i] *= probabilities_list[j][i]
-  probabilities /= sum(probabilities)
-  return probabilities
+  total = sum(probabilities)
+  if total == 0:
+    return np.full(num_players, 1 / num_players)
+  return probabilities / total
 
 
 def ProbDeclaration(declarations, hand_size, active_wires):

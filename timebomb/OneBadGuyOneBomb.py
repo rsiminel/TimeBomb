@@ -4,14 +4,14 @@
 The belief state is the full N x N matrix ``probs[b][h]`` = P(player b is bad and
 player h holds the bomb), with the diagonal ``b == h`` allowed (the bad guy may be
 dealt his own bomb). The model is the uniform-lie bomb model of docs/model.md §2 and
-§3.8: a player declares truthfully iff good *and* bomb-free; everyone else (any bad
+§3: a player declares truthfully iff good *and* bomb-free; everyone else (any bad
 guy, or a good guy holding the bomb) declares uniformly over {0..H}. The bomb occupies
 one card slot, so a bomb hand has H-1 wire-able slots, and live inference conditions on
 "no bomb drawn yet" (cutting the bomb ends the game, bad guys win).
 
 P(bad) is the row marginal and **accumulates** across rounds (via ``CombineProbs``);
 P(bomb) is the column marginal, read from the **current round only** -- the bomb is
-re-dealt every round, so it must never be combined across rounds (§3.8.3).
+re-dealt every round, so it must never be combined across rounds (§3.5).
 """
 
 # Imports
@@ -29,7 +29,7 @@ def PlayAuto(num_players=4, initial_hand_size=5, verbosity=2):
   then cuts cards at random until the good guys find every active wire, the bomb is
   cut, or time runs out. Returns ``(good_guys_won, final_probs, roles)``:
   ``good_guys_won`` is 1/0, ``final_probs`` is the combined P(bad) vector (the bomb
-  marginalised out before combining rounds, §3.8.3), ``roles`` marks the bad guy.
+  marginalised out before combining rounds, §3.5), ``roles`` marks the bad guy.
 
   ``verbosity``: 0 silent, 1 prints game events, 2 also prints the belief marginals.
   """
@@ -178,7 +178,7 @@ def Play(players=["Alice", "Bob", "Clara", "Darryl"], initial_hand_size=5):
 
 
 def DeMatrix(probabilities):
-  """Marginalise the N x N config matrix into its two readouts (§3.8.3):
+  """Marginalise the N x N config matrix into its two readouts (§3.5):
   ``P(bad = b) = Σ_h probs[b][h]`` (row sums) and ``P(bomb = h) = Σ_b probs[b][h]``
   (column sums). Returns ``(prob_bad, prob_bomb)``.
   """
@@ -192,7 +192,7 @@ def CombineProbs(probabilities_list):
   Roles are fixed for the game while wires and the bomb are re-dealt each round, so
   the per-round P(bad) marginals are conditionally independent evidence about the same
   fixed bad guy: multiply them elementwise and renormalise. The bomb marginal is
-  per-round and is **never** passed in here (§3.8.3).
+  per-round and is **never** passed in here (§3.5).
   """
   if probabilities_list == []:
     return np.array([])
@@ -206,7 +206,7 @@ def CombineProbs(probabilities_list):
 
 
 def ProbDeclaration(decls, hand_size, active_wires):
-  """Prior P(player b bad, player h has the bomb) from declarations alone (§3.8.1).
+  """Prior P(player b bad, player h has the bomb) from declarations alone (§3.3).
 
   Marking the config ``(b, h)`` pins every truthful hand ``j not in {b, h}`` to its
   declared count and forces the liar/bomb hands' free wire total. Under a uniform deal
@@ -248,7 +248,7 @@ def ProbDeclaration(decls, hand_size, active_wires):
 def L_bomb_hand(found_h, revealed_h, bomb_wires, hand_size):
   """Cut likelihood for the bomb hand: P(find ``found_h`` wires AND draw no bomb in
   ``revealed_h`` cuts) given the hand holds ``bomb_wires`` wires, one bomb, and
-  ``H-1-bomb_wires`` blanks -- the must-not-draw hypergeometric of model.md §3.8.2:
+  ``H-1-bomb_wires`` blanks -- the must-not-draw hypergeometric of model.md §3.2:
 
     C(bomb_wires, found_h) · C(H-1-bomb_wires, revealed_h-found_h) / C(H, revealed_h)
 
@@ -264,7 +264,7 @@ def L_bomb_hand(found_h, revealed_h, bomb_wires, hand_size):
 
 
 def L_config(decls, revealed, found, hand_size, active_wires, bad, bom):
-  """Likelihood of the cut observation under config ``(bad, bom)`` (model.md §3.8.2).
+  """Likelihood of the cut observation under config ``(bad, bom)`` (model.md §3.4).
 
   Truthful hands (pinned to their declared count, no bomb) contribute a plain
   hypergeometric each. The free wire total ``t_free`` of the liar/bomb hands is split
@@ -304,7 +304,7 @@ def L_config(decls, revealed, found, hand_size, active_wires, bad, bom):
 
 
 def ProbCut(decls, prior, revealed, found, hand_size, active_wires):
-  """Bayesian posterior over the (bad, bomb) config after a cut (model.md §3.8.2).
+  """Bayesian posterior over the (bad, bomb) config after a cut (model.md §3.4).
 
   The N x N configs ``(b, h)`` are mutually exclusive and exhaustive. Conditioned on a
   config, the observation factorises into the truthful hands' hypergeometrics and the

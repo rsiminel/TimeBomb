@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Time Bomb assistant -- variant: 2 bad guys, no bomb.
 
-Exactly two players are bad guys (Terrorists) and there is no Bomb in play. Good
+Exactly two players are bad guys and there is no Bomb in play. Good
 guys declare their true wire count; the bad guys declare uniformly at random. The
 belief state is a lower-triangular matrix ``probs[i][j]`` (for i > j) holding
 P(players i and j are the bad pair). Because the two bad hands share one wire pool,
@@ -136,7 +136,8 @@ def CombineProbs(probabilities_list):
 
   Treats the rounds as independent evidence: multiply the per-round pair matrices
   element-wise and renormalise. A pair ruled out in any round (0) stays ruled out.
-  Returns the unnormalised (all-zero) matrix if every pair has been ruled out.
+  Falls back to the uniform distribution over the C(N,2) pairs if every pair has been
+  ruled out (degeneracy convention, never an unnormalisable all-zeros matrix).
   """
   num_tests = len(probabilities_list)
   num_players = probabilities_list[0].shape[0]
@@ -145,10 +146,12 @@ def CombineProbs(probabilities_list):
     for j in range(num_players):
       for k in range(num_tests):
         probabilities[i][j] *= probabilities_list[k][i][j]
-  if np.sum(probabilities) == 0:
-    return probabilities
-  probabilities /= np.sum(probabilities)
-  return probabilities
+  probabilities = np.tril(probabilities, -1)  # only i > j pairs are real configs
+  total = np.sum(probabilities)
+  if total == 0:
+    uniform = np.tril(np.ones([num_players, num_players]), -1)
+    return uniform / np.sum(uniform)
+  return probabilities / total
 
 
 def ProbDeclaration(decls, hand_size, active_wires):

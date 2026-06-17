@@ -4,7 +4,7 @@ Run with pytest:   .venv/bin/python -m pytest tests/test_TwoBadGuysOneBomb.py -q
 Or standalone:     .venv/bin/python tests/test_TwoBadGuysOneBomb.py
 
 This variant combines the B>1 pair structure (model.md §3.4.1) with the bomb
-sub-model (§3.8). A configuration is the triple ``(b1, b2, h)``: ``{b1, b2}`` is the
+sub-model (§3.2–§3.4). A configuration is the triple ``(b1, b2, h)``: ``{b1, b2}`` is the
 unordered bad pair (stored lower-triangular, ``b1 > b2``) and ``h`` holds the bomb,
 with ``h`` allowed to coincide with a bad guy. The belief state is the N x N x N
 tensor ``probs[b1][b2][h]`` (non-zero only for ``b1 > b2``).
@@ -63,7 +63,7 @@ def hypergeom_pmf(found, hand_size, wires, revealed):
 def bomb_pmf(found, hand_size, wires, revealed):
     """P(find `found` wires AND draw no bomb in `revealed` draws from the bomb hand),
     given the hand holds `wires` wires, one bomb, and H-1-wires blanks (model.md
-    §3.8.2 must-not-draw term):  C(w,found)·C(H-1-w, rev-found)/C(H, rev)."""
+    §3.2 must-not-draw term):  C(w,found)·C(H-1-w, rev-found)/C(H, rev)."""
     found, hand_size = int(round(found)), int(round(hand_size))
     wires, revealed = int(round(wires)), int(round(revealed))
     if not (0 <= wires <= hand_size - 1 and 0 <= revealed <= hand_size):
@@ -104,7 +104,7 @@ def free_splits(free, t_free, h, hand_size):
 
 def generative_declaration_prior(decls, hand_size, active_wires):
     """Posterior P(config (b1,b2,h) | decls) under the generative model (model.md §2
-    lie model + §3.8.1), enumerated independently of the module:
+    lie model + §3.3), enumerated independently of the module:
 
       * the config is chosen uniformly over the C(N,2)·N triples;
       * the bomb sits in hand h (one slot), the A wires are dealt among the remaining
@@ -115,7 +115,7 @@ def generative_declaration_prior(decls, hand_size, active_wires):
 
     Enumerates every wire vector via itertools.product -- no closed form, no division
     -- so it shares no algebra with ProbDeclaration. Falls back to the uniform tensor
-    on impossible declarations (degeneracy, §3.3/§3.8.1)."""
+    on impossible declarations (degeneracy, §3.3)."""
     decls = [int(round(d)) for d in decls]
     n, H, A = len(decls), int(hand_size), int(active_wires)
     post = np.zeros((n, n, n))
@@ -151,7 +151,7 @@ def free_wire_total(decls, found, active_wires, free):
 
 def cut_likelihood_ref(decls, revealed, found, hand_size, active_wires, b1, b2, h):
     """Likelihood of the cut observation under config (b1,b2,h), summed independently
-    over every wire split of the free hands (model.md §3.8.2). Truthful hands use the
+    over every wire split of the free hands (model.md §3.4). Truthful hands use the
     plain hypergeometric; the bomb hand uses the must-not-draw term; the split is
     weighted by the §3.4.1 placement law over the free hands' non-bomb slots."""
     n, H = len(decls), int(hand_size)
@@ -269,7 +269,7 @@ def is_tensor_distribution(m, total=1.0):
 def random_consistent_state(rng):
     """A state drawn from an actual play-out with a known bad pair and a known bomb
     holder, conditioned on no bomb being cut (live inference always assumes "no bomb
-    yet", §3.8.2). All counts are mutually consistent.
+    yet", §3.4). All counts are mutually consistent.
 
     Returns ``(decls, revealed, found, hand_size, active_now, total_active)`` --
     ``total_active`` is the declaration-time wire count, ``active_now`` what remains
@@ -475,7 +475,7 @@ def test_bomb_inference_beats_random_chance():
     -- a bug that scrambled the bomb axis would leave P(bad) intact yet destroy
     P(bomb). Build rounds directly under the uniform-lie model and check the column
     marginal concentrates on the true bomb holder above the 1/N baseline. P(bomb) is
-    per-round (§3.8.3), so this works one round at a time and never combines."""
+    per-round (§3.5), so this works one round at a time and never combines."""
     rng = Random(999)
     N, K = 6, 2000
     mass_on_true = 0.0
