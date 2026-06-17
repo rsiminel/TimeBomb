@@ -140,10 +140,24 @@ is correct and trusted.
   frequencies? — a shared prerequisite for the cut panel and tempering); cross-variant
   consistency checks (a variant must agree with `General.py` on its own config); and
   regression fixtures pinning known belief vectors.
+- **Principled `beats_random` thresholds.** The end-to-end accuracy tests currently
+  assert hand-tuned cutoffs (e.g. `P(bad|true) > 0.55`), set empirically per variant and
+  prone to drift. Replace them with a principled rule, either: **(a)** assert only the
+  *relationship to the random baseline* — `P(bad|true) > k·baseline` and
+  `P(bad|true good) < baseline` — which is the actual claim ("the model is informative")
+  and is variant-agnostic; or **(b)** make them statistical — derive the bar from the
+  sample, `baseline + z·stderr` for the run's `K`, so sample size sets the threshold
+  rather than a guess. Apply across all variants' suites.
 - **Packaging.** Turn the repo into an installable package (`pyproject.toml`, a
   `timebomb` distribution, console entry points for `Play`/`PlayAuto`) so it no longer
   relies on `PYTHONPATH=timebomb` and a hand-rolled `.venv`. Pins the numpy/scipy
   dependency and makes the test/CI setup reproducible.
+- **De-clutter the docs once the backend arc closes.** When `General.py` (variant 5)
+  lands, prune the accumulated "done" detail: collapse the B1–B4 status blocks here and
+  the per-variant subsections in TODO.md to a one-line "✅ variants 1–4 done" pointer
+  (git history, the ADRs, and this status section already preserve the what and why).
+  TODO is a worklist and should shed completed items aggressively; neither doc needs to
+  be a permanent archive. Trigger: backend complete.
 
 ## Status detail
 

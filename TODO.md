@@ -1,9 +1,11 @@
 # TODO
 
-Open work items, split along two axes:
+Open work items, split along four axes:
 
 - **Axis A — Foundations:** cross-cutting model work shared by every variant.
 - **Axis B — Variant pipeline:** the per-variant cleanup, simplest first.
+- **Axis C — Downstream:** the web app and RL agent, blocked on the backend.
+- **Axis D — Engineering & infrastructure:** plumbing, robustness, and project hygiene.
 
 Stable model docs live in [docs/model.md](docs/model.md); plan, status, and the
 foundations priority order in [docs/roadmap.md](docs/roadmap.md).
@@ -213,3 +215,48 @@ weighting was wrong (e.g. `bg=2,H=2`: `(¼,½,¼)` vs correct `(⅙,⅔,⅙)`).
 - [ ] Retrain / benchmark the REINFORCE cut agent against the cleaned-up analytic
       strategies (`CutMaxScore`, `CutRandom`, the info-greedy lookahead); use it as an
       empirical yardstick for the horizon-weighted VOI question (A6).
+
+---
+
+## Axis D — Engineering & infrastructure
+
+Project plumbing, robustness, and hygiene — not modelling decisions. Scheduled after the
+backend is correct and trusted (mirrors [roadmap.md](docs/roadmap.md) Engineering &
+infrastructure).
+
+### D1 — Principled `beats_random` thresholds
+
+- [ ] Replace the hand-tuned accuracy cutoffs (e.g. `P(bad|true) > 0.55`) — empirical,
+      per-variant, prone to drift — with a principled rule, either **(a)** assert only the
+      relationship to the random baseline (`P(bad|true) > k·baseline`,
+      `P(bad|true good) < baseline`; the actual "model is informative" claim, and
+      variant-agnostic) or **(b)** a statistical bar derived from the sample
+      (`baseline + z·stderr` for the run's `K`). Apply across all variants' suites.
+
+### D2 — De-clutter the docs once the backend arc closes
+
+- [ ] When `General.py` (B5) lands, prune the accumulated "done" detail: collapse the
+      B1–B4 subsections here and the per-variant status blocks in roadmap.md to a one-line
+      "✅ variants 1–4 done" pointer (git history + the ADRs + roadmap status already
+      preserve the what and why). TODO is a worklist and should shed completed items
+      aggressively. *Trigger: backend complete.*
+
+### D3 — Resilience to model-breaking play
+
+- [ ] Harden against real-table violations of the uniform-lie model (miscounts,
+      impossible declarations, ~0-probability strategic lies): ε-floor and log-space
+      `CombineProbs` (with `General.py`, ADR 0005) plus a graceful response to
+      inconsistent declarations (new). See model.md §3.6, A5.
+
+### D4 — Broader test coverage
+
+- [ ] Beyond the brute-force-correctness + beats-random pair: property-based / fuzz tests
+      over the distribution invariants; a `P(bad)`/`P(bomb)` calibration test (shared
+      prerequisite for the A6 panel and A5 tempering); cross-variant consistency checks
+      against `General.py`; and regression fixtures pinning known belief vectors.
+
+### D5 — Packaging
+
+- [ ] Make the repo an installable package (`pyproject.toml`, `timebomb` distribution,
+      `Play`/`PlayAuto` console entry points) so it drops the `PYTHONPATH=timebomb` +
+      hand-rolled `.venv` setup and pins the numpy/scipy dependency for reproducible CI.
