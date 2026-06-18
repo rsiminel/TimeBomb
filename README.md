@@ -16,7 +16,7 @@ See **[docs/model.md](docs/model.md)** for the mathematics and
 
 | Path                | What it is                                                                  |
 | ------------------- | -------------------------------------------------------------------------- |
-| `timebomb/`         | The backend solver **`General.py`** (arbitrary bad-guy count + bomb, joint inference over the bad count), the shared `UsefulFunctions.py` / `Consistency.py`, and the `AI.py` RL agent (on hold). Also the four **frozen** hardcoded variants (`OneBadGuyNoBomb`, `TwoBadGuysNoBomb`, `OneBadGuyOneBomb`, `TwoBadGuysOneBomb`) — independent reference oracles that cross-check `General.py`; **do not modify them** (see [CLAUDE.md](CLAUDE.md)). |
+| `timebomb/`         | The backend solver **`General.py`** (arbitrary bad-guy count + bomb, joint inference over the bad count), the shared `UsefulFunctions.py` / `Consistency.py`, and the `AI.py` RL agent (on hold). Also the four **frozen** hardcoded variants (`OneBadGuyNoBomb`, `TwoBadGuysNoBomb`, `OneBadGuyOneBomb`, `TwoBadGuysOneBomb`) — independent reference oracles that cross-check `General.py`; **do not modify them**. |
 | `tests/`            | Test suites (independent `math.comb` brute-force references).               |
 | `web/`              | Flask API + browser "Time Bomb Assistant" UI, on hold.                      |
 | `docs/`, `TODO.md`  | Model reference, roadmap, decision records (ADRs), and open work items.     |

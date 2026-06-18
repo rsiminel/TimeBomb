@@ -13,7 +13,7 @@ Axes: **A** foundations (cross-cutting model) · **B** variant pipeline · **C**
 The only valid correctness oracle is an **independent `math.comb` brute force derived from
 `docs/model.md`** (as in `test_OneBadGuyNoBomb.py`) — never test a module against another
 *implementation*. The four hardcoded variants are **frozen** independent oracles that
-cross-check the backend solver `General.py` (see [CLAUDE.md](CLAUDE.md)); their entire worth
+cross-check the backend solver `General.py`; their entire worth
 is that they share no code with it, so **they must not be modified**. Each module's suite
 pairs the brute force with an end-to-end *beats-random* simulation (self-calibrating
 thresholds in `tests/baseline_stats.py`) and the cross-module calibration checks in
@@ -29,10 +29,9 @@ exact-product `CombineProbs` (ε-floor + log-space), the four-stat cut panel, an
 
 ## Axis B — Variant pipeline ✅ done (variants now frozen)
 
-`General.py` is the backend solver and subsumes the four hardcoded variants (each is its
-`(num_bad, num_bom)` projection). The variants are now **frozen reference oracles** that
-cross-check `General.py` — **do not modify them** (see [CLAUDE.md](CLAUDE.md)). Status
-detail in [roadmap.md](docs/roadmap.md#status-detail).
+Variants 1–4 and `General.py` are all at the definition-of-done bar (see
+[roadmap.md status](docs/roadmap.md#status-detail)). `General.py` subsumes the four; each
+hardcoded variant is its `(num_bad, num_bom)` projection.
 
 ## Axis C — Downstream (blocked on the now-finished backend)
 
