@@ -58,8 +58,8 @@ def PlayAuto(num_players=6, initial_hand_size=5, verbosity=2):
     # Declare your wires
     declarations = wires.copy()
     for i in range(num_players):
-      if roles[i] == 1:
-        declarations[i] = randint(0, min(hand_size, active_wires))
+      if roles[i] == 1:  # bad guys lie uniformly over {0..H} (not capped at A)
+        declarations[i] = randint(0, hand_size)
     if verbosity > 0:
       print("d : ", declarations)
     # Calculate and display probabilities

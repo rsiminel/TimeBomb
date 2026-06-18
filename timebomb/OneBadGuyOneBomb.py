@@ -16,7 +16,7 @@ re-dealt every round, so it must never be combined across rounds (§3.5).
 
 # Imports
 import numpy as np
-from random import randint
+from random import randint, sample
 import UsefulFunctions as uf
 
 
@@ -46,18 +46,15 @@ def PlayAuto(num_players=4, initial_hand_size=5, verbosity=2):
   while hand_size > 1:
     if verbosity > 0:
       print("Round ", initial_hand_size - hand_size + 1)
-    # Deal the bomb to a random hand, then the wires among the remaining slots
-    # (the bomb hand holds at most H-1 wires).
+    # Deal the bomb to a random hand, then the wires uniformly among the remaining
+    # non-bomb slots (slot-uniform / multivariate hypergeometric; the bomb hand offers
+    # H-1 wire slots).
     bomb = np.zeros(num_players, dtype=int)
     bomb[randint(0, num_players - 1)] = 1
-    capacity = np.full(num_players, hand_size, dtype=int) - bomb
+    slots = [(g, s) for g in range(num_players) for s in range(hand_size - int(bomb[g]))]
     wires = np.zeros(num_players, dtype=int)
-    given = 0
-    while given < active_wires:
-      c = randint(0, num_players - 1)
-      if wires[c] < capacity[c]:
-        wires[c] += 1
-        given += 1
+    for (g, _s) in sample(slots, active_wires):
+      wires[g] += 1
     if verbosity > 0:
       print("w:", wires)
       print("b:", bomb)

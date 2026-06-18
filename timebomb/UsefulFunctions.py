@@ -16,7 +16,7 @@ Created on Sun Jun  5 14:16:22 2022
 
 # Imports
 import numpy as np
-from random import randint
+from random import randint, sample
 
 
 def Normalize(a):
@@ -74,14 +74,17 @@ def Lklhd(n, m, k, p):
 
 
 def DistributeWires(num_players, hand_size, active_wires):
-  """Deal ``active_wires`` wires uniformly at random among ``num_players`` hands of
-  ``hand_size`` cards each (no hand exceeding its capacity). Returns the wire-count
-  vector. Simulation-only helper for the ``PlayAuto`` game generators."""
-  wires = np.zeros(num_players)
-  given = 0
-  while given < active_wires:
-    randy = randint(0, num_players - 1)
-    if wires[randy] < hand_size:
-      wires[randy] += 1
-      given += 1
+  """Deal ``active_wires`` wires uniformly at random among the ``num_players * hand_size``
+  card **slots** -- the multivariate-hypergeometric deal the inference assumes (model.md
+  §3.1/§3.4.1, every arrangement of which cards are wires equally likely). Returns the
+  integer wire-count vector. Simulation-only helper for the ``PlayAuto`` generators.
+
+  This must be slot-uniform, not player-uniform: a "pick a random player, add a wire if
+  under capacity" loop draws from a different distribution (e.g. for N=2, H=2, A=2 it gives
+  counts ``(1/4, 1/2, 1/4)`` instead of the hypergeometric ``(1/6, 2/3, 1/6)``), which makes
+  the simulated games diverge from the model and shows up as ``P(bad)`` miscalibration."""
+  slots = [(g, s) for g in range(num_players) for s in range(hand_size)]
+  wires = np.zeros(num_players, dtype=int)
+  for (g, _s) in sample(slots, int(active_wires)):
+    wires[g] += 1
   return wires

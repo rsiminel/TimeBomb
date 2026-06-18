@@ -57,14 +57,11 @@ def PlayAuto(num_players=6, initial_hand_size=5, verbosity=2):
     # (the bomb hand holds at most H-1 wires).
     bomb = np.zeros(num_players, dtype=int)
     bomb[randint(0, num_players - 1)] = 1
-    capacity = np.full(num_players, hand_size, dtype=int) - bomb
+    # slot-uniform deal (multivariate hypergeometric); the bomb hand offers H-1 slots
+    slots = [(g, s) for g in range(num_players) for s in range(hand_size - int(bomb[g]))]
     wires = np.zeros(num_players, dtype=int)
-    given = 0
-    while given < active_wires:
-      c = randint(0, num_players - 1)
-      if wires[c] < capacity[c]:
-        wires[c] += 1
-        given += 1
+    for (g, _s) in sample(slots, active_wires):
+      wires[g] += 1
     if verbosity > 0:
       print("w:", wires)
       print("b:", bomb)

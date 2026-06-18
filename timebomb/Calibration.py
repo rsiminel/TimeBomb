@@ -53,26 +53,30 @@ def reliability(predictions, outcomes, n_bins=10):
   return rows, ece
 
 
-def collect_pbad(num_players, num_games, seed=0):
-  """Play ``num_games`` full games and pair every player's final ``P(bad)`` with whether
-  they were actually bad. Uses the joint num_bad belief (so it exercises N=4/N=7 too).
+def collect_pbad(play_auto, num_players, num_games, seed=0):
+  """Run ``play_auto(num_players=..., verbosity=0)`` for ``num_games`` games and pair
+  every player's final ``P(bad)`` with whether they were actually bad. Works for any
+  variant's ``PlayAuto`` and ``General``'s (all return ``(won, p_bad, roles, ...)``).
   Returns ``(predictions, outcomes)``."""
   import random
   random.seed(seed)
   np.random.seed(seed)
   preds, outs = [], []
   for _ in range(num_games):
-    _, p_bad, roles, _ = gen.PlayAuto(num_players=num_players, verbosity=0)
+    result = play_auto(num_players=num_players, verbosity=0)
+    p_bad, roles = result[1], result[2]
     preds.extend(np.asarray(p_bad, dtype=float).tolist())
     outs.extend(np.asarray(roles, dtype=float).tolist())
   return np.array(preds), np.array(outs)
 
 
-def collect_pbomb(num_players, num_rounds, num_bad=2, hand_size=5, seed=0):
-  """Generate ``num_rounds`` independent round-starts under the uniform-lie model and
-  pair every player's declaration-time ``P(bomb)`` with whether they actually hold it.
-  Fixed ``num_bad`` (use N=5/6 where the bad count is known). Returns
-  ``(predictions, outcomes)``."""
+def collect_pbomb(prob_declaration, bomb_marginal, num_players, num_bad, num_rounds,
+                  hand_size=5, seed=0):
+  """Generate ``num_rounds`` round-starts under the uniform-lie model and pair every
+  player's declaration-time ``P(bomb)`` with whether they actually hold it.
+  ``prob_declaration(decls, H, A)`` returns the belief and ``bomb_marginal(belief)`` its
+  per-player ``P(bomb)`` vector — so it works for any bomb variant or ``General`` at a
+  fixed ``num_bad``. Returns ``(predictions, outcomes)``."""
   rng = Random(seed)
   active_wires = num_players
   preds, outs = [], []
@@ -88,9 +92,8 @@ def collect_pbomb(num_players, num_rounds, num_bad=2, hand_size=5, seed=0):
     for i in range(num_players):
       if i in bad_set or i == bomb:
         decls[i] = rng.randint(0, hand_size)
-    probs = gen.ProbDeclaration(decls, hand_size, active_wires, num_bad, 1)
-    _, p_bomb = gen.Separate(probs, num_bad, 1)
-    p_bomb = np.asarray(p_bomb, dtype=float).reshape(-1)
+    p_bomb = np.asarray(bomb_marginal(prob_declaration(decls, hand_size, active_wires)),
+                        dtype=float).reshape(-1)
     for i in range(num_players):
       preds.append(p_bomb[i])
       outs.append(1.0 if i == bomb else 0.0)
@@ -111,13 +114,16 @@ def print_reliability(title, rows, ece):
 def Calibrate(num_players=5, num_games=400, num_rounds=4000, seed=0):
   """Print reliability tables for ``P(bad)`` (full games) and ``P(bomb)`` (round-starts)
   at ``num_players``. A quick interactive read on whether the belief is calibrated."""
-  pb_pred, pb_out = collect_pbad(num_players, num_games, seed)
+  pb_pred, pb_out = collect_pbad(gen.PlayAuto, num_players, num_games, seed)
   rows, ece = reliability(pb_pred, pb_out)
   print_reliability(f"P(bad) calibration  (N={num_players}, {num_games} games)", rows, ece)
   nb = gen.NUM_BAD_PRIOR(num_players)
   if len(nb) == 1:  # fixed bad count: P(bomb) reliability is well-defined here
     num_bad = next(iter(nb))
-    pbm_pred, pbm_out = collect_pbomb(num_players, num_rounds, num_bad, seed=seed)
+    pbm_pred, pbm_out = collect_pbomb(
+        lambda d, h, a: gen.ProbDeclaration(d, h, a, num_bad, 1),
+        lambda belief: gen.Separate(belief, num_bad, 1)[1],
+        num_players, num_bad, num_rounds, seed=seed)
     rows, ece = reliability(pbm_pred, pbm_out)
     print_reliability(f"P(bomb) calibration  (N={num_players}, {num_rounds} rounds)", rows, ece)
 
