@@ -16,23 +16,24 @@ See **[docs/model.md](docs/model.md)** for the mathematics and
 
 | Path                | What it is                                                                  |
 | ------------------- | -------------------------------------------------------------------------- |
-| `timebomb/`         | The backend solver: the four hardcoded variants, the canonical `General.py`, the shared `UsefulFunctions.py`, and the `AI.py` RL agent (on hold). See [docs/roadmap.md](docs/roadmap.md) for the variant list, configs, cleanup order, and status. |
+| `timebomb/`         | The backend solver **`General.py`** (arbitrary bad-guy count + bomb, joint inference over the bad count), the shared `UsefulFunctions.py` / `Consistency.py`, and the `AI.py` RL agent (on hold). Also the four **frozen** hardcoded variants (`OneBadGuyNoBomb`, `TwoBadGuysNoBomb`, `OneBadGuyOneBomb`, `TwoBadGuysOneBomb`) — independent reference oracles that cross-check `General.py`; **do not modify them** (see [CLAUDE.md](CLAUDE.md)). |
 | `tests/`            | Test suites (independent `math.comb` brute-force references).               |
 | `web/`              | Flask API + browser "Time Bomb Assistant" UI, on hold.                      |
 | `docs/`, `TODO.md`  | Model reference, roadmap, decision records (ADRs), and open work items.     |
 
 ## Playing
 
-Each variant exposes two entry points:
+`General.py` (the backend solver) exposes two entry points:
 
 - `Play(players, initial_hand_size=5)` — interactive: enter declarations and cut
-  results at the prompt; the assistant prints the updated belief state.
+  results at the prompt; the assistant prints the updated belief (P(bad), P(bomb),
+  P(num_bad)) and the four-stat cut panel, and warns on inconsistent input.
 - `PlayAuto(num_players, initial_hand_size=5, verbosity=2)` — simulate a full game
   with random play (useful for testing and benchmarking strategies).
 
 ```bash
-# Simulate a 5-player game of the simplest variant
-PYTHONPATH=timebomb python3 -c "from OneBadGuyNoBomb import PlayAuto; PlayAuto(num_players=5, verbosity=1)"
+# Simulate a 5-player game with the backend solver
+PYTHONPATH=timebomb python3 -c "from General import PlayAuto; PlayAuto(num_players=5, verbosity=1)"
 ```
 
 ## Testing

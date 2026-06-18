@@ -5,10 +5,12 @@ live task list see [../TODO.md](../TODO.md).
 
 ## Roadmap
 
-The backend probability code is cleaned up **one variant at a time**, simplest
-first. Each variant is brought to the "definition of done" bar below before the
-next begins. The four hardcoded variants are stepping stones; `General.py` is the
-canonical implementation they converge toward.
+The backend probability code was cleaned up **one variant at a time**, simplest
+first, each hardcoded variant brought to the "definition of done" bar below. That work
+is complete: **`General.py` is the backend solver** and subsumes the four variants (each
+is its `(num_bad, num_bom)` projection). The variants are now **frozen reference oracles**
+that cross-check `General.py` and **must not be modified** (see [CLAUDE.md](../CLAUDE.md)).
+The table below is the historical record of that journey.
 
 | # | Module                  | Config       | Status   |
 | - | ----------------------- | ------------ | -------- |
@@ -163,13 +165,15 @@ is correct and trusted.
 
 ## Status detail
 
-### Variants 1–4 — ✅ done
+### Variants 1–4 — ✅ done, now FROZEN
 
-All four hardcoded variants are at the definition-of-done bar:
+All four hardcoded variants reached the definition-of-done bar:
 `ProbDeclaration`/`ProbCut`/`P_wire` on the validated uniform-lie model, each checked
 against an *independent* `math.comb` oracle and a beats-random simulation, docstrings
-throughout, dead code removed. They are now projections of `General.py`; the per-variant
-derivations and cleanups live in the ADRs and git history.
+throughout, dead code removed. They are projections of `General.py`; the per-variant
+derivations and cleanups live in the ADRs and git history. They are now **frozen reference
+oracles** — they cross-check `General.py` by being independent of it, so **do not modify
+them** (see [CLAUDE.md](../CLAUDE.md)). All backend work happens in `General.py`.
 
 | Variant | Config | Belief state | Independent test oracle |
 | --- | --- | --- | --- |

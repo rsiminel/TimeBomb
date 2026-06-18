@@ -11,12 +11,13 @@ Axes: **A** foundations (cross-cutting model) · **B** variant pipeline · **C**
 ## Testing ground truth
 
 The only valid correctness oracle is an **independent `math.comb` brute force derived from
-`docs/model.md`** (as in `test_OneBadGuyNoBomb.py`). Never test a module against
-`General.py` or `web/app.py` — even now that `General.py` is cleaned and tested, using it as
-an oracle just launders any future bug into the variants. Each variant's suite pairs that
-brute force with an end-to-end *beats-random* simulation (predictive usefulness, with the
-self-calibrating thresholds of `tests/baseline_stats.py`) and the cross-module calibration
-checks in `tests/test_calibration.py`.
+`docs/model.md`** (as in `test_OneBadGuyNoBomb.py`) — never test a module against another
+*implementation*. The four hardcoded variants are **frozen** independent oracles that
+cross-check the backend solver `General.py` (see [CLAUDE.md](CLAUDE.md)); their entire worth
+is that they share no code with it, so **they must not be modified**. Each module's suite
+pairs the brute force with an end-to-end *beats-random* simulation (self-calibrating
+thresholds in `tests/baseline_stats.py`) and the cross-module calibration checks in
+`tests/test_calibration.py`.
 
 ## Axis A — Foundations ✅ done
 
@@ -26,11 +27,12 @@ multivariate-hypergeometric wire split, the bomb sub-model, the degeneracy fallb
 exact-product `CombineProbs` (ε-floor + log-space), the four-stat cut panel, and joint
 `num_bad` inference. See [model.md §3](docs/model.md) and ADRs 0001–0008.
 
-## Axis B — Variant pipeline ✅ done
+## Axis B — Variant pipeline ✅ done (variants now frozen)
 
-Variants 1–4 and `General.py` are all at the definition-of-done bar (see
-[roadmap.md status](docs/roadmap.md#status-detail)). `General.py` subsumes the four; each
-hardcoded variant is its `(num_bad, num_bom)` projection.
+`General.py` is the backend solver and subsumes the four hardcoded variants (each is its
+`(num_bad, num_bom)` projection). The variants are now **frozen reference oracles** that
+cross-check `General.py` — **do not modify them** (see [CLAUDE.md](CLAUDE.md)). Status
+detail in [roadmap.md](docs/roadmap.md#status-detail).
 
 ## Axis C — Downstream (blocked on the now-finished backend)
 
