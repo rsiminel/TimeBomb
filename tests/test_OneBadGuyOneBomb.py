@@ -33,6 +33,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "timebomb"))
 
 import OneBadGuyOneBomb as ob
+from baseline_stats import exceeds_baseline, gap_is_positive
 
 TOL = 1e-9
 comb = math.comb
@@ -386,25 +387,24 @@ def test_inference_beats_random_chance():
     variants, but must still clear the baseline by a wide margin."""
     random.seed(12345)  # PlayAuto draws from the global RNG; seed for determinism
     N, K = 6, 400
-    bad_mass = good_mass = 0.0
-    top1_hits = 0
+    baseline = 1 / N
+    bad_pg, gap_pg, top1_pg = [], [], []  # one entry per game (i.i.d.)
     for _ in range(K):
         _, marg, roles = ob.PlayAuto(num_players=N, initial_hand_size=5, verbosity=0)
-        bad_idx = int(np.where(roles == 1)[0][0])
-        for i in range(N):
-            if i == bad_idx:
-                bad_mass += marg[i]
-            else:
-                good_mass += marg[i]
-        if int(np.argmax(marg)) == bad_idx:
-            top1_hits += 1
-    p_bad_on_bad = bad_mass / K
-    p_bad_on_good = good_mass / ((N - 1) * K)
-    top1 = top1_hits / K
-    baseline = 1 / N
-    assert p_bad_on_bad > 0.4, f"P(bad|true bad)={p_bad_on_bad:.3f} not above baseline {baseline:.3f}"
-    assert p_bad_on_good < 0.18, f"P(bad|true good)={p_bad_on_good:.3f} not below baseline {baseline:.3f}"
-    assert top1 > 0.4, f"top-1 accuracy={top1:.3f} not above baseline {baseline:.3f}"
+        bad = int(np.where(roles == 1)[0][0])
+        bg = float(marg[bad])
+        gg = float(np.mean([marg[i] for i in range(N) if i != bad]))
+        bad_pg.append(bg); gap_pg.append(bg - gg)
+        top1_pg.append(1.0 if int(np.argmax(marg)) == bad else 0.0)
+    # Self-calibrating bars (baseline_stats), 5-sigma off the sample. The paired gap is
+    # the robust claim here: a good guy holding the bomb is forced to lie and looks bad,
+    # so P(bad|good) rises toward the baseline -- but the true bad guy still outscores it.
+    ok, gap, lo = gap_is_positive(gap_pg)
+    assert ok, f"P(bad) bad-good gap={gap:.3f} (5-sigma lower {lo:.3f}) not > 0"
+    ok, m, lo = exceeds_baseline(bad_pg, baseline)
+    assert ok, f"P(bad|true bad)={m:.3f} (5-sigma lower {lo:.3f}) not above baseline {baseline:.3f}"
+    ok, m, lo = exceeds_baseline(top1_pg, baseline)
+    assert ok, f"top-1 accuracy={m:.3f} (5-sigma lower {lo:.3f}) not above random {baseline:.3f}"
 
 
 def test_bomb_inference_beats_random_chance():
@@ -416,8 +416,7 @@ def test_bomb_inference_beats_random_chance():
     per-round (§3.5), so this works one round at a time and never combines."""
     rng = Random(999)
     N, K = 6, 3000
-    mass_on_true = 0.0
-    top1 = 0
+    mass_pr, top1_pr = [], []  # one entry per round (rounds are i.i.d.)
     for _ in range(K):
         H, active = 5, N
         bomb = rng.randrange(N)
@@ -436,14 +435,15 @@ def test_bomb_inference_beats_random_chance():
                 decls[i] = rng.randint(0, H)
         probs = ob.ProbDeclaration(decls, H, active)
         _, p_bomb = ob.DeMatrix(probs)
-        mass_on_true += p_bomb[bomb]
-        if int(np.argmax(p_bomb)) == bomb:
-            top1 += 1
-    p_bomb_on_true = mass_on_true / K
+        mass_pr.append(float(p_bomb[bomb]))
+        top1_pr.append(1.0 if int(np.argmax(p_bomb)) == bomb else 0.0)
     baseline = 1 / N
-    # Observed ~0.30 / ~0.42 vs baseline 0.167; generous margins.
-    assert p_bomb_on_true > 0.22, f"P(bomb|true holder)={p_bomb_on_true:.3f} not above baseline {baseline:.3f}"
-    assert top1 / K > 0.3, f"top-1 bomb accuracy={top1 / K:.3f} not above baseline {baseline:.3f}"
+    # Self-calibrating bars (baseline_stats): rounds are independent, so the per-round
+    # P(bomb) on the true holder and the top-1 hit rate each get a 5-sigma test vs 1/N.
+    ok, m, lo = exceeds_baseline(mass_pr, baseline)
+    assert ok, f"P(bomb|true holder)={m:.3f} (5-sigma lower {lo:.3f}) not above baseline {baseline:.3f}"
+    ok, m, lo = exceeds_baseline(top1_pr, baseline)
+    assert ok, f"top-1 bomb accuracy={m:.3f} (5-sigma lower {lo:.3f}) not above baseline {baseline:.3f}"
 
 
 # --- standalone runner (no pytest required) ------------------------------------

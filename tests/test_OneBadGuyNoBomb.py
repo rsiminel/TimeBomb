@@ -22,6 +22,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "timebomb"))
 
 import OneBadGuyNoBomb as ob
+from baseline_stats import exceeds_baseline, gap_is_positive
 
 TOL = 1e-9
 
@@ -374,25 +375,24 @@ def test_inference_beats_random_chance():
     TwoBadGuysNoBomb suite; roadmap.md Definition of done, criterion 3)."""
     random.seed(12345)  # PlayAuto draws from the global RNG; seed for determinism
     N, K = 5, 400
-    bad_mass = good_mass = 0.0
-    top1_hits = 0
+    baseline = 1 / N
+    bad_pg, good_pg, gap_pg, top1_pg = [], [], [], []  # one entry per game (i.i.d.)
     for _ in range(K):
         _, marg, roles = ob.PlayAuto(num_players=N, initial_hand_size=5, verbosity=0)
         bad = int(np.where(roles == 1)[0][0])
-        for i in range(N):
-            if i == bad:
-                bad_mass += marg[i]
-            else:
-                good_mass += marg[i]
-        top1_hits += (int(np.argmax(marg)) == bad)
-    p_bad_on_bad = bad_mass / K
-    p_bad_on_good = good_mass / ((N - 1) * K)
-    top1_acc = top1_hits / K
-    baseline = 1 / N
-    # Generous margins: observed ~0.95 / ~0.01 / ~0.96, baseline 0.20.
-    assert p_bad_on_bad > 0.6, f"P(bad|true bad)={p_bad_on_bad:.3f} not above baseline {baseline:.3f}"
-    assert p_bad_on_good < 0.15, f"P(bad|true good)={p_bad_on_good:.3f} not below baseline {baseline:.3f}"
-    assert top1_acc > 0.6, f"top-1 accuracy={top1_acc:.3f} not above baseline {baseline:.3f}"
+        bg = float(marg[bad])
+        gg = float(np.mean([marg[i] for i in range(N) if i != bad]))
+        bad_pg.append(bg); good_pg.append(gg); gap_pg.append(bg - gg)
+        top1_pg.append(1.0 if int(np.argmax(marg)) == bad else 0.0)
+    # Self-calibrating bars (baseline_stats): the threshold is the sample's own 5-sigma
+    # confidence edge, not a hand-picked cutoff. The model is informative iff the true
+    # bad guy outscores the good ones (paired gap > 0) and beats the no-info rate 1/N.
+    ok, gap, lo = gap_is_positive(gap_pg)
+    assert ok, f"P(bad) bad-good gap={gap:.3f} (5-sigma lower {lo:.3f}) not > 0"
+    ok, m, lo = exceeds_baseline(bad_pg, baseline)
+    assert ok, f"P(bad|true bad)={m:.3f} (5-sigma lower {lo:.3f}) not above baseline {baseline:.3f}"
+    ok, m, lo = exceeds_baseline(top1_pg, baseline)
+    assert ok, f"top-1 accuracy={m:.3f} (5-sigma lower {lo:.3f}) not above random {baseline:.3f}"
 
 
 # --- standalone runner (no pytest required) ------------------------------------

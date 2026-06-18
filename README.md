@@ -6,7 +6,7 @@ and the result of each cut — it infers, for every player, the probability that
 are a bad guy, that they hold the Bomb, and that cutting one of their cards is safe.
 It is **quantities-only**: it surfaces these calibrated decision inputs and leaves the
 cut choice (and the player's own risk appetite) to the human, rather than dictating a
-move. See [docs/model.md §3.6](docs/model.md) and
+move. See [docs/model.md §3.5](docs/model.md) and
 [ADR 0006](docs/decisions/0006-cut-recommendation-output.md).
 
 See **[docs/model.md](docs/model.md)** for the mathematics and
@@ -44,7 +44,7 @@ added on top. One-time setup:
 
 ```bash
 python3 -m venv --system-site-packages .venv
-.venv/bin/python -m pip install pytest scipy
+.venv/bin/python -m pip install pytest pytest-xdist scipy
 ```
 
 Run the tests (each test file also runs standalone without pytest):
@@ -53,6 +53,10 @@ Run the tests (each test file also runs standalone without pytest):
 .venv/bin/python -m pytest tests/test_OneBadGuyNoBomb.py -q   # or:
 .venv/bin/python tests/test_OneBadGuyNoBomb.py
 ```
+
+The suite is simulation-heavy but embarrassingly parallel, so `pytest.ini` runs it
+across all cores by default (`-n auto`, via `pytest-xdist`) — the full suite is ~70s
+instead of ~4.5 min serial. Pass `-n0` for a serial run (e.g. with `-s` or a debugger).
 
 Each suite has two layers. **Correctness:** it reimplements the hypergeometric
 likelihood, the posterior, and the expected-wire calculation independently (via

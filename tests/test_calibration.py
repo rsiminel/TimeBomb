@@ -14,6 +14,11 @@ the `PlayAuto` *generators* had drifted from the model):
   * `General.PlayAuto` folding the bomb-detonating cut into the role belief as a "no-bomb"
     observation.
 
+Three quantities are checked: `P(bad)` (every variant + General), declaration-time
+`P(bomb)` (the bomb variants), and — at the player counts where the bad *count* is
+uncertain — `P(num_bad)` (the only statistical guard on the cross-B *absolute* declaration
+weight of ADR 0007/0008).
+
 All fixed; this suite locks the fixes in. Run:
   .venv/bin/python -m pytest tests/test_calibration.py -q
 """
@@ -21,10 +26,11 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "timebomb"))
 
-import Calibration as cal
+import calibration as cal
 import OneBadGuyNoBomb as v1
 import TwoBadGuysNoBomb as v2
 import OneBadGuyOneBomb as v3
@@ -55,6 +61,12 @@ PBAD_CASES = [
     ("General(N=5)", gen.PlayAuto, 5, 0.030),
 ]
 
+# (label, num_players, P(num_bad) ECE threshold) — only the counts where B is uncertain
+PNUMBAD_CASES = [
+    ("General(N=4)", 4, 0.025),
+    ("General(N=7)", 7, 0.045),
+]
+
 # (module, ProbDeclaration, bomb-marginal extractor, num_players, num_bad)
 PBOMB_CASES = [
     ("OneBadGuyOneBomb", lambda d, h, a: v3.ProbDeclaration(d, h, a),
@@ -66,34 +78,40 @@ PBOMB_CASES = [
 ]
 
 
-def test_pbad_is_calibrated():
+# Each case is a separate parametrized test so a CI runner (`pytest -n auto`) schedules
+# them across workers instead of serialising the whole sweep in one process, and a
+# failure names the offending module instead of the first one in a bundled loop.
+
+@pytest.mark.parametrize("name,play,n,thresh", PBAD_CASES, ids=[c[0] for c in PBAD_CASES])
+def test_pbad_is_calibrated(name, play, n, thresh):
     """Every PlayAuto's final P(bad) matches the empirical bad-rate (calibrated ECE here is
     ~0.002-0.02 by variant; thresholds guard against gross miscalibration)."""
-    for name, play, n, thresh in PBAD_CASES:
-        pred, out = cal.collect_pbad(play, n, 400, seed=0)
-        rows, ece = cal.reliability(pred, out, n_bins=5)
-        assert ece < thresh, f"{name}: P(bad) ECE={ece:.4f} >= {thresh}\n{rows}"
+    pred, out = cal.collect_pbad(play, n, 400, seed=0)
+    rows, ece = cal.reliability(pred, out, n_bins=5)
+    assert ece < thresh, f"{name}: P(bad) ECE={ece:.4f} >= {thresh}\n{rows}"
 
 
-def test_pbomb_is_calibrated():
+@pytest.mark.parametrize("name,n,thresh", PNUMBAD_CASES, ids=[c[0] for c in PNUMBAD_CASES])
+def test_pnumbad_is_calibrated(name, n, thresh):
+    """At the player counts where the bad *count* is uncertain (N=4, N=7) the joint
+    belief's P(num_bad) matches the empirical frequency of each count. This is the only
+    statistical guard on the cross-B *absolute* declaration weight (ADR 0007/0008): each
+    fixed-B posterior could be perfectly correct yet the counts mis-weighted against each
+    other, and only a P(num_bad) reliability check sees that."""
+    pred, out = cal.collect_pnumbad(gen.PlayAuto, n, 250, seed=0)
+    rows, ece = cal.reliability(pred, out, n_bins=5)
+    assert ece < thresh, f"{name}: P(num_bad) ECE={ece:.4f} >= {thresh}\n{rows}"
+
+
+@pytest.mark.parametrize("name,pdecl,bmarg,n,num_bad", PBOMB_CASES,
+                         ids=[c[0] for c in PBOMB_CASES])
+def test_pbomb_is_calibrated(name, pdecl, bmarg, n, num_bad):
     """Declaration-time P(bomb) matches the empirical bomb-rate — the piece ADR 0007's
     lie-count factor corrected (calibrated ECE ~0.003)."""
-    for name, pdecl, bmarg, n, num_bad in PBOMB_CASES:
-        pred, out = cal.collect_pbomb(pdecl, bmarg, n, num_bad, 3000, seed=0)
-        rows, ece = cal.reliability(pred, out, n_bins=10)
-        assert ece < 0.015, f"{name}: P(bomb) ECE={ece:.4f} >= 0.015\n{rows}"
+    pred, out = cal.collect_pbomb(pdecl, bmarg, n, num_bad, 3000, seed=0)
+    rows, ece = cal.reliability(pred, out, n_bins=10)
+    assert ece < 0.015, f"{name}: P(bomb) ECE={ece:.4f} >= 0.015\n{rows}"
 
 
-if __name__ == "__main__":
-    tests = [v for k, v in sorted(globals().items())
-             if k.startswith("test_") and callable(v)]
-    failures = 0
-    for t in tests:
-        try:
-            t()
-            print(f"PASS  {t.__name__}")
-        except AssertionError as e:
-            failures += 1
-            print(f"FAIL  {t.__name__}: {e}")
-    print(f"\n{len(tests) - failures}/{len(tests)} passed")
-    sys.exit(1 if failures else 0)
+if __name__ == "__main__":  # standalone: delegate to pytest so parametrized cases run
+    sys.exit(pytest.main([__file__, "-q"]))

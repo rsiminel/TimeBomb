@@ -141,145 +141,52 @@ is correct and trusted.
   declarations. The first two land with `General.py` (ADR 0005); the third is new.
 - **Broader test coverage.** The suites pair an independent `math.comb` brute force
   (correctness) with an end-to-end beats-random simulation (predictive usefulness).
-  - **Calibration — done** (`Calibration.py` + `test_calibration.py`): stated `P(bad)`/
-    `P(bomb)` match empirical frequencies (ECE ≈ 0.01 at N=5), so the cut panel's risk
-    numbers are trustworthy and A5 tempering stays unwarranted. Building it caught two
-    simulator/model mismatches in `General.PlayAuto` — a player-uniform (not slot-uniform)
-    wire deal, and folding the bomb-detonating cut as a "no-bomb" observation — both fixed.
+  - **Calibration — done** (`tests/calibration.py` harness + `tests/test_calibration.py`):
+    `P(bad)`, declaration-time `P(bomb)`, and `P(num_bad)` (N=4/N=7, the cross-`B`
+    absolute-weight guard of ADR 0007/0008) all match empirical frequencies (ECE ≈ 0.01),
+    so the cut panel's risk numbers are trustworthy and A5 tempering stays unwarranted.
+    Building it caught two simulator/model mismatches in `General.PlayAuto` — a
+    player-uniform (not slot-uniform) wire deal, and folding the bomb-detonating cut as a
+    "no-bomb" observation — both fixed.
   - **Cross-variant consistency — done** for the panel/marginals (`General` at `(2,1)` vs
     `TwoBadGuysOneBomb`); worth extending to every projection.
   - Still worth adding: property-based / fuzz testing (e.g. Hypothesis) over the
-    distribution invariants; regression fixtures pinning known belief vectors; and a
-    `P(num_bad)` reliability check at N=4/N=7.
-- **Principled `beats_random` thresholds.** The end-to-end accuracy tests currently
-  assert hand-tuned cutoffs (e.g. `P(bad|true) > 0.55`), set empirically per variant and
-  prone to drift. Replace them with a principled rule, either: **(a)** assert only the
-  *relationship to the random baseline* — `P(bad|true) > k·baseline` and
-  `P(bad|true good) < baseline` — which is the actual claim ("the model is informative")
-  and is variant-agnostic; or **(b)** make them statistical — derive the bar from the
-  sample, `baseline + z·stderr` for the run's `K`, so sample size sets the threshold
-  rather than a guess. Apply across all variants' suites.
+    distribution invariants and regression fixtures pinning known belief vectors.
+- **Principled `beats_random` thresholds — done.** The end-to-end tests no longer assert
+  hand-tuned cutoffs; `tests/baseline_stats.py` derives a self-calibrating bar from the
+  run's own sample (a one-sided 5σ z-test of a per-game statistic against the
+  no-information baseline). The robust cross-variant claim is the *paired* gap
+  `P(bad|bad) − P(bad|good) > 0`, which holds even where a bomb-holding good guy lifts
+  `P(bad|good)` to ≈baseline.
+- **Test-suite speed — done.** The simulation-heavy suite runs across all cores by default
+  (`pytest-xdist`, `-n auto` in `pytest.ini`); the calibration sweeps are parametrized and
+  the joint test split per `N` so xdist schedules them as independent units; and one panel
+  test's uncapped `O((2N)^stop)` lookahead (157s, range-checks only) is depth-capped.
+  Full suite ≈ 70s, down from ≈ 4.5 min serial.
 - **Packaging.** Turn the repo into an installable package (`pyproject.toml`, a
   `timebomb` distribution, console entry points for `Play`/`PlayAuto`) so it no longer
-  relies on `PYTHONPATH=timebomb` and a hand-rolled `.venv`. Pins the numpy/scipy
-  dependency and makes the test/CI setup reproducible.
-- **De-clutter the docs once the backend arc closes.** When `General.py` (variant 5)
-  lands, prune the accumulated "done" detail: collapse the B1–B4 status blocks here and
-  the per-variant subsections in TODO.md to a one-line "✅ variants 1–4 done" pointer
-  (git history, the ADRs, and this status section already preserve the what and why).
-  TODO is a worklist and should shed completed items aggressively; neither doc needs to
-  be a permanent archive. Trigger: backend complete.
+  relies on `PYTHONPATH=timebomb` and a hand-rolled `.venv`. Pins the
+  numpy/scipy/pytest-xdist dependencies and makes the test/CI setup reproducible.
 
 ## Status detail
 
-### 1. `OneBadGuyNoBomb.py` — ✅ done
+### Variants 1–4 — ✅ done
 
-Meets all four criteria. Highlights:
+All four hardcoded variants are at the definition-of-done bar:
+`ProbDeclaration`/`ProbCut`/`P_wire` on the validated uniform-lie model, each checked
+against an *independent* `math.comb` oracle and a beats-random simulation, docstrings
+throughout, dead code removed. They are now projections of `General.py`; the per-variant
+derivations and cleanups live in the ADRs and git history.
 
-- `ProbCut` collapsed from three implementations to the single canonical
-  joint-Bayes form; the legacy per-player and "mathematically justified" variants
-  removed.
-- `P_wire` denominator corrected to remaining face-down cards, and both branches
-  feasibility-gated (fixing a negative-probability bug found during testing).
-- `ProbDeclaration` migrated from the old card-count heuristic to the uniform-lie
-  joint-Bayes prior (§3.3), validated against an independent `itertools.product`
-  generative oracle; degeneracy falls back to uniform (Cross-cutting foundations
-  items 1 and 3).
-- `PlayAuto` integer-array crash, `ProbSus` `NameError`, and `Play` input
-  validation all fixed.
-- Docstrings on every public function; `test_OneBadGuyNoBomb.py` (21 tests) checks
-  the math against independent `math.comb` brute-force references, plus an end-to-end
-  accuracy test: over 400 games the belief puts ~0.95 on the true bad guy (~0.96 top-1
-  accuracy) vs the 0.20 random baseline.
+| Variant | Config | Belief state | Independent test oracle |
+| --- | --- | --- | --- |
+| 1 `OneBadGuyNoBomb` | `B=1, M=0` | length-`N` vector | `itertools.product` generative prior |
+| 2 `TwoBadGuysNoBomb` | `B=2, M=0` | lower-triangular pair matrix | split-enumeration `math.comb` |
+| 3 `OneBadGuyOneBomb` | `B=1, M=1` | `N×N` `(bad, bomb)` matrix | `(b,h)`-enumeration, bomb must-not-draw |
+| 4 `TwoBadGuysOneBomb` | `B=2, M=1` | `N×N×N` `(pair, bomb)` tensor | `(b1,b2,h)`-enumeration, explicit split |
 
-### 2. `TwoBadGuysNoBomb.py` — ✅ done
-
-`B=2`: the belief state is a lower-triangular matrix over *pairs* of bad guys.
-Meets all four criteria. Highlights:
-
-- All three model functions migrated from the old Binomial-½ wire split to the
-  §3.4.1 uniform-placement (multivariate-hypergeometric) closed forms: the
-  `ProbDeclaration` pair prior, a new `L_bad_pair` helper collapsing the cut
-  likelihood, and the pooled-marginal `P_wire`.
-- `P_wire` good-guy branch feasibility-gated (the ungated negative-probability bug)
-  and the spurious `+ found[i]` split index removed; `ProbDeclaration` degeneracy
-  now falls back to uniform-over-pairs.
-- `PlayAuto` integer arrays and the `H_Min` `-1` sentinel fixed; docstrings on every
-  public function.
-- `test_TwoBadGuysNoBomb.py` (11 tests) checks the math against an independent
-  split-enumeration `math.comb` oracle (the generative declaration prior, the
-  per-pair cut posterior, and the expected-wire marginal), plus an end-to-end
-  accuracy test: over 400 simulated games the belief puts ~0.94 on the true bad
-  guys vs ~0.03 on the good ones (random baseline 0.33).
-
-### 3. `OneBadGuyOneBomb.py` — ✅ done
-
-`B=1, M=1`: introduces the Bomb. The belief state is the full `N×N` matrix
-`probs[b][h]` = P(player `b` bad, player `h` holds the bomb), diagonal allowed. Meets
-all five criteria. Highlights:
-
-- All three model functions migrated to the §3.2–§3.4 uniform-lie bomb model: the
-  `ProbDeclaration` closed form `C(2H−1, …)/(C(H,d_b)·C(H,d_h))` (with `C(H−1, …)` on
-  the `b=h` diagonal), a new `L_config`/`L_bomb_hand` pair giving the cut likelihood
-  with the bomb as a must-not-draw card conditioned on "no bomb yet", and the
-  bomb-aware `P_wire` (split-posterior expected wires, denominator still counts the
-  bomb card). The old strategic heuristics (good-bomb under-declares, bad-bomb
-  over-declares) and the `uf.C` negative-argument trap are gone.
-- `PlayAuto` now deals the bomb first then wires among the remaining slots and
-  generates declarations under the uniform-lie model; `DisplayProbs`/`tabulate` and the
-  dead `CombineNonHomoProbs` dropped; integer arrays throughout; `H_Min` `−1` sentinel
-  fixed. `CombineProbs` accumulates only the P(bad) row marginal — the per-round
-  P(bomb) column is never combined (§3.5).
-- `test_OneBadGuyOneBomb.py` (10 tests) checks the math against an independent
-  `(b, h)`-enumeration `math.comb` oracle (split-summed declaration prior, cut
-  likelihood, and `P_wire` marginal), plus **two** end-to-end accuracy tests: over 400
-  games the combined belief puts ~0.59 on the true bad guy (top-1 ~0.69) vs the 0.167
-  baseline — weaker than the no-bomb variants because a good guy forced to lie by the
-  bomb looks bad — and the per-round P(bomb) column puts ~0.30 on the true holder
-  (top-1 ~0.42) vs the same baseline.
-
-### 4. `TwoBadGuysOneBomb.py` — ✅ done
-
-`B=2, M=1`: combines the `B>1` pair structure (§3.4.1) with the bomb sub-model (§3.2–§3.4).
-The belief state is the `N×N×N` tensor `probs[b1][b2][h]` over the `(bad pair, bomb)`
-config space (`b1 > b2`, any `h`, `h` allowed to coincide with a bad guy). Meets all
-five criteria. Highlights:
-
-- All three model functions migrated to the unified model. `ProbDeclaration` is the
-  closed form `C(free_slots, t_free) / Π_{g free} C(H, decls[g])` with
-  `free_slots = 2H−1` when the bomb sits with a bad guy and `3H−1` when it sits with a
-  good guy (the bomb eats one slot). `ProbCut` reuses the verified `L_bad_pair`
-  (§3.4.1) and `L_bomb_hand` (§3.2) helpers, splitting `t_free` between the bad pair
-  and the bomb hand; `P_wire` takes the bomb-aware §3.4.1 split-posterior expected
-  wires. The old strategic over/under-declare heuristics, the `tabulate`/`DisplayProbs`,
-  the `CombineNonHomoProbs`/`ProbSus` dead code, and the cut-strategy zoo are gone.
-- `CombineProbs` accumulates only the P(bad **pair**) matrix marginal — the per-round
-  P(bomb) column is never combined (§3.5); degeneracy falls back to uniform over
-  pairs. `DeTensor` yields `(pair matrix, bomb vector)`; `DeMatrix` reduces the pair
-  matrix to per-player P(bad). Integer arrays throughout; clean `PlayAuto`.
-- `test_TwoBadGuysOneBomb.py` (19 tests) checks the math against an independent
-  `(b1, b2, h)`-enumeration `math.comb` oracle that sums the free-hand wire split
-  explicitly (no closed form, no `L_bad_pair` reuse), plus two end-to-end accuracy
-  tests: over 400 games the combined belief puts ~0.65 on each true bad guy vs ~0.18
-  on the good ones (baseline 0.33), and the per-round P(bomb) column puts ~0.30 on the
-  true holder vs the 0.167 baseline.
-- **Carries the two General.py-bound references** (pre-implemented here so the B5 work
-  mirrors a verified reference rather than designing from scratch):
-  - **The four-stat cut panel (A6, §3.5, ADR 0006):** `CutPanel` returns per player
-    `[P(safe wire), P(bomb), 1-ply E[H(bad)], round-horizon H(bad)]`. Stats 3–4 are the
-    new information lookaheads — `NextHBad` (1-ply expected post-cut role entropy) and
-    `RoundHorizonH`/`H_Min` (the info-greedy min-entropy lookahead to end of round) —
-    defined with the bomb present: the role-uncertainty object is the **pair
-    distribution** entropy (`EntropyBad`, sums to 1), and the rollout reuses the
-    bomb-aware `ProbCut` (conditioned on "no bomb cut yet"), ignoring bomb risk per
-    ADR 0006. Validated by an independent oracle for stat 3 plus range/assembly/depth-1
-    invariants; surfaced to the human via `PrintPanel` in `Play`.
-  - **The robust `CombineProbs` (A5, ADR 0005):** the ε-floor + log-space form of the
-    exact product — numerically identical for normal play, but no single round can
-    permanently zero a pair and many rounds cannot underflow to uniform. An authorised
-    deviation from ADR 0005's "don't retrofit the pinned variants", prototyped here to
-    de-risk General; covered by three robustness tests (equals the exact product on
-    positive input, revives a hard-zeroed pair, no collapse over 1100 peaked rounds).
+Variant 4 also pre-implemented the four-stat cut panel and the robust ε-floor/log-space
+`CombineProbs` as the verified references `General.py` was then built from.
 
 ### 5. `General.py` — ✅ done
 
@@ -304,7 +211,7 @@ holder h)` configuration space, for arbitrary `num_bad` and `num_bom ∈ {0,1}`.
 - **Joint `num_bad` inference** ([ADR 0008](decisions/0008-joint-num-bad-inference.md), §3.5.1):
   for N=4/N=7 the bad count updates from evidence — `P(B|D) ∝ P(B)·(1/C(N,B))·Σ_S Π_r u_r(S;B)`
   in log-space — instead of the old fixed-weight `pos_bad` mixture.
-- `test_General.py` (17 tests): the generative oracle sweeps, panel invariants + a
+- `test_General.py`: the generative oracle sweeps, panel invariants + a
   cross-variant panel check against B4, `CombineProbs` robustness, the joint posterior vs an
   independent re-derivation, within-`B` agreement with `CombineProbs`, and beats-random at
   N=4/N=7. Open issue carried forward: the round-horizon lookahead is `O((2N)^stop)` — a

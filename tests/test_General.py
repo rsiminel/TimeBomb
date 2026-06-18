@@ -31,6 +31,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "timebomb"))
 
 import General as gen
+from baseline_stats import exceeds_baseline, gap_is_positive
 
 TOL = 1e-9
 comb = math.comb
@@ -686,40 +687,38 @@ def test_joint_within_b_matches_combineprobs():
                 assert np.allclose(p_set[B], combined, atol=1e-9)
 
 
-def test_joint_beats_random():
+def _check_joint_beats_random(N):
     """Over many games the joint belief concentrates P(num_bad) on the true count and
-    P(bad) on the true bad guys, at the player counts where num_bad is uncertain."""
-    import random as _random
-    for N in (4, 7):
-        _random.seed(100 + N)
-        np.random.seed(100 + N)
-        K = 250
-        true_nbad_mass = 0.0
-        bad_mass = good_mass = 0.0
-        n_bad_total = n_good_total = 0
-        for _ in range(K):
-            _, p_bad, roles, p_nb = gen.PlayAuto(num_players=N, verbosity=0)
-            true_b = int(roles.sum())
-            true_nbad_mass += p_nb.get(true_b, 0.0)
-            bad_idx = set(int(i) for i in np.where(roles == 1)[0])
-            for i in range(N):
-                if i in bad_idx:
-                    bad_mass += p_bad[i]
-                    n_bad_total += 1
-                else:
-                    good_mass += p_bad[i]
-                    n_good_total += 1
-        avg_true_nbad = true_nbad_mass / K
-        p_bad_on_bad = bad_mass / n_bad_total
-        p_bad_on_good = good_mass / n_good_total
-        # No-information baseline: echoing the prior gives mean P(true B) = Σ_B prior(B)^2
-        # (true B ~ prior). Beating it shows the model learns about the bad *count*.
-        no_info = sum(p * p for p in gen.NUM_BAD_PRIOR(N).values())
-        assert avg_true_nbad > no_info + 0.02, \
-            f"N={N} mean P(num_bad=true)={avg_true_nbad:.3f} <= no-info {no_info:.3f}"
-        # P(bad) must clearly separate true bad guys from good ones.
-        assert p_bad_on_bad > p_bad_on_good + 0.2, \
-            f"N={N} P(bad|bad)={p_bad_on_bad:.3f} not well above P(bad|good)={p_bad_on_good:.3f}"
+    P(bad) on the true bad guys. Split per player count (N=4, N=7) into its own test so
+    the two heavy simulation runs schedule on separate xdist workers."""
+    random.seed(100 + N)
+    np.random.seed(100 + N)
+    K = 250
+    nbad_pg, gap_pg = [], []  # one entry per game (i.i.d.)
+    for _ in range(K):
+        _, p_bad, roles, p_nb = gen.PlayAuto(num_players=N, verbosity=0)
+        true_b = int(roles.sum())
+        nbad_pg.append(p_nb.get(true_b, 0.0))
+        bad_idx = set(int(i) for i in np.where(roles == 1)[0])
+        bg = float(np.mean([p_bad[i] for i in range(N) if i in bad_idx]))
+        gg = float(np.mean([p_bad[i] for i in range(N) if i not in bad_idx]))
+        gap_pg.append(bg - gg)
+    # No-information baseline for P(num_bad): echoing the prior gives mean P(true B) =
+    # Σ_B prior(B)^2 (true B ~ prior). Self-calibrating 5-sigma bars (baseline_stats):
+    # the count belief beats that, and the role belief separates bad from good guys.
+    no_info = sum(p * p for p in gen.NUM_BAD_PRIOR(N).values())
+    ok, m, lo = exceeds_baseline(nbad_pg, no_info)
+    assert ok, f"N={N} mean P(num_bad=true)={m:.3f} (5-sigma lower {lo:.3f}) <= no-info {no_info:.3f}"
+    ok, gap, lo = gap_is_positive(gap_pg)
+    assert ok, f"N={N} P(bad) bad-good gap={gap:.3f} (5-sigma lower {lo:.3f}) not > 0"
+
+
+def test_joint_beats_random_n4():
+    _check_joint_beats_random(4)
+
+
+def test_joint_beats_random_n7():
+    _check_joint_beats_random(7)
 
 
 # --- standalone runner ---------------------------------------------------------

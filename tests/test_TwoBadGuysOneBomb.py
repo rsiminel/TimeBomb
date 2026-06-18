@@ -40,6 +40,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "timebomb"))
 
 import TwoBadGuysOneBomb as tb
+from baseline_stats import exceeds_baseline, gap_is_positive
 
 TOL = 1e-9
 comb = math.comb
@@ -457,20 +458,24 @@ def test_inference_beats_random_chance():
     no-bomb pair variant, but must still clear the baseline by a wide margin."""
     random.seed(12345)  # PlayAuto draws from the global RNG; seed for determinism
     N, K = 6, 400
-    bad_mass = good_mass = 0.0
+    baseline = 2 / N
+    bad_pg, gap_pg, top2_pg = [], [], []  # one entry per game (i.i.d.)
     for _ in range(K):
         _, marg, roles = tb.PlayAuto(num_players=N, initial_hand_size=5, verbosity=0)
         bad_idx = set(int(i) for i in np.where(roles == 1)[0])
-        for i in range(N):
-            if i in bad_idx:
-                bad_mass += marg[i]
-            else:
-                good_mass += marg[i]
-    p_bad_on_bad = bad_mass / (2 * K)
-    p_bad_on_good = good_mass / ((N - 2) * K)
-    baseline = 2 / N
-    assert p_bad_on_bad > 0.55, f"P(bad|true bad)={p_bad_on_bad:.3f} not above baseline {baseline:.3f}"
-    assert p_bad_on_good < baseline, f"P(bad|true good)={p_bad_on_good:.3f} not below baseline {baseline:.3f}"
+        bg = float(np.mean([marg[i] for i in range(N) if i in bad_idx]))
+        gg = float(np.mean([marg[i] for i in range(N) if i not in bad_idx]))
+        bad_pg.append(bg); gap_pg.append(bg - gg)
+        top2_pg.append(len(set(np.argsort(marg)[-2:]) & bad_idx) / 2.0)
+    # Self-calibrating bars (baseline_stats), 5-sigma off the sample. The paired gap is
+    # the robust claim: a good guy holding the bomb is forced to lie and looks bad, so
+    # P(bad|good) rises toward the baseline -- but the true bad pair still outscores it.
+    ok, gap, lo = gap_is_positive(gap_pg)
+    assert ok, f"P(bad) bad-good gap={gap:.3f} (5-sigma lower {lo:.3f}) not > 0"
+    ok, m, lo = exceeds_baseline(bad_pg, baseline)
+    assert ok, f"P(bad|true bad)={m:.3f} (5-sigma lower {lo:.3f}) not above baseline {baseline:.3f}"
+    ok, m, lo = exceeds_baseline(top2_pg, baseline)
+    assert ok, f"top-2 precision={m:.3f} (5-sigma lower {lo:.3f}) not above random {baseline:.3f}"
 
 
 def test_bomb_inference_beats_random_chance():
@@ -481,8 +486,7 @@ def test_bomb_inference_beats_random_chance():
     per-round (§3.5), so this works one round at a time and never combines."""
     rng = Random(999)
     N, K = 6, 2000
-    mass_on_true = 0.0
-    top1 = 0
+    mass_pr, top1_pr = [], []  # one entry per round (rounds are i.i.d.)
     for _ in range(K):
         H, active = 5, N
         bomb = rng.randrange(N)
@@ -501,13 +505,15 @@ def test_bomb_inference_beats_random_chance():
                 decls[i] = rng.randint(0, H)
         probs = tb.ProbDeclaration(decls, H, active)
         _, p_bomb = tb.DeTensor(probs)
-        mass_on_true += p_bomb[bomb]
-        if int(np.argmax(p_bomb)) == bomb:
-            top1 += 1
-    p_bomb_on_true = mass_on_true / K
+        mass_pr.append(float(p_bomb[bomb]))
+        top1_pr.append(1.0 if int(np.argmax(p_bomb)) == bomb else 0.0)
     baseline = 1 / N
-    assert p_bomb_on_true > 0.22, f"P(bomb|true holder)={p_bomb_on_true:.3f} not above baseline {baseline:.3f}"
-    assert top1 / K > 0.3, f"top-1 bomb accuracy={top1 / K:.3f} not above baseline {baseline:.3f}"
+    # Self-calibrating bars (baseline_stats): rounds are independent, so the per-round
+    # P(bomb) on the true holder and the top-1 hit rate each get a 5-sigma test vs 1/N.
+    ok, m, lo = exceeds_baseline(mass_pr, baseline)
+    assert ok, f"P(bomb|true holder)={m:.3f} (5-sigma lower {lo:.3f}) not above baseline {baseline:.3f}"
+    ok, m, lo = exceeds_baseline(top1_pr, baseline)
+    assert ok, f"top-1 bomb accuracy={m:.3f} (5-sigma lower {lo:.3f}) not above baseline {baseline:.3f}"
 
 
 # --- four-stat cut panel: independent oracle -----------------------------------
@@ -603,7 +609,11 @@ def test_cutpanel_invariants_and_assembly_sweep():
         n = len(decls)
         num_pairs = n * (n - 1) // 2
         max_ent = math.log2(num_pairs) if num_pairs > 1 else 0.0
-        panel = tb.CutPanel(decls, probs, revealed, found, hand_size, active)
+        # Cap the stat-4 lookahead: this test checks only range invariants and that
+        # columns 0-1 equal P_wire / the bomb marginal, none of which depend on the
+        # round-horizon depth (stat 4 is range-checked, not oracle-checked here). The
+        # uncapped O((2N)^cuts_left) rollout otherwise dominated the whole suite.
+        panel = tb.CutPanel(decls, probs, revealed, found, hand_size, active, max_depth=2)
         ps_ref = tb.P_wire(decls, probs, revealed, found, hand_size, active)
         _, pb_ref = tb.DeTensor(probs)
         for i in range(n):

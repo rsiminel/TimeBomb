@@ -639,7 +639,7 @@ def DistributeWires(num_players, hand_size, active_wires, num_bom):
   the slot-uniform model when every hand has equal capacity. The bomb hand has one fewer
   slot, so the player-uniform shortcut over-deals wires to it and makes the simulated
   games diverge from the model — which shows up as a systematic `P(bad)` miscalibration
-  (see ``Calibration.py``). Simulation-only helper for ``PlayAuto``.
+  (see ``tests/calibration.py``). Simulation-only helper for ``PlayAuto``.
   """
   bombs = np.zeros(num_players, dtype=int)
   for h in sample(range(num_players), num_bom):

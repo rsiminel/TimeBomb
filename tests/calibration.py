@@ -1,22 +1,30 @@
 # -*- coding: utf-8 -*-
-"""Calibration measurement for the Time Bomb belief (model.md §3.5; prerequisite for
-ADR 0006's cut panel and ADR 0005's per-round tempering).
+"""Calibration measurement harness for the Time Bomb belief (model.md §3.5).
+
+Test/measurement infrastructure, not part of the game assistant — it lives under
+``tests/`` and supplies the reusable building blocks that ``test_calibration.py`` turns
+into assertions (and that ``Calibrate`` turns into an interactive diagnostic).
 
 A Bayesian posterior under a correctly-specified model is **calibrated**: among the
 players the model calls ``P(bad) = p``, a fraction of about ``p`` really are bad (and
-likewise for ``P(bomb)``). The panel's risk numbers are only worth trusting if this
-holds, so these helpers measure it — a reliability table and the Expected Calibration
-Error (ECE) — over simulated games. Because the simulator and the inference share the
-uniform-lie model, a correct implementation must come out calibrated up to sampling
-noise; a systematic gap is a bug (this is the check that would have caught the
-declaration lie-count error of ADR 0007).
+likewise for ``P(bomb)``, and for ``P(num_bad)`` at the uncertain counts). The panel's
+risk numbers are only worth trusting if this holds, so these helpers measure it — a
+reliability table and the Expected Calibration Error (ECE) — over simulated games.
+Because the simulator and the inference share the uniform-lie model, a correct
+implementation must come out calibrated up to sampling noise; a systematic gap is a bug
+(this is the check that caught the declaration lie-count error of ADR 0007).
 
-``Calibrate`` prints reliability tables for ``P(bad)`` and ``P(bomb)``; the individual
-collectors return ``(predictions, outcomes)`` arrays for use in tests.
+``Calibrate`` prints reliability tables for ``P(bad)``/``P(bomb)``/``P(num_bad)``; the
+individual collectors return ``(predictions, outcomes)`` arrays for use in tests.
 """
+
+import sys
+from pathlib import Path
 
 import numpy as np
 from random import Random
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "timebomb"))
 
 import General as gen
 
@@ -67,6 +75,28 @@ def collect_pbad(play_auto, num_players, num_games, seed=0):
     p_bad, roles = result[1], result[2]
     preds.extend(np.asarray(p_bad, dtype=float).tolist())
     outs.extend(np.asarray(roles, dtype=float).tolist())
+  return np.array(preds), np.array(outs)
+
+
+def collect_pnumbad(play_auto, num_players, num_games, seed=0):
+  """Run ``play_auto`` for ``num_games`` games at a player count where the bad **count**
+  is uncertain (N=4: 1 or 2; N=7: 2 or 3) and pair, for every candidate count ``B``, the
+  final ``P(num_bad = B)`` with whether ``B`` was the true count. This is the only check
+  that exercises the cross-``B`` *absolute* declaration weight (ADR 0007/0008) under
+  sampling: if those weights were not comparable across bad counts, ``P(num_bad)`` would
+  be systematically miscalibrated even though each fixed-``B`` posterior stays correct.
+  ``play_auto`` must return ``(won, p_bad, roles, p_num_bad)`` (``General.PlayAuto``).
+  Returns ``(predictions, outcomes)``."""
+  import random
+  random.seed(seed)
+  np.random.seed(seed)
+  preds, outs = [], []
+  for _ in range(num_games):
+    _, _, roles, p_num_bad = play_auto(num_players=num_players, verbosity=0)
+    true_b = int(np.sum(roles))
+    for b, p in p_num_bad.items():
+      preds.append(float(p))
+      outs.append(1.0 if b == true_b else 0.0)
   return np.array(preds), np.array(outs)
 
 
@@ -126,6 +156,10 @@ def Calibrate(num_players=5, num_games=400, num_rounds=4000, seed=0):
         num_players, num_bad, num_rounds, seed=seed)
     rows, ece = reliability(pbm_pred, pbm_out)
     print_reliability(f"P(bomb) calibration  (N={num_players}, {num_rounds} rounds)", rows, ece)
+  else:  # uncertain bad count (N=4, N=7): check the joint P(num_bad) is calibrated too
+    pnb_pred, pnb_out = collect_pnumbad(gen.PlayAuto, num_players, num_games, seed)
+    rows, ece = reliability(pnb_pred, pnb_out, n_bins=5)
+    print_reliability(f"P(num_bad) calibration  (N={num_players}, {num_games} games)", rows, ece)
 
 
 if __name__ == "__main__":
