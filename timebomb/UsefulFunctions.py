@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Small numeric helpers shared by every Time Bomb variant.
 
-The combinatorial atoms (`C`, `C3`, `A`, `Lklhd`) are the building blocks of the
+The combinatorial atoms (`C`, `A`, `Lklhd`) are the building blocks of the
 hypergeometric likelihoods in docs/model.md §3.2. They take plain Python integers and
 return plain numbers, so they compose cleanly inside the variants' belief functions.
 
@@ -16,16 +16,7 @@ Created on Sun Jun  5 14:16:22 2022
 
 # Imports
 import numpy as np
-from random import randint, sample
-
-
-def Normalize(a):
-  """Scale a non-negative array so its entries sum to 1. Returns it unchanged if the
-  total is 0 (an all-zeros vector has no normalised form)."""
-  n = np.sum(a)
-  if n == 0:
-    return a
-  return a / n
+from random import sample
 
 
 def Fact(x):
@@ -47,15 +38,6 @@ def C(k, n):
   if n < k or k < 0:
     return 0
   return Fact(n) / (Fact(k) * Fact(n - k))
-
-
-def C3(a, b, n):
-  """Trinomial coefficient ``n! / (a! · b! · (n−a−b)!)`` -- the number of ways to split
-  ``n`` items into groups of ``a``, ``b``, and ``n−a−b``. Returns 0 when the split is
-  infeasible (``a + b > n`` or a negative part)."""
-  if n < a or n < b or a < 0 or b < 0 or a + b > n:
-    return 0
-  return Fact(n) / (Fact(a) * Fact(b) * Fact(n - a - b))
 
 
 def A(k, n):

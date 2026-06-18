@@ -316,33 +316,6 @@ def H(probs):
   return h
 
 
-def NextH(decls, probs, revealed, found, hand_size, active_wires):
-  """Expected posterior entropy after cutting each player's wire (one step ahead).
-
-  For every cuttable player, average the entropy of the updated belief over the
-  two possible outcomes (a wire with probability P_wire, nothing otherwise).
-  Lower means that cut is expected to be more informative.
-  """
-  num_players = decls.size
-  p_wire = P_wire(decls, probs, revealed, found, hand_size, active_wires)
-  h = np.zeros(num_players)
-  info_wire = 0
-  info_not_wire = 0
-  for cutee in range(num_players):
-    if revealed[cutee] >= hand_size:
-      continue
-    reveal = np.zeros(num_players)
-    reveal[cutee] += 1
-    find = np.zeros(num_players)
-    find[cutee] += 1
-    if p_wire[cutee] > 0.0001:
-      info_wire = H(ProbCut(decls, probs, revealed + reveal, found + find, hand_size, active_wires))
-    if p_wire[cutee] < 0.9999:
-      info_not_wire = H(ProbCut(decls, probs, revealed + reveal, found, hand_size, active_wires))
-    h[cutee] = p_wire[cutee] * info_wire + (1 - p_wire[cutee]) * info_not_wire
-  return h
-
-
 def H_Min(decls, probs, revealed, found, hand_size, active_wires, stop):
   """Recursive min-entropy lookahead: search up to ``stop`` cuts ahead for the
   sequence of cuts that minimises the expected final entropy of the belief state.
