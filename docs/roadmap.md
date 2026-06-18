@@ -30,16 +30,6 @@ Downstream, **unblocked only after the backend is done**:
 | 6 | `web/`    | on hold — Flask API + browser assistant                    |
 | 7 | `AI.py`   | on hold — REINFORCE cut agent vs. the analytic strategies  |
 
-- **6. `web/` — fix up the website.** Re-port the cleaned `General.py` math behind the
-  Flask API (`web/app.py` currently duplicates an old, bug-ridden `General.py`-style
-  implementation) and update the browser assistant to present the quantities-only
-  four-stat panel (§3.5) instead of a single dictated cut. The UI is the natural home
-  for a real-table assistant: enter declarations and cut results, read the belief.
-- **7. `AI.py` — create the AI.** Train and benchmark the REINFORCE cut agent against
-  the cleaned-up analytic strategies (`CutMaxScore`, `CutRandom`, the info-greedy
-  lookahead). Goal: learn a cut policy that beats the hand-written heuristics, and use
-  it as an empirical yardstick for the horizon-weighted VOI question (§3.5/§3.6).
-
 ## Definition of done (per variant)
 
 1. **Works** — runs without errors; `ProbDeclaration` and `ProbCut` always return
@@ -134,11 +124,14 @@ is correct and trusted.
 
 - **Resilience to model-breaking play (§3.6).** Real tables violate the uniform-lie
   model: miscounts, arithmetically impossible declarations, house-rule deals, strategic
-  liars producing ~0-probability observations. The degeneracy convention keeps the belief
-  *defined*, but a single impossible round can permanently zero a configuration under the
-  elementwise `CombineProbs` product. Harden it: ε-floor (no unrecoverable hard `0`),
-  log-space accumulation (underflow), and a graceful response to inconsistent
-  declarations. The first two land with `General.py` (ADR 0005); the third is new.
+  liars producing ~0-probability observations. Three hardenings; two are done.
+  - **ε-floor + log-space `CombineProbs`** (ADR 0005) — done in `General` and
+    `TwoBadGuysOneBomb`. *Open:* port to the three simpler variants (still bare product).
+  - **Graceful response to inconsistent input** — done (`timebomb/Consistency.py`,
+    `tests/test_consistency.py`): the interactive `Play` re-prompts clearly invalid numeric
+    entry and warns (once per round, continuing with the safe fallback) on jointly impossible
+    declarations or an impossible cut result, so a miscount no longer silently discards a
+    round's evidence. Hybrid policy, reusable by the future web port.
 - **Broader test coverage.** The suites pair an independent `math.comb` brute force
   (correctness) with an end-to-end beats-random simulation (predictive usefulness).
   - **Calibration — done** (`tests/calibration.py` harness + `tests/test_calibration.py`):
@@ -216,3 +209,17 @@ holder h)` configuration space, for arbitrary `num_bad` and `num_bom ∈ {0,1}`.
   independent re-derivation, within-`B` agreement with `CombineProbs`, and beats-random at
   N=4/N=7. Open issue carried forward: the round-horizon lookahead is `O((2N)^stop)` — a
   beam/analytic approximation is the follow-up (depth-capped for display today).
+
+### 6. `web/` — fix up the website.
+
+Re-port the cleaned `General.py` math behind the
+Flask API (`web/app.py` currently duplicates an old, bug-ridden `General.py`-style
+implementation) and update the browser assistant to present the quantities-only
+four-stat panel (§3.5) instead of a single dictated cut. The UI is the natural home
+for a real-table assistant: enter declarations and cut results, read the belief.
+
+### 7. `AI.py` — create the AI.
+Train and benchmark the REINFORCE cut agent against
+the cleaned-up analytic strategies (`CutMaxScore`, `CutRandom`, the info-greedy
+lookahead). Goal: learn a cut policy that beats the hand-written heuristics, and use
+it as an empirical yardstick for the horizon-weighted VOI question (§3.5/§3.6).

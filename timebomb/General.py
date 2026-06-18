@@ -26,6 +26,7 @@ import itertools
 import numpy as np
 from random import randint, sample, randrange
 import UsefulFunctions as uf
+import Consistency as cons
 
 
 # --- per-hand cut likelihood atoms (docs/model.md §3.2, §3.4.1) ----------------
@@ -748,9 +749,14 @@ def Play(players=["Alice", "Bob", "Clara", "Darryl"], initial_hand_size=5):
     total_active = active_wires
     declarations = np.zeros(num_players, dtype=int)
     for i in range(num_players):
-      declarations[i] = int(input("How many wires does " + players[i] + " say they have? "))
+      declarations[i] = cons.prompt_int(
+          "How many wires does " + players[i] + " say they have? ", 0, hand_size)
+    if not any(cons.declarations_feasible(declarations, hand_size, total_active, b, num_bom)
+               for b in candidate_bs):
+      print(cons.DECL_WARNING)
     found = np.zeros(num_players, dtype=int)
     revealed = np.zeros(num_players, dtype=int)
+    cut_warned = False  # warn at most once per round if a cut result is impossible
     for cut in range(num_players):
       probs = ProbDeclaration(declarations, hand_size, total_active, candidate_bs[0], num_bom)
       probs = ProbCut(declarations, probs, revealed, found, hand_size, active_wires,
@@ -767,20 +773,30 @@ def Play(players=["Alice", "Bob", "Clara", "Darryl"], initial_hand_size=5):
       print(" P(bomb):   ", np.round(np.asarray(p_bomb).reshape(-1), 3))
       PrintPanel(players, declarations, probs, revealed, found, hand_size,
                  active_wires, candidate_bs[0], num_bom)
-      cutee_str = input("\nWhose wire has been cut? ")
-      while cutee_str not in players:
-        cutee_str = input("You must have made a typo. Who? ")
+      while True:
+        cutee_str = input("\nWhose wire has been cut? ")
+        if cutee_str not in players:
+          print("  I don't know who that is.")
+        elif not cons.can_cut(revealed[players.index(cutee_str)], hand_size):
+          print("  " + cutee_str + " has no face-down cards left to cut.")
+        else:
+          break
       cutee = players.index(cutee_str)
       revealed[cutee] += 1
-      shown = int(input("Did you reveal:\n 0- an inactive wire\n 1- an active wire\n 2- the bomb\n"))
-      while shown not in (0, 1, 2):
-        shown = int(input("Sorry, I'm looking for a 0, a 1 or a 2 here. "))
+      shown = cons.prompt_int(
+          "Did you reveal:\n 0- an inactive wire\n 1- an active wire\n 2- the bomb\n", 0, 2)
       if shown == 2:
         print("The Bomb was detonated. Bad guys win!")
         return
       if shown == 1:
         found[cutee] += 1
         active_wires -= 1
+      if not cut_warned:  # flag an impossible cut result (belief would be left unchanged)
+        chk = ProbDeclaration(declarations, hand_size, total_active, candidate_bs[0], num_bom)
+        if ProbCut(declarations, chk, revealed, found, hand_size, active_wires,
+                   candidate_bs[0], num_bom) is chk and chk.max() < 1:
+          print(cons.CUT_WARNING)
+          cut_warned = True
       if active_wires <= 0:
         print("All wires have been cut. Good guys win!")
         return

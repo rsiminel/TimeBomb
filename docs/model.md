@@ -432,9 +432,16 @@ What is deliberately *not* yet modelled:
   arithmetically impossible, a house rule shifts the deal, or a strategic liar produces
   observations the model assigns probability ~0. The degeneracy convention (§3.3/§3.4)
   keeps the belief *defined* in these cases (fall back to the prior/uniform rather than
-  emit `NaN`), but a single impossible round can still permanently zero out a
-  configuration under the elementwise `CombineProbs` product. Hardening this — an ε-floor
-  so no round delivers an unrecoverable hard `0`, log-space accumulation against underflow,
-  and a graceful response to inconsistent declarations — is a firm direction, not yet a
-  fixed model; see [decisions/0005](decisions/0005-cross-round-evidence-combination.md)
-  and [roadmap.md](roadmap.md).
+  emit `NaN`). Two of the three hardenings are now in place: the ε-floor and log-space
+  accumulation in `CombineProbs` (so no single round permanently zeros a configuration —
+  ADR 0005), and a **graceful response to inconsistent input** in the interactive
+  assistant (`timebomb/Consistency.py`). The latter follows a *hybrid* policy: clearly
+  invalid numeric entry (a declaration outside `[0, H]`, an out-of-range cut-result code,
+  or cutting an already fully-revealed hand) is re-prompted; declarations that are
+  individually valid but *jointly* impossible under the rules, and cut results impossible
+  given the declarations, draw a clear warning and the safe fallback continues — so a
+  miscount no longer silently discards a round of evidence. *Still open:* the ε-floor/
+  log-space `CombineProbs` is only in `General` and `TwoBadGuysOneBomb`; the simpler
+  variants still use the bare product. See
+  [decisions/0005](decisions/0005-cross-round-evidence-combination.md) and
+  [roadmap.md](roadmap.md).

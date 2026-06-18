@@ -17,6 +17,7 @@ Created on Sun Jun  5 14:21:49 2022
 import numpy as np
 from random import randint
 import UsefulFunctions as uf
+import Consistency as cons
 
 
 def PlayAuto(num_players=4, initial_hand_size=5, verbosity=2):
@@ -123,9 +124,12 @@ def Play(players=["Alice", "Bob", "Clara", "Darryl"], initial_hand_size=5):
     # Declare your wires
     declarations = np.zeros(num_players)
     for i in range(num_players):
-      declarations[i] = int(input("How many wires does " + players[i] + " say they have? "))
+      declarations[i] = cons.prompt_int(
+          "How many wires does " + players[i] + " say they have? ", 0, hand_size)
     print("d:", declarations)
     # Calculate probabilities
+    if not cons.declarations_feasible(declarations, hand_size, active_wires, 1, 0):
+      print(cons.DECL_WARNING)
     probabilities = ProbDeclaration(declarations, hand_size, active_wires)
     probabilities_list.append(probabilities.copy())
     print(" p:", probabilities)
@@ -133,20 +137,21 @@ def Play(players=["Alice", "Bob", "Clara", "Darryl"], initial_hand_size=5):
     # Cut wires
     found = np.zeros(num_players)
     revealed = np.zeros(num_players)
+    cut_warned = False  # warn at most once per round if a cut result is impossible
     for i in range(num_players):
       print("Cut number", i + 1)
-      cutee_str = input("Who's wire has been cut? ")
-      while cutee_str not in players:
-        cutee_str = input("You must have made a typo. Who? ")
-      cutee = 0
-      for j in range(num_players):
-        if players[j] == cutee_str:
-          cutee = j
+      while True:
+        cutee_str = input("Who's wire has been cut? ")
+        if cutee_str not in players:
+          print("  I don't know who that is.")
+        elif not cons.can_cut(revealed[players.index(cutee_str)], hand_size):
+          print("  " + cutee_str + " has no face-down cards left to cut.")
+        else:
+          break
+      cutee = players.index(cutee_str)
       revealed[cutee] += 1
       num_wires -= 1
-      shown = int(input("Did you reveal an\n" + " 1- inactive wire\n 2- active wire\n"))
-      while shown not in [1, 2]:
-        shown = int(input("Sorry, I'm looking for a 1 or a 2 here."))
+      shown = cons.prompt_int("Did you reveal an\n" + " 1- inactive wire\n 2- active wire\n", 1, 2)
       if shown == 2:
         found[cutee] += 1
         active_wires -= 1
@@ -154,6 +159,9 @@ def Play(players=["Alice", "Bob", "Clara", "Darryl"], initial_hand_size=5):
       print("f:", found)
       # Update probabilities
       probs = ProbCut(declarations, probabilities, revealed, found, hand_size, active_wires)
+      if probs is probabilities and probabilities.max() < 1 and not cut_warned:
+        print(cons.CUT_WARNING)  # impossible cut: belief unchanged (warn once per round)
+        cut_warned = True
       probabilities_list[-1] = probs.copy()
       print(" p:", probs)
       print("tp:", CombineProbs(probabilities_list))

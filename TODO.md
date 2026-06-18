@@ -49,10 +49,17 @@ hardcoded variant is its `(num_bad, num_bom)` projection.
 ## Axis D — Engineering & infrastructure
 
 ### D3 — Resilience to model-breaking play
-- [ ] Harden against real-table violations of the uniform-lie model (miscounts, impossible
-      declarations, ~0-probability strategic lies). The ε-floor + log-space `CombineProbs`
-      (ADR 0005) is in; still open is a graceful response to arithmetically inconsistent
-      declarations. See [model.md §3.6](docs/model.md).
+- [x] **Graceful response to inconsistent input** (`timebomb/Consistency.py`,
+      `tests/test_consistency.py`): the interactive `Play` loops now re-prompt clearly invalid
+      numeric entry (declaration outside `[0, H]`, bad cut-result code, cutting an empty hand)
+      and warn — once per round, continuing with the safe fallback — on declarations that are
+      jointly impossible under the rules or a cut result impossible given the declarations.
+      Feasibility = `General._decl_weights(...).sum() > 0` (convention-independent); the
+      impossible-cut signal is `ProbCut` returning the same prior object. See model.md §3.6.
+- [ ] Still open: port the ε-floor + log-space `CombineProbs` (ADR 0005, in `General` and
+      `TwoBadGuysOneBomb`) to the simpler variants `OneBadGuyNoBomb`/`TwoBadGuysNoBomb`/
+      `OneBadGuyOneBomb`, which still use the bare product (one impossible round can permanently
+      hard-zero a hypothesis).
 
 ### D4 — Broader test coverage
 - [x] **Calibration** — `tests/calibration.py` (harness) + `tests/test_calibration.py`:
