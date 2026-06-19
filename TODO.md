@@ -57,18 +57,24 @@ hardcoded variant is its `(num_bad, num_bom)` projection.
       jointly impossible under the rules or a cut result impossible given the declarations.
       Feasibility = `General._decl_weights(...).sum() > 0` (convention-independent); the
       impossible-cut signal is `ProbCut` returning the same prior object. See model.md §3.6.
-- [ ] Still open: port the ε-floor + log-space `CombineProbs` (ADR 0005, in `General` and
-      `TwoBadGuysOneBomb`) to the simpler variants `OneBadGuyNoBomb`/`TwoBadGuysNoBomb`/
-      `OneBadGuyOneBomb`, which still use the bare product (one impossible round can permanently
-      hard-zero a hypothesis).
+- ~~Port the ε-floor + log-space `CombineProbs` to the simpler variants.~~ **Retired:** the
+      four variants are now **frozen** independent oracles and must not be modified (their worth
+      is sharing no code with `General.py`). Their bare-product `CombineProbs` is irrelevant —
+      their `Play` loops are vestigial and the real-table solver is `General.py`, which already
+      has the robust version.
 
 ### D4 — Broader test coverage
 - [x] **Calibration** — `tests/calibration.py` (harness) + `tests/test_calibration.py`:
       `P(bad)`, declaration-time `P(bomb)`, and `P(num_bad)` (N=4/N=7, the cross-`B`
       absolute-weight guard) all match empirical frequencies. Cross-variant panel/marginal
       consistency (`General` vs the variants) is covered too.
-- [ ] Still open: property-based / fuzz tests (e.g. Hypothesis) over the distribution
-      invariants, and regression fixtures pinning known belief vectors.
+- [x] **Property-based / fuzz tests + regression fixtures** (`tests/test_properties.py`):
+      structural properties no value-oracle gives — player-relabeling **equivariance** of
+      `ProbDeclaration`/`ProbCut`/`P_wire`/`CutPanel`, round-list **permutation invariance**
+      of `CombineProbs`, and the no-observation **identity** of `ProbCut`; distribution
+      invariants swept at `N`/`hand_size` past the brute force's reach (up to `N=7`,
+      `hand_size=5`); and pinned golden belief vectors (generated from the *independent*
+      brute-force oracle, not snapshotted from `General`).
 
 ### D5 — Packaging
 - [ ] Make the repo an installable package (`pyproject.toml`, `timebomb` distribution,

@@ -127,7 +127,9 @@ is correct and trusted.
   model: miscounts, arithmetically impossible declarations, house-rule deals, strategic
   liars producing ~0-probability observations. Three hardenings; two are done.
   - **ε-floor + log-space `CombineProbs`** (ADR 0005) — done in `General` and
-    `TwoBadGuysOneBomb`. *Open:* port to the three simpler variants (still bare product).
+    `TwoBadGuysOneBomb`. The three simpler variants keep the bare product, and that is now
+    **intentional**: the variants are frozen oracles (their `Play` loops are vestigial), so
+    porting it is *retired*, not pending — the real-table solver is `General.py`.
   - **Graceful response to inconsistent input** — done (`timebomb/Consistency.py`,
     `tests/test_consistency.py`): the interactive `Play` re-prompts clearly invalid numeric
     entry and warns (once per round, continuing with the safe fallback) on jointly impossible
@@ -144,8 +146,12 @@ is correct and trusted.
     "no-bomb" observation — both fixed.
   - **Cross-variant consistency — done** for the panel/marginals (`General` at `(2,1)` vs
     `TwoBadGuysOneBomb`); worth extending to every projection.
-  - Still worth adding: property-based / fuzz testing (e.g. Hypothesis) over the
-    distribution invariants and regression fixtures pinning known belief vectors.
+  - **Property-based / fuzz tests + regression fixtures — done** (`tests/test_properties.py`):
+    structural properties that hold for any correct implementation regardless of the numbers —
+    player-relabeling **equivariance**, `CombineProbs` round **permutation invariance**, the
+    no-observation `ProbCut` **identity** — plus distribution-invariant sweeps at `N`/`hand_size`
+    past the brute force's reach, and pinned golden vectors generated from the *independent*
+    oracle. These catch index/axis/ordering/scale bugs a value-by-value oracle cannot.
 - **Principled `beats_random` thresholds — done.** The end-to-end tests no longer assert
   hand-tuned cutoffs; `tests/baseline_stats.py` derives a self-calibrating bar from the
   run's own sample (a one-sided 5σ z-test of a per-game statistic against the
