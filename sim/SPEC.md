@@ -167,10 +167,17 @@ fixed experimental arm.
 ## 8. The event log (single source of replay)
 
 The engine emits one append-only structured log per game — every deal, declaration, cut
-(target + result), optional belief snapshot, and LLM reasoning string. **Every** question
-in §2 is answered offline from this log; the live loop computes no statistics. Format:
-JSONL, one file per game. This is what makes the project a sandbox rather than a fixed
-experiment — add a metric, re-read old logs.
+(target + result), the agent roster (`game_start.agents`: model, instructions, knobs of
+each player), and LLM reasoning string. **Every** question in §2 is answered offline from
+this log; the live loop computes no statistics. This is what makes the project a sandbox
+rather than a fixed experiment — add a metric, re-read old logs.
+
+**On-disk layout.** `run.py` groups one invocation into `sim/logs/<label>/` (label defaults
+to `<time>_<agent>`, override with `--label`). Each game is a pair
+`g<NNN>_s<seed>_<good|bad>.{md,jsonl}` — index, seed, and outcome in the name so a run is
+skimmable — plus a `manifest.json` recording the run's agent config, parameters, and every
+game's seed + outcome. The `.md` transcript header also lists the agents (grouped) so a
+single file is self-describing; full instructions live in its `game_start` event.
 
 ---
 
@@ -184,9 +191,15 @@ experiment — add a metric, re-read old logs.
   that exercises state→text and text→action. *(Sketched: `sim/prototypes/cut_decision.py`.)*
 - **M2 — Declaration prototype + a full LLM game.** Add the declaration decision (where
   bluffing is *generated*), then run one all-LLM game end to end, logging everything.
-- **M3 — Observe.** `sim/analysis/`: bluff taxonomy from transcripts, calibration curves
-  under emergent play, win-rates. Feed anything surprising back to `docs/decisions/` if it
-  bears on the deferred strategic-lie model (§3.6).
+- **M3 — Observe.** *(In progress.)* `sim/analysis/analyze.py` reads a run directory and
+  reports outcomes, **bluffing** (declared − true by hidden role, with good-with-bomb broken
+  out), and **cut behaviour** by role — all from the logs, no model calls. Early signal: good
+  guys with no bomb declare truthfully (0% lie), good-with-bomb and bad guys over-declare,
+  and bad guys' cuts reveal far fewer wires — i.e. the model's behavioural assumptions and
+  the §3.6 strategic-lie pattern show up empirically. *Still to build:* assistant
+  **calibration** under emergent play (a `General.py` replay over each log's public events —
+  does `P(bad)` stay honest when agents lie off-model?). Feed anything surprising back to
+  `docs/decisions/` if it bears on the deferred strategic-lie model (§3.6).
 
 **Open decisions (record as ADRs when reached):** table-talk channel (v2); per-game vs.
 per-match memory; bulk-LLM model + token budget; player-count ramp (`N=4`/`B=1` first, then

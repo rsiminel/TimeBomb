@@ -63,6 +63,13 @@ class LLMAgent(Agent):
     self.last_reasoning = None
     self.last_error = None
 
+  def describe(self):
+    d = super().describe()
+    d.update(model=self.model, thinking_tokens=self.thinking_tokens,
+             timeout=self.timeout, retries=self.retries, system=self.system,
+             declare_instruction=DECLARE_INSTRUCTION, cut_instruction=CUT_INSTRUCTION)
+    return d
+
   def declare(self, view):
     prompt = render_agent(view, "declare") + "\n\n" + DECLARE_INSTRUCTION
     value, self.last_reasoning = self._decide(prompt, "declaration")

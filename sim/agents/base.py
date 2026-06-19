@@ -18,3 +18,10 @@ class Agent:
     """Called for every public event (any declaration, any cut). No-op by default;
     stateful agents override it. The engine passes only public event data here."""
     pass
+
+  def describe(self):
+    """A JSON-able descriptor of this agent's configuration. The engine logs it into
+    every game (and run.py into the run manifest) so results stay analysable later --
+    you can always recover which model / instructions produced a transcript. Subclasses
+    extend it with their own knobs."""
+    return {"type": type(self).__name__, "name": getattr(self, "name", "agent")}

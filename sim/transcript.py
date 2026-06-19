@@ -7,6 +7,8 @@ The JSONL log is the machine-readable replay; this is the human read. ``run.py``
 both per game.
 """
 
+import json
+
 
 def _role(roles, i):
   return "BAD" if roles[i] else "good"
@@ -17,6 +19,33 @@ def _quote(text):
   if not text:
     return None
   return "  > " + " ".join(str(text).split())
+
+
+def _fmt_agent(d):
+  """One-line summary of an agent descriptor (see ``Agent.describe``)."""
+  if "model" in d:
+    return "%s · model=%s · thinking_tokens=%s · retries=%s" % (
+        d.get("type", "LLMAgent"), d["model"], d.get("thinking_tokens"), d.get("retries"))
+  return d.get("type", d.get("name", "?"))
+
+
+def _render_agents(out, names, agents):
+  """Group players by identical agent config and list them, so a transcript records
+  exactly what produced it (model, instructions, ...)."""
+  if not agents:
+    return
+  groups = {}   # json-key -> (descriptor, [player indices])
+  for i, d in enumerate(agents):
+    key = json.dumps(d, sort_keys=True)
+    groups.setdefault(key, (d, []))[1].append(i)
+  out.append("**Agents:**")
+  for d, idxs in groups.values():
+    who = ", ".join("`%d` %s" % (i, names[i]) for i in idxs)
+    out.append("- %s — %s" % (who, _fmt_agent(d)))
+    if d.get("system"):
+      out.append("  - system: _%s_" % d["system"])
+    if d.get("declare_instruction"):
+      out.append("  - declare/cut instructions and full config are in the .jsonl `game_start` event")
 
 
 def render_markdown(log):
@@ -35,6 +64,8 @@ def render_markdown(log):
   if end:
     who = "🟢 Good guys WIN" if end["good_guys_won"] else "🔴 Bad guys win"
     out.append("**Result:** %s — %s" % (who, end["reason"]))
+  out.append("")
+  _render_agents(out, names, meta.get("agents"))
   out.append("")
   out.append("---")
 

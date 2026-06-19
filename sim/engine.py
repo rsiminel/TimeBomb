@@ -67,7 +67,8 @@ class Engine:
     for i in random.sample(range(N), num_bad):
       roles[i] = 1
     log.append("game_start", num_players=N, num_bad=num_bad, roles=roles,
-               player_names=self.player_names, seed=seed)
+               player_names=self.player_names, seed=seed,
+               agents=[a.describe() for a in agents])
 
     num_bom = 1
     hand_size = self.initial_hand_size
