@@ -3,6 +3,10 @@ models
 .venv
 .pytest_cache
 
+# Generated simulation artifacts
+sim/logs/
+sim/_*.log
+
 # Local Claude Code config and agent guidance (not tracked)
 .claude/
 CLAUDE.md

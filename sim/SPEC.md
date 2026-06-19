@@ -1,0 +1,205 @@
+# Time Bomb Arena — LLM Multi-Agent Simulation (Spec)
+
+A sandbox for **LLM agents playing full games of Time Bomb under their own free
+strategy** — declaring, bluffing, accusing, and cutting — so we can *watch what emerges*.
+
+This is a **learning / curiosity project**: the goal is to understand how LLM agents are
+built and used for simulation, and — because Time Bomb is a fun social-deduction game — to
+see what kind of play, deception, and table dynamics emerge when the agents are given free
+reign. It is, unapologetically, a bit of a balanced-game study of Time Bomb itself.
+
+A purely *programmatic* multi-agent sim that obeys the model's assumptions already exists:
+`timebomb/General.PlayAuto`. This sub-project does **not** rebuild that. Its whole reason
+to exist is the part `PlayAuto` can't give us — agents that choose their own strategy
+rather than sampling a hardcoded uniform-lie distribution.
+
+> **Status:** spec + an M0 sketch (engine + cut-decision prototype). The backend
+> (`timebomb/`) remains the source of truth for all probability math and is assumed
+> correct ([../docs/model.md](../docs/model.md)). The web app is on hold and `AI.py` is
+> known-broken and **off-limits** — do not reference or reuse it.
+
+---
+
+## 1. Principles
+
+1. **Emergent, not scripted.** We never hardcode a lie pattern. The agents are given the
+   rules, their private hand, and the public history, and decide freely. Bluffing is
+   something we *observe*, not something we program — a scripted liar would just be a
+   worse `PlayAuto`.
+
+2. **The information firewall is a type invariant** (§3). The engine is omniscient; an
+   agent sees only its own hand plus the public log; if the assistant is in play, it too
+   sees only the public log. A private field can't leak to an agent because it isn't in
+   the object the agent is handed — not because we remembered to hide it.
+
+3. **Never debug the environment and the agent at the same time.** The deterministic game
+   engine is built and verified *first*, drivable by a trivial random agent and by a human
+   at a CLI, before any LLM is attached. When a game goes weird you must be able to trust
+   the referee absolutely. The LLM is a drop-in against an already-working interface.
+
+---
+
+## 2. What we're curious about
+
+Not pre-registered hypotheses — just the questions that make this fun to build:
+
+- **What does emergent bluffing look like?** How do LLM bad guys lie when nothing tells
+  them how? Does it resemble the model's uniform lie, or something structured?
+- **Does an LLM that's *shown* the assistant panel actually use it?** Trust it, ignore it,
+  over-trust it? (The panel becomes an optional input block, §7 — an experiment we can
+  run, not the spine of the project.)
+- **Does the assistant stay calibrated when real agents play off-model?** Emergent play
+  is the natural stress test for [model.md §3.6](../docs/model.md); the engine holds
+  ground truth, so we can actually plot `P(bad)` reliability against reality.
+- **Who wins, and why?** Win-rates and the transcripts behind them — the balanced-game
+  curiosity.
+
+These are read **offline from the event log** (§8), so we can ask new questions of old
+games without re-running anything. No A/B harness, no power analysis — if a number looks
+interesting we'll chase it then.
+
+---
+
+## 3. The information firewall (architecture core)
+
+Three participants, three disjoint information sets — three dataclasses:
+
+```
+GroundTruth   (engine-only)   roles[], per-round wires[]/bombs[], the deal seed
+PublicState   (everyone)      declarations, the cut log, revealed[]/found[] this round,
+                              H, active wires (round-start + current), N, B-prior
+PrivateView   (one agent)     my_index, my_role, my_wires_this_round, i_hold_bomb
+```
+
+- **Engine / referee** — holds `GroundTruth` + `PublicState`. Deals, collects
+  declarations, resolves cuts against the hidden deal, judges win/loss, advances rounds.
+  Makes **no** strategic choice and tracks **no** belief. Reuses `General.DistributeWires`
+  so the hidden deal obeys the same law the inference assumes
+  ([model.md §3.1/§3.4.1](../docs/model.md)). It does **not** reuse `PlayAuto`'s loop
+  (which bakes in `CutRandom` + an omniscient belief tracker).
+- **Agent** — receives `AgentView = PublicState ⊕ PrivateView ⊕ assistant_panel?`. Decides
+  its own declaration and, when it holds the cutters, its cut. Never sees another hand,
+  role, or the bomb — those live only in `GroundTruth`, which it is never handed.
+- **Assistant** (optional, the unit under study) — receives **only** `PublicState`; a thin
+  adapter over `General.py` producing the `CutPanel` + `P(bad)`/`P(bomb)`. Reference
+  implementation: the public-info path of `General.Play` (`General.py:735`).
+
+> A unit test builds an `AgentView` from a game with a known hidden deal and asserts it
+> carries no `GroundTruth` field. The firewall is checked, not trusted.
+
+---
+
+## 4. Module layout (`sim/`)
+
+| Path | Responsibility |
+| ---- | -------------- |
+| `sim/SPEC.md` | this document |
+| `sim/state.py` | the three dataclasses (§3), `AgentView`, the state→text renderer, the event log |
+| `sim/engine.py` | the referee: deal → declare → cut-loop → judge → next round |
+| `sim/agents/base.py` | the `Agent` interface (§5) |
+| `sim/agents/programmatic.py` | `RandomAgent`, `HumanAgent` — sandbox drivers, not statistical controls |
+| `sim/agents/llm.py` | `LLMAgent` — the point of the project (§6) |
+| `sim/assistant.py` | public-state → panel adapter over `General.py` (optional input, §7) |
+| `sim/prototypes/` | throwaway vertical slices; first one is `cut_decision.py` |
+| `sim/analysis/` | scripts that turn event logs into figures (bluff taxonomy, calibration) |
+| `sim/run.py` | CLI: play N games with a given agent roster, write logs |
+| `tests/test_arena_engine.py` | engine correctness + the firewall assertion (runs in CI) |
+
+---
+
+## 5. The agent interface
+
+One small interface, shared by every tier and by the human CLI:
+
+```python
+class Agent:
+    def declare(self, view: AgentView) -> int:
+        """A wire count in [0, hand_size]. Free to bluff."""
+    def choose_cut(self, view: AgentView) -> int:
+        """Index of the player to cut. Must be someone else with a face-down card."""
+    def observe(self, event: Event) -> None:
+        """Optional: called for every public event, for stateful agents."""
+```
+
+The engine validates every returned action (declaration in range; cut target legal) and
+applies a safe fallback on malformed output — one bad LLM parse must never crash a batch.
+`RandomAgent` and `HumanAgent` exist to exercise and verify the engine before the LLM
+arrives (Principle 3).
+
+---
+
+## 6. The LLM agent (the actual point)
+
+Statistical power is a non-goal here; *interesting behaviour* is the goal. Starting
+defaults, chosen to keep the first version debuggable:
+
+- **Memory: stateless.** Re-serialize the full observable history into every prompt rather
+  than carrying a running narrative. Time Bomb's public log is short, and this removes a
+  whole class of hidden-state bugs. Add memory only if context length ever forces it.
+- **Action protocol: structured output.** The model returns JSON — a `reasoning` string
+  plus the action — via tool-use. We **log the reasoning** (never feed it to other agents):
+  that field is the whole window into emergent strategy.
+- **Failure handling, decided up front.** Illegal or unparseable action → retry once →
+  fall back to a legal default. At scale it *will* happen.
+- **Model tiering.** A fast model (`claude-haiku-4-5`) for bulk play; `claude-opus-4-8`
+  reserved for a small high-quality qualitative deep-dive. Per-run token budget cap.
+- **Prompt scaffold:** rules summary · this agent's private hand and role · the full public
+  log · the legal action set · (optionally) the assistant readout (§7). Cache the static
+  rules preamble.
+
+**Table-talk is out of scope for v1.** Real Time Bomb has open discussion; we keep the
+public channel to declarations + cut results — exactly what the assistant consumes, which
+keeps the firewall clean. A free-text claim channel is a logged open decision (§9).
+
+---
+
+## 7. The assistant as an optional input
+
+The assistant panel isn't the spine of the project — it's one of the things we can hand an
+agent and watch what happens. When an agent is flagged to receive it, the engine computes
+the panel from `PublicState` only (firewall intact) and appends it to that agent's view.
+The agent class is written once; "uses the assistant" is just "reads `view.assistant_panel`
+when present." Whether to give it to good guys, bad guys, or everyone is a knob, not a
+fixed experimental arm.
+
+---
+
+## 8. The event log (single source of replay)
+
+The engine emits one append-only structured log per game — every deal, declaration, cut
+(target + result), optional belief snapshot, and LLM reasoning string. **Every** question
+in §2 is answered offline from this log; the live loop computes no statistics. Format:
+JSONL, one file per game. This is what makes the project a sandbox rather than a fixed
+experiment — add a metric, re-read old logs.
+
+---
+
+## 9. Milestones & open decisions
+
+- **M0 — Engine sandbox.** `state.py`, `engine.py`, `RandomAgent`/`HumanAgent`, the event
+  log, `tests/test_arena_engine.py` (win/loss, cut resolution, round flow, firewall). Exit:
+  you can play a full game by hand at the CLI and the engine tests are green. *(Sketched.)*
+- **M1 — Cut-decision prototype.** One hand-built mid-round state, one LLM call for the
+  cut, structured output + validation + fallback, reasoning printed. The smallest thing
+  that exercises state→text and text→action. *(Sketched: `sim/prototypes/cut_decision.py`.)*
+- **M2 — Declaration prototype + a full LLM game.** Add the declaration decision (where
+  bluffing is *generated*), then run one all-LLM game end to end, logging everything.
+- **M3 — Observe.** `sim/analysis/`: bluff taxonomy from transcripts, calibration curves
+  under emergent play, win-rates. Feed anything surprising back to `docs/decisions/` if it
+  bears on the deferred strategic-lie model (§3.6).
+
+**Open decisions (record as ADRs when reached):** table-talk channel (v2); per-game vs.
+per-match memory; bulk-LLM model + token budget; player-count ramp (`N=4`/`B=1` first, then
+`N=5–7` and the joint `num_bad` inference of [model.md §3.5.1](../docs/model.md)); cutter-
+passing rule fidelity (§ engine sketch).
+
+---
+
+## 10. Non-goals
+
+- **Not** re-validating the backend math — that's `tests/` against the `math.comb` oracle.
+  The arena assumes `General.py` is correct.
+- **Not** an A/B value-of-information study with power analysis — this is exploratory.
+- **Not** the RL agent — `AI.py` is broken and off-limits.
+- **No hidden-state leakage, ever** — any metric needing ground truth is computed by the
+  engine/analysis layer from the event log, never handed to an agent or the assistant.

@@ -8,4 +8,7 @@ without an ``__init__.py`` or a packaging step.
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent / "timebomb"))
+_root = Path(__file__).parent
+# Source roots on sys.path (same bare-import convention for the sim/ sub-project).
+for _src in ("timebomb", "sim", "sim/agents"):
+  sys.path.insert(0, str(_root / _src))
