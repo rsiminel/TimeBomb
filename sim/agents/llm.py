@@ -99,6 +99,14 @@ class LLMAgent(Agent):
         self.last_error = "parse failure: %r" % text[:200]
     return None, "(model call failed after %d attempts: %s)" % (self.retries, self.last_error)
 
+  def _env(self):
+    """Child env. ``thinking_tokens >= 0`` caps extended thinking (0 disables it -- the big
+    speedup); a negative value leaves it unset, so Claude Code's default thinking is on."""
+    env = dict(os.environ)
+    if self.thinking_tokens is not None and self.thinking_tokens >= 0:
+      env["MAX_THINKING_TOKENS"] = str(self.thinking_tokens)
+    return env
+
   def _call(self, prompt):
     """One headless `claude -p` call. Returns the model's reply text, or ``None`` on a
     retryable failure (with the cause recorded on ``self.last_error``)."""
@@ -110,7 +118,7 @@ class LLMAgent(Agent):
            "--model", self.model,
            "--strict-mcp-config"],            # no --mcp-config => skip MCP startup
           cwd=_NEUTRAL_CWD, stdin=subprocess.DEVNULL,
-          env={**os.environ, "MAX_THINKING_TOKENS": str(self.thinking_tokens)},
+          env=self._env(),
           capture_output=True, text=True, timeout=self.timeout)
     except subprocess.TimeoutExpired:
       self.last_error = "timeout after %ss" % self.timeout

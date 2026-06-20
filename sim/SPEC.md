@@ -172,12 +172,11 @@ each player), and LLM reasoning string. **Every** question in §2 is answered of
 this log; the live loop computes no statistics. This is what makes the project a sandbox
 rather than a fixed experiment — add a metric, re-read old logs.
 
-**On-disk layout.** `run.py` groups one invocation into `sim/logs/<label>/` (label defaults
-to `<time>_<agent>`, override with `--label`). Each game is a pair
-`g<NNN>_s<seed>_<good|bad>.{md,jsonl}` — index, seed, and outcome in the name so a run is
-skimmable — plus a `manifest.json` recording the run's agent config, parameters, and every
-game's seed + outcome. The `.md` transcript header also lists the agents (grouped) so a
-single file is self-describing; full instructions live in its `game_start` event.
+**On-disk layout.** One run = one directory `sim/logs/<label>/`, holding a `manifest.json`
+index plus a `g<NNN>_s<seed>_<good|bad>.{jsonl,md}` pair per game. The complete, versioned,
+analysis-oriented contract — directory layout, manifest schema, every event type and field,
+the agent-config object, and the extensibility/migration rules — is **[LOGS.md](LOGS.md)**.
+It is stable and stamped with `SCHEMA_VERSION`; old logs are migrated, never deleted.
 
 ---
 
@@ -201,10 +200,13 @@ single file is self-describing; full instructions live in its `game_start` event
   does `P(bad)` stay honest when agents lie off-model?). Feed anything surprising back to
   `docs/decisions/` if it bears on the deferred strategic-lie model (§3.6).
 
+The **default play configuration is the standard game: 6 players, 2 bad, 1 bomb**
+(`NUM_BAD_PRIOR(6) = {2: 1.0}`, so the bad count is fixed). `N=4`/`N=7` — where the bad
+count is itself uncertain (model.md §3.5.1) — are supported but secondary.
+
 **Open decisions (record as ADRs when reached):** table-talk channel (v2); per-game vs.
-per-match memory; bulk-LLM model + token budget; player-count ramp (`N=4`/`B=1` first, then
-`N=5–7` and the joint `num_bad` inference of [model.md §3.5.1](../docs/model.md)); cutter-
-passing rule fidelity (§ engine sketch).
+per-match memory; bulk-LLM model + token budget; cutter-passing rule fidelity
+(§ engine sketch).
 
 ---
 

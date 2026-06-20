@@ -31,14 +31,16 @@ from engine import Engine
 from transcript import write_markdown
 from llm import LLMAgent
 from programmatic import RandomAgent
+from state import SCHEMA_VERSION
 
 AGENTS = {"llm": LLMAgent, "random": RandomAgent}
 
 
-def play_one(idx, players, agent_name, run_dir, seed):
+def play_one(idx, players, agent_name, run_dir, seed, agent_kwargs):
   """Play and log one game. Top-level (picklable) so it can run in a worker process.
   Returns a manifest entry dict."""
-  agents = [AGENTS[agent_name]() for _ in range(players)]
+  kwargs = agent_kwargs if agent_name == "llm" else {}
+  agents = [AGENTS[agent_name](**kwargs) for _ in range(players)]
   outcome, log = Engine(num_players=players).play_game(agents, seed=seed)
 
   verdict = "good" if outcome["good_guys_won"] else "bad"
@@ -53,13 +55,24 @@ def play_one(idx, players, agent_name, run_dir, seed):
 def main():
   ap = argparse.ArgumentParser()
   ap.add_argument("--games", type=int, default=1)
-  ap.add_argument("--players", type=int, default=4)
+  ap.add_argument("--players", type=int, default=6)   # standard Time Bomb config: 6p, 2 bad, 1 bomb
   ap.add_argument("--agent", choices=AGENTS, default="llm")
+  ap.add_argument("--notes", default=None, help="free-text note recorded in the run manifest")
   ap.add_argument("--out", default=os.path.join(_ROOT, "sim", "logs"))
   ap.add_argument("--label", default=None, help="run directory name (default: <time>_<agent>)")
   ap.add_argument("--seed", type=int, default=None, help="base seed; game g uses seed+g")
   ap.add_argument("--concurrency", type=int, default=1, help="games to run in parallel")
+  ap.add_argument("--model", default=None, help="LLM model id (default: agent's own default)")
+  ap.add_argument("--thinking-tokens", type=int, default=0,
+                  help="extended-thinking budget: 0 off (fast), >0 cap, <0 Claude Code default (on)")
+  ap.add_argument("--timeout", type=int, default=None, help="per-call timeout seconds")
   args = ap.parse_args()
+
+  agent_kwargs = {"thinking_tokens": args.thinking_tokens}
+  if args.model:
+    agent_kwargs["model"] = args.model
+  if args.timeout:
+    agent_kwargs["timeout"] = args.timeout
 
   now = datetime.datetime.now()
   label = args.label or "%s_%s" % (now.strftime("%Y%m%d-%H%M"), args.agent)
@@ -69,7 +82,8 @@ def main():
   def seed_for(g):
     return None if args.seed is None else args.seed + g
 
-  jobs = [(g, args.players, args.agent, run_dir, seed_for(g)) for g in range(args.games)]
+  jobs = [(g, args.players, args.agent, run_dir, seed_for(g), agent_kwargs)
+          for g in range(args.games)]
   if args.concurrency > 1:
     with ProcessPoolExecutor(max_workers=args.concurrency) as ex:
       results = [f.result() for f in as_completed([ex.submit(play_one, *j) for j in jobs])]
@@ -78,11 +92,13 @@ def main():
   results.sort(key=lambda r: r["idx"])
 
   manifest = {
+      "schema_version": SCHEMA_VERSION,
       "label": label,
       "created": now.isoformat(timespec="seconds"),
+      "notes": args.notes,
       "params": {"players": args.players, "agent": args.agent,
                  "games": args.games, "base_seed": args.seed},
-      "agent_config": AGENTS[args.agent]().describe(),
+      "agent_config": AGENTS[args.agent](**(agent_kwargs if args.agent == "llm" else {})).describe(),
       "games": results,
   }
   with open(os.path.join(run_dir, "manifest.json"), "w") as f:

@@ -17,7 +17,7 @@ from concurrent.futures import ThreadPoolExecutor
 import General as tb
 
 from state import (GroundTruth, PublicState, PrivateView, AgentView, EventLog,
-                   legal_targets)
+                   legal_targets, SCHEMA_VERSION)
 
 
 # A cut reveals one of three things; the bomb ends the game.
@@ -27,7 +27,7 @@ WIRE, BLANK, BOMB = "active wire", "blank/inactive", "BOMB"
 class Engine:
   """One referee instance plays one or more games with a fixed roster and settings."""
 
-  def __init__(self, num_players=4, initial_hand_size=5, player_names=None,
+  def __init__(self, num_players=6, initial_hand_size=5, player_names=None,
                panel_for=(), assistant=None, max_workers=None):
     self.num_players = num_players
     self.initial_hand_size = initial_hand_size
@@ -66,11 +66,11 @@ class Engine:
     roles = [0] * N
     for i in random.sample(range(N), num_bad):
       roles[i] = 1
-    log.append("game_start", num_players=N, num_bad=num_bad, roles=roles,
-               player_names=self.player_names, seed=seed,
+    num_bom = 1
+    log.append("game_start", schema_version=SCHEMA_VERSION, num_players=N, num_bad=num_bad,
+               num_bom=num_bom, roles=roles, player_names=self.player_names, seed=seed,
                agents=[a.describe() for a in agents])
 
-    num_bom = 1
     hand_size = self.initial_hand_size
     active_wires = N
     current_cutter = 0

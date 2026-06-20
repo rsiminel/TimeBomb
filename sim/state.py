@@ -16,6 +16,9 @@ import json
 from dataclasses import dataclass, field, asdict
 from typing import Optional
 
+# Bumped only on a breaking change to the on-disk log / manifest format. See sim/LOGS.md.
+SCHEMA_VERSION = 1
+
 
 # ---------------------------------------------------------------------------
 # The three information sets
