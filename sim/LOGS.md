@@ -111,7 +111,8 @@ Event types and their additional fields:
 | `cutter` | int | Player holding the cutters (chose the target). |
 | `target` | int | Player whose card was cut (always `!= cutter`, had a face-down card). |
 | `result` | str | `"active wire"`, `"blank/inactive"`, or `"BOMB"`. |
-| `reasoning` | str \| null | The cutter's private reasoning (LLM); null otherwise. |
+| `reasoning` | str \| null | The cutter's **private** reasoning (LLM); null otherwise. |
+| `message` | str \| null | The cutter's **public** table-talk — one short line said to everyone, shown in every later context. Null for non-speaking agents. |
 
 ### `cut_skipped` (rare)
 `{round, cutter}` — the cutter had no legal target; no card was cut.

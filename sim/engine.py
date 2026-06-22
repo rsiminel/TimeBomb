@@ -119,18 +119,20 @@ class Engine:
         view = self._build_view(gt, pub, current_cutter)
         raw = agents[current_cutter].choose_cut(view)
         reasoning = getattr(agents[current_cutter], "last_reasoning", None)
+        message = getattr(agents[current_cutter], "last_message", None)   # public table talk
         target = _validate_target(raw, legal)
         result = self._resolve_cut(gt, pub, target)
         pub.revealed[target] += 1
         log.append("cut", round=round_index, cutter=current_cutter, target=target,
-                   result=result, reasoning=reasoning)
+                   result=result, reasoning=reasoning, message=message)
         # Keep pub.cut_log live so the NEXT cutter's view shows this cut (it must agree
         # with pub.revealed, which is already updated). Refreshing only at round end left
         # mid-round views incoherent: face-down counts changed while "cuts this round"
         # stayed empty.
-        pub.cut_log.append({"round": round_index, "cutter": current_cutter,
-                            "target": target, "result": result})
-        self._broadcast(agents, "cut", cutter=current_cutter, target=target, result=result)
+        pub.cut_log.append({"round": round_index, "cutter": current_cutter, "target": target,
+                            "result": result, "message": message})
+        self._broadcast(agents, "cut", cutter=current_cutter, target=target,
+                        result=result, message=message)
 
         if result == BOMB:
           return self._end(log, won=False, reason="bomb detonated", p_bad_truth=roles)
@@ -188,7 +190,8 @@ def _validate_target(t, legal):
 
 def log_cuts(log):
   return [{"round": e["round"], "cutter": e["cutter"], "target": e["target"],
-           "result": e["result"]} for e in log.events if e["type"] == "cut"]
+           "result": e["result"], "message": e.get("message")}
+          for e in log.events if e["type"] == "cut"]
 
 
 def _default_names(n):

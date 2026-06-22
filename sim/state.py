@@ -170,10 +170,15 @@ def _render_round(out, r, hand_size, decls, cut_log, names, me, current, decisio
     out.append("  Declared wire counts — " + ", ".join(parts))
   cuts = [c for c in cut_log if c["round"] == r]
   if cuts:
-    rendered = ["%d. %s cut %s → %s" % (
-        k, names[c["cutter"]] + (" (you)" if c["cutter"] == me else ""),
-        names[c["target"]] + (" (you)" if c["target"] == me else ""),
-        _RESULT.get(c["result"], c["result"])) for k, c in enumerate(cuts, 1)]
+    rendered = []
+    for k, c in enumerate(cuts, 1):
+      line = "%d. %s cut %s → %s" % (
+          k, names[c["cutter"]] + (" (you)" if c["cutter"] == me else ""),
+          names[c["target"]] + (" (you)" if c["target"] == me else ""),
+          _RESULT.get(c["result"], c["result"]))
+      if c.get("message"):                      # table talk the cutter said out loud
+        line += ' — said: "%s"' % c["message"]
+      rendered.append(line)
     out.append("  Cuts — " + "; ".join(rendered))
   elif current:
     out.append("  Cuts so far this round: none yet.")

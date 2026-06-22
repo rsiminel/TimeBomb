@@ -262,6 +262,25 @@ def test_render_has_rules_and_full_history():
   assert "none yet" not in text                     # ... so it is NOT called empty (the bug)
 
 
+def test_table_talk_is_logged_and_rendered():
+  # Engine records a message field on every cut (None for non-speaking stub agents).
+  _, log = _play(3)
+  cuts = _events(log, "cut")
+  assert cuts and all("message" in e for e in cuts)
+  assert all(e["message"] is None for e in cuts)
+
+  # When a cut carries a message, the renderer surfaces it as table talk to everyone.
+  pub = PublicState(
+      num_players=4, num_bad_prior={1: 1.0}, num_bom=1, player_names=["A", "B", "C", "D"],
+      round_index=0, hand_size=5, round_start_active=4, active_wires=4,
+      declarations=[1, 1, 1, 1], revealed=[0, 1, 0, 0], found=[0, 0, 0, 0],
+      declaration_history=[],
+      cut_log=[{"round": 0, "cutter": 0, "target": 1, "result": BLANK,
+                "message": "testing the loud one"}])
+  text = render_agent(AgentView(public=pub, private=PrivateView(2, 0, 1, False)), "cut")
+  assert 'said: "testing the loud one"' in text
+
+
 def test_llm_agent_accumulates_private_memory():
   a = LLMAgent()
   assert a._memory_block() == ""                    # empty before any decision

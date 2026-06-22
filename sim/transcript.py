@@ -104,6 +104,8 @@ def render_markdown(log):
       out.append("%d. **%s** (%s) cuts **%s** → **%s**"
                  % (cut_n, names[e["cutter"]], _role(roles, e["cutter"]),
                     names[e["target"]], e["result"]))
+      if e.get("message"):                       # public table talk (vs the private reasoning below)
+        out.append('   💬 _%s:_ "%s"' % (names[e["cutter"]], e["message"]))
       q = _quote(e.get("reasoning"))
       if q:
         out.append(q)

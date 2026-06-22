@@ -45,7 +45,9 @@ DECLARE_INSTRUCTION = (
 CUT_INSTRUCTION = (
     "Respond with ONLY a JSON object and nothing else:\n"
     '{"reasoning": "<your private thinking, shown to no one>", '
-    '"target": <the player index you cut>}')
+    '"target": <the player index you cut>, '
+    '"message": "<one short sentence you say OUT LOUD to the whole table about this cut; '
+    'everyone hears it and remembers it; it can be honest or misleading>"}')
 
 # Neutral cwd shared by all agents, so no CLAUDE.md is auto-discovered into a player.
 _NEUTRAL_CWD = tempfile.mkdtemp(prefix="tb_agent_")
@@ -61,6 +63,7 @@ class LLMAgent(Agent):
     self.retries = retries
     self.thinking_tokens = thinking_tokens   # 0 disables extended thinking (the big speedup)
     self.last_reasoning = None
+    self.last_message = None                  # the cutter's public table-talk for its last cut
     self.last_error = None
     self.memory = []                         # this agent's own past decisions + reasoning
 
@@ -73,17 +76,19 @@ class LLMAgent(Agent):
 
   def declare(self, view):
     prompt = render_agent(view, "declare") + self._memory_block() + "\n\n" + DECLARE_INSTRUCTION
-    value, self.last_reasoning = self._decide(prompt, "declaration")
+    value, self.last_reasoning, _ = self._decide(prompt, "declaration")
     if value is not None:
       self._remember(view.public.round_index, "declared %d" % value)
     return value
 
   def choose_cut(self, view):
     prompt = render_agent(view, "cut") + self._memory_block() + "\n\n" + CUT_INSTRUCTION
-    value, self.last_reasoning = self._decide(prompt, "target")
+    value, self.last_reasoning, obj = self._decide(prompt, "target")
+    self.last_message = obj.get("message") if value is not None else None
     if value is not None:
       who = view.public.player_names[value] if 0 <= value < view.public.num_players else value
-      self._remember(view.public.round_index, "cut %s (Player %s)" % (who, value))
+      said = (' I told the table: "%s"' % self.last_message) if self.last_message else ""
+      self._remember(view.public.round_index, "cut %s (Player %s).%s" % (who, value, said))
     return value
 
   # -- this agent's private running memory (no re-deriving each turn) --------
@@ -102,7 +107,8 @@ class LLMAgent(Agent):
   # -- one decision: state -> text -> validated action, with retries --------
 
   def _decide(self, prompt, key):
-    """Return ``(value, reasoning)``. ``value`` is ``None`` after all retries fail, so the
+    """Return ``(value, reasoning, obj)`` where ``obj`` is the full parsed reply (for any
+    extra fields like ``message``). ``value`` is ``None`` after all retries fail, so the
     engine's validation falls back to a safe legal default."""
     for attempt in range(self.retries):
       if attempt:
@@ -113,10 +119,10 @@ class LLMAgent(Agent):
       try:
         s, e = text.find("{"), text.rfind("}")
         obj = json.loads(text[s:e + 1])
-        return int(obj[key]), obj.get("reasoning", "")
+        return int(obj[key]), obj.get("reasoning", ""), obj
       except (ValueError, KeyError):
         self.last_error = "parse failure: %r" % text[:200]
-    return None, "(model call failed after %d attempts: %s)" % (self.retries, self.last_error)
+    return None, "(model call failed after %d attempts: %s)" % (self.retries, self.last_error), {}
 
   def _env(self):
     """Child env. ``thinking_tokens >= 0`` caps extended thinking (0 disables it -- the big
