@@ -118,11 +118,27 @@ def legal_targets(public, cutter):
 # State -> text (shared by HumanAgent and LLMAgent)
 # ---------------------------------------------------------------------------
 
-_GOOD_GOAL = ("Good guys win when EVERY active wire is cut before time runs out. You want "
-              "the cuts to find all the safe wires -- and you must never let the bomb be cut.")
-_BAD_GOAL = ("Bad guys win if the bomb is ever cut, OR if time runs out before all the safe "
-             "wires are found. You want cuts to waste turns and edge toward the bomb, without "
-             "getting exposed as a bad guy.")
+RULES = (
+    "TIME BOMB — HOW TO WIN (read carefully, this is often misremembered):\n"
+    "- Two secret teams: GOOD guys and BAD guys. Your role is fixed for the whole game.\n"
+    "- Hidden in the players' face-down cards are SAFE WIRES, some duds, and exactly ONE\n"
+    "  BOMB (held by one player, reshuffled and re-dealt every round).\n"
+    "- On a turn, whoever holds the wire-cutters cuts one OTHER player's face-down card,\n"
+    "  revealing a safe wire, a dud, or the bomb. Whoever is cut takes the cutters next.\n"
+    "- GOOD guys WIN by cutting ALL the safe wires before time runs out.\n"
+    "- BAD guys WIN if the BOMB is ever cut (game ends INSTANTLY in their favour), OR if\n"
+    "  time runs out before every safe wire is found.\n"
+    "- So BAD guys WANT the bomb cut and want cuts wasted on duds; GOOD guys want to find\n"
+    "  the safe wires and must NOT cut the bomb. (Bad guys do NOT 'protect' the bomb.)\n"
+    "- Hands shrink by one card each round (5 down to 1). A declaration is a player's\n"
+    "  claim about how many safe wires they hold this round, and may be a lie.")
+
+_GOOD_GOAL = ("As a GOOD guy you win when every safe wire is cut in time; help the cuts "
+              "find wires, and never let the bomb be cut.")
+_BAD_GOAL = ("As a BAD guy you win if the bomb is cut OR time runs out; you want cuts wasted "
+             "on duds and the bomb eventually cut, without being exposed.")
+
+_RESULT = {"active wire": "a SAFE WIRE", "blank/inactive": "a dud", "BOMB": "THE BOMB"}
 
 
 def _bad_count_phrase(prior):
@@ -134,61 +150,75 @@ def _bad_count_phrase(prior):
   return "the number of bad guys is uncertain: " + parts
 
 
+def _round_hand_size(pub, r):
+  """Hand size in (past or current) round ``r`` -- hands shrink by one per round."""
+  return pub.hand_size + (pub.round_index - r)
+
+
+def _render_round(out, r, hand_size, decls, cut_log, names, me, current, decision=None):
+  """Append one round's declarations + cuts to ``out`` (full game history)."""
+  out.append(("THIS ROUND — Round %d (hand size %d):" if current
+              else "Round %d (hand size %d):") % (r + 1, hand_size))
+  if decls is None or all(d is None for d in decls):
+    if current and decision == "declare":
+      out.append("  Declarations: being made now, simultaneously — you don't see others' yet.")
+    else:
+      out.append("  Declarations: (none recorded)")
+  else:
+    parts = ["%s%s=%s" % (names[j], " (you)" if j == me else "", "?" if d is None else d)
+             for j, d in enumerate(decls)]
+    out.append("  Declared wire counts — " + ", ".join(parts))
+  cuts = [c for c in cut_log if c["round"] == r]
+  if cuts:
+    rendered = ["%d. %s cut %s → %s" % (
+        k, names[c["cutter"]] + (" (you)" if c["cutter"] == me else ""),
+        names[c["target"]] + (" (you)" if c["target"] == me else ""),
+        _RESULT.get(c["result"], c["result"])) for k, c in enumerate(cuts, 1)]
+    out.append("  Cuts — " + "; ".join(rendered))
+  elif current:
+    out.append("  Cuts so far this round: none yet.")
+
+
 def render_agent(view, decision):
-  """Render an ``AgentView`` as the prompt text an agent reasons over. ``decision`` is
-  ``"declare"`` or ``"cut"`` and selects the closing instruction."""
+  """Render an ``AgentView`` as the prompt text an agent reasons over. Includes the rules,
+  the agent's private hand/role, and the FULL multi-round public history (every round's
+  declarations and who cut whom, with results). ``decision`` is ``"declare"`` or ``"cut"``."""
   pub, priv = view.public, view.private
   me = priv.my_index
-  name = pub.player_names[me]
+  names = pub.player_names
   role = "BAD GUY" if priv.my_role == 1 else "GOOD GUY"
   goal = _BAD_GOAL if priv.my_role == 1 else _GOOD_GOAL
-  bomb = "You ARE holding the bomb." if priv.i_hold_bomb else "You are NOT holding the bomb."
+  bomb = ("You ARE holding the bomb this round." if priv.i_hold_bomb
+          else "You are NOT holding the bomb this round.")
 
-  lines = []
-  lines.append("You are Player %d (%s) in a game of Time Bomb." % (me, name))
-  lines.append("Your secret role: %s. %s" % (role, goal))
-  lines.append("Your hand this round: %d cards, of which %d %s an active (safe) wire. %s"
-               % (pub.hand_size, priv.my_wires,
-                  "is" if priv.my_wires == 1 else "are", bomb))
-  lines.append("")
-  lines.append("Public situation:")
-  lines.append("  Players: %d | %s | Bombs in play: %d"
-               % (pub.num_players, _bad_count_phrase(pub.num_bad_prior), pub.num_bom))
-  lines.append("  Round %d. Each hand has %d cards this round." % (pub.round_index + 1, pub.hand_size))
-  lines.append("  Active (safe) wires still hidden across all hands: %d." % pub.active_wires)
-  lines.append("")
-  lines.append("Declarations this round (wire counts each player CLAIMS to hold):")
-  for j in range(pub.num_players):
-    d = pub.declarations[j]
-    shown = "(not yet declared)" if d is None else str(d)
-    tag = ", you" if j == me else ""
-    lines.append("  Player %d (%s%s): %s" % (j, pub.player_names[j], tag, shown))
-
-  this_round_cuts = [c for c in pub.cut_log if c["round"] == pub.round_index]
-  lines.append("")
-  if this_round_cuts:
-    lines.append("Cuts so far this round:")
-    for c in this_round_cuts:
-      lines.append("  - Player %d cut Player %d -> %s"
-                   % (c["cutter"], c["target"], c["result"]))
-  else:
-    lines.append("No cuts yet this round.")
-
-  facedown = [pub.hand_size - pub.revealed[j] for j in range(pub.num_players)]
-  lines.append("Face-down cards remaining per player: %s" % facedown)
+  out = [RULES, ""]
+  out.append("YOU are Player %d (%s). Your secret role: %s." % (me, names[me], role))
+  out.append(goal)
+  out.append("Your hand this round: %d cards, %d of them %s a safe wire. %s"
+             % (pub.hand_size, priv.my_wires, "is" if priv.my_wires == 1 else "are", bomb))
+  out.append("Table: %d players | %s | %d bomb in play."
+             % (pub.num_players, _bad_count_phrase(pub.num_bad_prior), pub.num_bom))
+  out.append("")
+  out.append("GAME HISTORY (everything public, all rounds):")
+  for r in range(pub.round_index):
+    decls = pub.declaration_history[r] if r < len(pub.declaration_history) else None
+    _render_round(out, r, _round_hand_size(pub, r), decls, pub.cut_log, names, me, current=False)
+  _render_round(out, pub.round_index, pub.hand_size, pub.declarations, pub.cut_log,
+                names, me, current=True, decision=decision)
+  out.append("  Safe wires still hidden across all hands: %d." % pub.active_wires)
+  out.append("  Face-down cards left per player this round: %s"
+             % [pub.hand_size - pub.revealed[j] for j in range(pub.num_players)])
 
   if view.assistant_panel is not None:
-    lines.append("")
-    lines.append("Assistant readout (computed from public info only):")
-    lines.append("  " + json.dumps(view.assistant_panel))
+    out += ["", "Assistant readout (computed from public info only):",
+            "  " + json.dumps(view.assistant_panel)]
 
-  lines.append("")
+  out.append("")
   if decision == "declare":
-    lines.append("It is your turn to DECLARE. State a wire count from 0 to %d. You may "
-                 "tell the truth or bluff." % pub.hand_size)
+    out.append("YOUR TURN TO DECLARE. Announce a safe-wire count from 0 to %d — the truth, "
+               "or a bluff that serves your team." % pub.hand_size)
   else:
     legal = legal_targets(pub, me)
-    lines.append("It is your turn to CUT -- you hold the wire-cutters. Choose one OTHER "
-                 "player's face-down card to cut.")
-    lines.append("Legal targets (player indices): %s" % legal)
-  return "\n".join(lines)
+    out.append("YOUR TURN TO CUT — you hold the wire-cutters. Cut one OTHER player's "
+               "face-down card. Legal targets (player indices): %s" % legal)
+  return "\n".join(out)

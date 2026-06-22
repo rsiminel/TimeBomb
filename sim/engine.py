@@ -124,6 +124,12 @@ class Engine:
         pub.revealed[target] += 1
         log.append("cut", round=round_index, cutter=current_cutter, target=target,
                    result=result, reasoning=reasoning)
+        # Keep pub.cut_log live so the NEXT cutter's view shows this cut (it must agree
+        # with pub.revealed, which is already updated). Refreshing only at round end left
+        # mid-round views incoherent: face-down counts changed while "cuts this round"
+        # stayed empty.
+        pub.cut_log.append({"round": round_index, "cutter": current_cutter,
+                            "target": target, "result": result})
         self._broadcast(agents, "cut", cutter=current_cutter, target=target, result=result)
 
         if result == BOMB:
@@ -136,7 +142,6 @@ class Engine:
             return self._end(log, won=True, reason="all wires cut", p_bad_truth=roles)
         current_cutter = target
 
-      pub.cut_log = log_cuts(log)
       log.append("round_end", round=round_index)
       hand_size -= 1
 

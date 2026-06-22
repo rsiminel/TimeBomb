@@ -12,8 +12,10 @@ import pytest
 
 from engine import (Engine, WIRE, BLANK, BOMB,
                     _validate_declaration, _validate_target)
-from state import (GroundTruth, PublicState, PrivateView, AgentView, legal_targets)
+from state import (GroundTruth, PublicState, PrivateView, AgentView, legal_targets,
+                   render_agent)
 from base import Agent
+from llm import LLMAgent
 
 
 # ---------------------------------------------------------------------------
@@ -214,6 +216,63 @@ def test_log_starts_and_ends_well_formed():
   assert log.events[0]["type"] == "game_start"
   assert log.events[0]["player_names"] == ["Alice", "Bob", "Clara", "Darryl"]
   assert log.events[-1]["type"] == "game_end"
+
+
+# ---------------------------------------------------------------------------
+# Coherent agent context (regression for the stale-cut_log bug)
+# ---------------------------------------------------------------------------
+
+class CoherenceAgent(StubAgent):
+  """Asserts, every time it is asked to cut, that the public cut log it is shown agrees
+  with the face-down counts: the number of cuts recorded this round must equal the number
+  of cards revealed this round. The old bug refreshed cut_log only at round end, so a
+  mid-round view showed changed face-down counts beside an empty 'cuts this round'."""
+
+  def choose_cut(self, view):
+    pub = view.public
+    this_round = [c for c in pub.cut_log if c["round"] == pub.round_index]
+    assert len(this_round) == sum(pub.revealed), (
+        "cut_log shows %d cuts this round but %d cards are revealed"
+        % (len(this_round), sum(pub.revealed)))
+    return super().choose_cut(view)
+
+
+def test_view_cut_log_stays_coherent_with_revealed():
+  for seed in range(30):
+    Engine(num_players=4).play_game([CoherenceAgent() for _ in range(4)], seed=seed)
+
+
+def test_render_has_rules_and_full_history():
+  # A hand-built mid-round-2 cut view: one past round + one cut already made this round.
+  pub = PublicState(
+      num_players=4, num_bad_prior={1: 1.0}, num_bom=1, player_names=["A", "B", "C", "D"],
+      round_index=1, hand_size=4, round_start_active=3, active_wires=3,
+      declarations=[1, 1, 0, 2], revealed=[0, 0, 1, 0], found=[0, 0, 0, 0],
+      declaration_history=[[2, 0, 1, 1]],
+      cut_log=[{"round": 0, "cutter": 0, "target": 1, "result": BLANK},
+               {"round": 1, "cutter": 0, "target": 2, "result": BLANK}])
+  view = AgentView(public=pub, private=PrivateView(1, 0, 1, False))
+  text = render_agent(view, "cut")
+
+  assert "TIME BOMB" in text and "Bad guys do NOT 'protect' the bomb" in text  # rules primer
+  assert "Round 1 (hand size 5):" in text          # the past round, with its hand size
+  assert "THIS ROUND — Round 2 (hand size 4):" in text
+  assert "Declared wire counts — A=2" in text       # past-round declarations are shown
+  assert "1. A cut C → a dud" in text               # this round's in-progress cut is shown
+  assert "none yet" not in text                     # ... so it is NOT called empty (the bug)
+
+
+def test_llm_agent_accumulates_private_memory():
+  a = LLMAgent()
+  assert a._memory_block() == ""                    # empty before any decision
+  a.last_reasoning = "blend in as a normal player"
+  a._remember(0, "declared 1")
+  a.last_reasoning = "cut the loud over-declarer"
+  a._remember(0, "cut C (Player 2)")
+  block = a._memory_block()
+  assert "Round 1" in block
+  assert "declared 1" in block and "cut C (Player 2)" in block
+  assert "blend in as a normal player" in block     # past reasoning is carried forward
 
 
 if __name__ == "__main__":

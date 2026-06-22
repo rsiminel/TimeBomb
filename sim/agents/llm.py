@@ -62,6 +62,7 @@ class LLMAgent(Agent):
     self.thinking_tokens = thinking_tokens   # 0 disables extended thinking (the big speedup)
     self.last_reasoning = None
     self.last_error = None
+    self.memory = []                         # this agent's own past decisions + reasoning
 
   def describe(self):
     d = super().describe()
@@ -71,14 +72,32 @@ class LLMAgent(Agent):
     return d
 
   def declare(self, view):
-    prompt = render_agent(view, "declare") + "\n\n" + DECLARE_INSTRUCTION
+    prompt = render_agent(view, "declare") + self._memory_block() + "\n\n" + DECLARE_INSTRUCTION
     value, self.last_reasoning = self._decide(prompt, "declaration")
+    if value is not None:
+      self._remember(view.public.round_index, "declared %d" % value)
     return value
 
   def choose_cut(self, view):
-    prompt = render_agent(view, "cut") + "\n\n" + CUT_INSTRUCTION
+    prompt = render_agent(view, "cut") + self._memory_block() + "\n\n" + CUT_INSTRUCTION
     value, self.last_reasoning = self._decide(prompt, "target")
+    if value is not None:
+      who = view.public.player_names[value] if 0 <= value < view.public.num_players else value
+      self._remember(view.public.round_index, "cut %s (Player %s)" % (who, value))
     return value
+
+  # -- this agent's private running memory (no re-deriving each turn) --------
+
+  def _memory_block(self):
+    if not self.memory:
+      return ""
+    return ("\n\nYOUR OWN PRIVATE NOTES from earlier this game (your past moves and the "
+            "reasoning behind them — build on these instead of re-analysing from scratch):\n"
+            + "\n".join(self.memory))
+
+  def _remember(self, round_index, action):
+    self.memory.append("- [Round %d] You %s. Your reasoning then: %s"
+                       % (round_index + 1, action, self.last_reasoning))
 
   # -- one decision: state -> text -> validated action, with retries --------
 
