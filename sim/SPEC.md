@@ -133,9 +133,12 @@ arrives (Principle 3).
 Statistical power is a non-goal here; *interesting behaviour* is the goal. Starting
 defaults, chosen to keep the first version debuggable:
 
-- **Memory: stateless.** Re-serialize the full observable history into every prompt rather
-  than carrying a running narrative. Time Bomb's public log is short, and this removes a
-  whole class of hidden-state bugs. Add memory only if context length ever forces it.
+- **Memory: one session per player.** Each agent keeps a single persistent `claude -p`
+  session, resumed every turn (`--resume`), so the model carries its own running memory.
+  The first turn seeds full context (`render_agent`); later turns send only the new events
+  (`render_session_delta`) and the unchanged prefix is served from the prompt cache —
+  cheap input, no re-serialising the whole history each call. (This replaces the original
+  stateless sketch, which re-sent everything every prompt.)
 - **Action protocol: structured output.** The model returns JSON — a `reasoning` string
   plus the action — via tool-use. We **log the reasoning** (never feed it to other agents):
   that field is the whole window into emergent strategy.
@@ -143,13 +146,19 @@ defaults, chosen to keep the first version debuggable:
   fall back to a legal default. At scale it *will* happen.
 - **Model tiering.** A fast model (`claude-haiku-4-5`) for bulk play; `claude-opus-4-8`
   reserved for a small high-quality qualitative deep-dive. Per-run token budget cap.
-- **Prompt scaffold:** rules summary · this agent's private hand and role · the full public
-  log · the legal action set · (optionally) the assistant readout (§7). Cache the static
-  rules preamble.
+- **Prompt scaffold:** four labelled sections, each fact stated once — `RULES` (the static
+  preamble, with a `wire`/`dud`/`bomb` glossary) · `YOUR ROLE & HAND` (role + win condition
+  + private hand) · `GAME SO FAR` (the public record per round: declarations *claimed*,
+  table talk *said*, cuts *revealed*) · `NOW` (the legal action ask) · (optionally) the
+  assistant readout (§7). Prompts must not steer strategy — only rules, state, and talk.
 
-**Table-talk is out of scope for v1.** Real Time Bomb has open discussion; we keep the
-public channel to declarations + cut results — exactly what the assistant consumes, which
-keeps the firewall clean. A free-text claim channel is a logged open decision (§9).
+**Table-talk is in scope (the discussion beat).** Each round runs declare → **discuss** →
+cut: after the (blind, simultaneous) declarations, every player makes one public statement
+in seating order — a claim, a read, an accusation, a defense, or a bluff — before any cut.
+The cutter also speaks at each cut. Talk is free-text (accusation accuracy is measured
+offline, §2); nothing forces a player to suspect anyone. The assistant still consumes only
+declarations + cut results, so the firewall is unchanged — table talk is extra public log,
+never fed to the assistant.
 
 ---
 
@@ -204,9 +213,10 @@ The **default play configuration is the standard game: 6 players, 2 bad, 1 bomb*
 (`NUM_BAD_PRIOR(6) = {2: 1.0}`, so the bad count is fixed). `N=4`/`N=7` — where the bad
 count is itself uncertain (model.md §3.5.1) — are supported but secondary.
 
-**Open decisions (record as ADRs when reached):** table-talk channel (v2); per-game vs.
-per-match memory; bulk-LLM model + token budget; cutter-passing rule fidelity
-(§ engine sketch).
+**Open decisions (record as ADRs when reached):** per-game vs. per-match memory; bulk-LLM
+model + token budget; cutter-passing rule fidelity (§ engine sketch); multi-pass discussion
+/ rebuttals (today: one statement per player per round). *(Done: table-talk channel — the
+discussion beat, §6; session memory, §6.)*
 
 ---
 

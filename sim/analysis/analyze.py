@@ -44,6 +44,7 @@ def collect(path):
   by_numbad = defaultdict(lambda: [0, 0])          # num_bad -> [games, good_wins]
   decl = {g: [] for g in ROLE_GROUPS}              # group -> list of (declared - true)
   cuts = {0: Counter(), 1: Counter()}              # cutter role -> result counts
+  talk = {0: 0, 1: 0}                              # speaker role -> statement count
   decl_rows, cut_rows = [], []                     # for optional CSV export
 
   for _f, events in load_games(path):
@@ -70,8 +71,10 @@ def collect(path):
       elif e["type"] == "cut":
         cuts[roles[e["cutter"]]][e["result"]] += 1
         cut_rows.append((roles[e["cutter"]], e["result"]))
+      elif e["type"] == "statement":
+        talk[roles[e["player"]]] += 1
 
-  return dict(games=games, good=good, by_numbad=by_numbad, decl=decl, cuts=cuts,
+  return dict(games=games, good=good, by_numbad=by_numbad, decl=decl, cuts=cuts, talk=talk,
               decl_rows=decl_rows, cut_rows=cut_rows)
 
 
@@ -109,6 +112,11 @@ def report(s):
     print("  %-12s %7d %8s %8s %8s" % (
         label, tot, _pct(c["wire"], tot),
         _pct(c["dud"], tot), _pct(c["bomb"], tot)))
+
+  talk = s.get("talk", {0: 0, 1: 0})
+  if talk[0] or talk[1]:
+    print("\nTABLE TALK   (public statements made, by speaker role)")
+    print("  good: %d   ·   bad: %d" % (talk[0], talk[1]))
   print("=" * 64)
 
 

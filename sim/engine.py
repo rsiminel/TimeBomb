@@ -89,8 +89,8 @@ class Engine:
           player_names=self.player_names, round_index=round_index, hand_size=hand_size,
           round_start_active=round_start_active, active_wires=active_wires,
           declarations=[None] * N, revealed=[0] * N, found=[0] * N,
-          cut_log=log_cuts(log), declaration_history=list(decl_history),
-          current_cutter=current_cutter)
+          cut_log=log_cuts(log), discussion_log=log_statements(log),
+          declaration_history=list(decl_history), current_cutter=current_cutter)
       log.append("round_start", round=round_index, hand_size=hand_size,
                  active_wires=active_wires, wires=wires, bombs=bombs)
 
@@ -110,6 +110,22 @@ class Engine:
                    true_wires=wires[i], reasoning=reasoning)
         self._broadcast(agents, "declaration", player=i, declared=d)
       decl_history.append(list(pub.declarations))
+
+      # -- discussion phase (sequential; each speaker hears those before it) --
+      # Declarations are public now; players speak in seating order before any cut, so a
+      # later speaker can react to (and accuse) earlier ones. Silent agents (default
+      # ``discuss`` -> None) simply add nothing. Rotating the start order is a future knob.
+      for speaker in range(N):
+        view = self._build_view(gt, pub, speaker)
+        statement = agents[speaker].discuss(view)
+        if not statement:
+          continue
+        reasoning = getattr(agents[speaker], "last_reasoning", None)
+        log.append("statement", round=round_index, player=speaker, message=statement,
+                   reasoning=reasoning)
+        pub.discussion_log.append({"round": round_index, "speaker": speaker,
+                                   "message": statement})
+        self._broadcast(agents, "statement", player=speaker, message=statement)
 
       # -- cut phase (N cuts; the cut target takes the cutters next) ---------
       for _ in range(N):
@@ -194,6 +210,11 @@ def log_cuts(log):
   return [{"round": e["round"], "cutter": e["cutter"], "target": e["target"],
            "result": e["result"], "message": e.get("message")}
           for e in log.events if e["type"] == "cut"]
+
+
+def log_statements(log):
+  return [{"round": e["round"], "speaker": e["player"], "message": e["message"]}
+          for e in log.events if e["type"] == "statement"]
 
 
 def _default_names(n):

@@ -28,6 +28,10 @@ class HumanAgent(Agent):
     print("\n" + render_agent(view, "declare"))
     return _prompt_int("Your declaration: ", 0, view.public.hand_size)
 
+  def discuss(self, view):
+    print("\n" + render_agent(view, "discuss"))
+    return input("Say to the table (blank = stay silent): ").strip() or None
+
   def choose_cut(self, view):
     print("\n" + render_agent(view, "cut"))
     legal = legal_targets(view.public, view.private.my_index)

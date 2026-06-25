@@ -48,7 +48,8 @@ class PublicState:
   declarations: list       # this round; entry is None until that player has declared
   revealed: list           # cards already cut from each hand this round
   found: list              # active wires found in each hand this round
-  cut_log: list = field(default_factory=list)   # [{round,cutter,target,result}, ...]
+  cut_log: list = field(default_factory=list)   # [{round,cutter,target,result,message}, ...]
+  discussion_log: list = field(default_factory=list)  # [{round,speaker,message}, ...] table talk
   declaration_history: list = field(default_factory=list)  # past rounds' final declarations
   current_cutter: int = 0
 
@@ -139,12 +140,23 @@ RULES = (
     "- Hands shrink by one card each round (5 down to 1). A declaration is a player's\n"
     "  claim about how many wires they hold this round, and may be a lie.")
 
-_GOOD_GOAL = ("As a GOOD guy you win when every wire is cut in time; help the cuts "
-              "find wires, and never let the bomb be cut.")
-_BAD_GOAL = ("As a BAD guy you win if the bomb is cut OR time runs out; you want cuts wasted "
-             "on duds and the bomb eventually cut, without being exposed.")
-
 _RESULT = {"wire": "a WIRE", "dud": "a dud", "bomb": "THE BOMB"}
+
+
+def _wire_desc(n):
+  """Grammatical 'N of them is/are a WIRE/WIRES' fragment for the hand line."""
+  return "1 of them is a WIRE" if n == 1 else "%d of them are WIRES" % n
+
+
+def _role_line(priv, names):
+  """One line that fixes the agent's identity and win condition -- folds the old separate
+  role line + goal block so the win condition isn't restated (it is already in RULES)."""
+  me = priv.my_index
+  if priv.my_role == 1:
+    return ("You are Player %d (%s) — a BAD GUY. You win if the BOMB is cut, or if time "
+            "runs out with wires still hidden." % (me, names[me]))
+  return ("You are Player %d (%s) — a GOOD GUY. You win when every WIRE is cut, and you "
+          "must never cut the bomb." % (me, names[me]))
 
 
 def _bad_count_phrase(prior):
@@ -161,8 +173,10 @@ def _round_hand_size(pub, r):
   return pub.hand_size + (pub.round_index - r)
 
 
-def _render_round(out, r, hand_size, decls, cut_log, names, me, current, decision=None):
-  """Append one round's declarations + cuts to ``out`` (full game history)."""
+def _render_round(out, r, hand_size, decls, cut_log, discussion_log, names, me, current,
+                  decision=None):
+  """Append one round's declarations (claimed), table talk (said), and cuts (revealed) to
+  ``out`` -- the full game record, in the order they happen each round."""
   out.append(("THIS ROUND — Round %d (hand size %d):" if current
               else "Round %d (hand size %d):") % (r + 1, hand_size))
   if decls is None or all(d is None for d in decls):
@@ -174,6 +188,11 @@ def _render_round(out, r, hand_size, decls, cut_log, names, me, current, decisio
     parts = ["%s%s=%s" % (names[j], " (you)" if j == me else "", "?" if d is None else d)
              for j, d in enumerate(decls)]
     out.append("  Declared wire counts — " + ", ".join(parts))
+  stmts = [s for s in discussion_log if s["round"] == r]
+  if stmts:
+    out.append("  Said — " + "; ".join(
+        '%s%s: "%s"' % (names[s["speaker"]], " (you)" if s["speaker"] == me else "", s["message"])
+        for s in stmts))
   cuts = [c for c in cut_log if c["round"] == r]
   if cuts:
     rendered = []
@@ -191,31 +210,29 @@ def _render_round(out, r, hand_size, decls, cut_log, names, me, current, decisio
 
 
 def render_agent(view, decision):
-  """Render an ``AgentView`` as the prompt text an agent reasons over. Includes the rules,
-  the agent's private hand/role, and the FULL multi-round public history (every round's
-  declarations and who cut whom, with results). ``decision`` is ``"declare"`` or ``"cut"``."""
+  """Render an ``AgentView`` as the full prompt an agent reasons over, in four labelled
+  sections (rules · role & hand · the public record · the ask) so each fact appears once.
+  The record carries every round's declarations (claimed), table talk (said), and cuts
+  (revealed). ``decision`` is ``"declare"``, ``"discuss"``, or ``"cut"``. Used for the
+  session opener; later turns send only ``render_session_delta``."""
   pub, priv = view.public, view.private
-  me = priv.my_index
-  names = pub.player_names
-  role = "BAD GUY" if priv.my_role == 1 else "GOOD GUY"
-  goal = _BAD_GOAL if priv.my_role == 1 else _GOOD_GOAL
+  me, names = priv.my_index, pub.player_names
   bomb = ("You ARE holding the bomb this round." if priv.i_hold_bomb
           else "You are NOT holding the bomb this round.")
 
-  out = [RULES, ""]
-  out.append("YOU are Player %d (%s). Your secret role: %s." % (me, names[me], role))
-  out.append(goal)
-  out.append("Your hand this round: %d cards, %d of them %s a WIRE. %s"
-             % (pub.hand_size, priv.my_wires, "is" if priv.my_wires == 1 else "are", bomb))
-  out.append("Table: %d players | %s | %d bomb in play."
-             % (pub.num_players, _bad_count_phrase(pub.num_bad_prior), pub.num_bom))
+  out = [RULES, "", "YOUR ROLE & HAND"]
+  out.append(_role_line(priv, names))
+  out.append("Your hand this round: %d cards, %s. %s"
+             % (pub.hand_size, _wire_desc(priv.my_wires), bomb))
+  out.append("Table: %d players; %s." % (pub.num_players, _bad_count_phrase(pub.num_bad_prior)))
   out.append("")
-  out.append("GAME HISTORY (everything public, all rounds):")
+  out.append("GAME SO FAR (public record — what players CLAIMED, SAID, and what cuts REVEALED):")
   for r in range(pub.round_index):
     decls = pub.declaration_history[r] if r < len(pub.declaration_history) else None
-    _render_round(out, r, _round_hand_size(pub, r), decls, pub.cut_log, names, me, current=False)
+    _render_round(out, r, _round_hand_size(pub, r), decls, pub.cut_log, pub.discussion_log,
+                  names, me, current=False)
   _render_round(out, pub.round_index, pub.hand_size, pub.declarations, pub.cut_log,
-                names, me, current=True, decision=decision)
+                pub.discussion_log, names, me, current=True, decision=decision)
   out.append("  Wires still hidden across all hands: %d." % pub.active_wires)
   out.append("  Face-down cards left per player this round: %s"
              % [pub.hand_size - pub.revealed[j] for j in range(pub.num_players)])
@@ -224,8 +241,7 @@ def render_agent(view, decision):
     out += ["", "Assistant readout (computed from public info only):",
             "  " + json.dumps(view.assistant_panel)]
 
-  out.append("")
-  out.append(_decision_ask(pub, me, decision))
+  out += ["", "NOW", _decision_ask(pub, me, decision)]
   return "\n".join(out)
 
 
@@ -233,6 +249,8 @@ def _decision_ask(pub, me, decision):
   if decision == "declare":
     return ("YOUR TURN TO DECLARE. Announce a wire count from 0 to %d — the truth, "
             "or a bluff that serves your team." % pub.hand_size)
+  if decision == "discuss":
+    return "YOUR TURN TO SPEAK to the whole table, before anyone cuts this round."
   return ("YOUR TURN TO CUT — you hold the wire-cutters. Cut one OTHER player's "
           "face-down card. Legal targets (player indices): %s" % legal_targets(pub, me))
 
@@ -249,22 +267,26 @@ def _decision_ask(pub, me, decision):
 
 def new_session_cursor():
   """Fresh cursor for a session that has narrated nothing yet."""
-  return {"cuts": 0, "round": -1, "decls_round": -2}
+  return {"cuts": 0, "statements": 0, "round": -1, "decls_round": -2}
 
 
 def cursor_after_opener(view, decision):
-  """The cursor state implied by a full ``render_agent`` opener: it has shown every cut so
-  far, the current round + hand, and (for a cut) this round's declarations."""
+  """The cursor state implied by a full ``render_agent`` opener: it has shown every cut and
+  statement so far, the current round + hand, and (for a sighted turn -- discuss or cut)
+  this round's declarations."""
   pub = view.public
-  return {"cuts": len(pub.cut_log), "round": pub.round_index,
-          "decls_round": pub.round_index if decision == "cut" else pub.round_index - 1}
+  return {"cuts": len(pub.cut_log), "statements": len(pub.discussion_log),
+          "round": pub.round_index,
+          "decls_round": pub.round_index if decision in ("discuss", "cut")
+                         else pub.round_index - 1}
 
 
 def render_session_delta(view, decision, cursor):
   """Narrate only what changed since ``cursor`` and return ``(text, new_cursor)``. Covers a
-  new round (re-deal + the player's fresh hand), any cuts since the player's last turn (with
-  table talk), this round's declarations the first time a cut turn needs them, the current
-  hidden-wire / face-down snapshot, and the decision ask."""
+  new round (re-deal + the player's fresh hand), this round's declarations the first time a
+  sighted turn needs them, any table talk and cuts since the player's last turn (in that
+  chronological order -- declare, then discuss, then cut), the hidden-wire / face-down
+  snapshot, and the decision ask."""
   pub, priv = view.public, view.private
   names, me = pub.player_names, priv.my_index
   cur = dict(cursor)
@@ -275,9 +297,22 @@ def render_session_delta(view, decision, cursor):
             else "You are NOT holding the bomb this round.")
     out.append("--- Round %d begins (hand size %d). All cards were collected, reshuffled, "
                "and dealt out fresh. ---" % (pub.round_index + 1, pub.hand_size))
-    out.append("Your hand now: %d cards, %d of them %s a WIRE. %s"
-               % (pub.hand_size, priv.my_wires, "is" if priv.my_wires == 1 else "are", bomb))
+    out.append("Your hand now: %d cards, %s. %s"
+               % (pub.hand_size, _wire_desc(priv.my_wires), bomb))
     cur["round"] = pub.round_index
+
+  if decision in ("discuss", "cut") and cur["decls_round"] < pub.round_index:
+    parts = ["%s%s=%s" % (names[j], " (you)" if j == me else "", "?" if d is None else d)
+             for j, d in enumerate(pub.declarations)]
+    out.append("Declared wire counts this round — " + ", ".join(parts))
+    cur["decls_round"] = pub.round_index
+
+  new_stmts = pub.discussion_log[cur["statements"]:]
+  if new_stmts:
+    out.append("Table talk since your last turn — " + "; ".join(
+        '%s%s: "%s"' % (names[s["speaker"]], " (you)" if s["speaker"] == me else "", s["message"])
+        for s in new_stmts))
+    cur["statements"] = len(pub.discussion_log)
 
   new_cuts = pub.cut_log[cur["cuts"]:]
   if new_cuts:
@@ -292,12 +327,6 @@ def render_session_delta(view, decision, cursor):
       rendered.append(line)
     out.append("Cuts since your last turn — " + "; ".join(rendered))
     cur["cuts"] = len(pub.cut_log)
-
-  if decision == "cut" and cur["decls_round"] < pub.round_index:
-    parts = ["%s%s=%s" % (names[j], " (you)" if j == me else "", "?" if d is None else d)
-             for j, d in enumerate(pub.declarations)]
-    out.append("Declared wire counts this round — " + ", ".join(parts))
-    cur["decls_round"] = pub.round_index
 
   out.append("Wires still hidden across all hands: %d." % pub.active_wires)
   out.append("Face-down cards left per player: %s"

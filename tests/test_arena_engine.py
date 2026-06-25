@@ -47,6 +47,13 @@ class MalAgent(Agent):
     return 999
 
 
+class TalkingStub(StubAgent):
+  """A stub that also speaks in the discussion phase (StubAgent stays silent)."""
+
+  def discuss(self, view):
+    return "I have my eye on Player 0."
+
+
 def _stub_pub(**over):
   base = dict(num_players=4, num_bad_prior={1: 1.0}, num_bom=1,
               player_names=["A", "B", "C", "D"], round_index=0, hand_size=5,
@@ -280,6 +287,37 @@ def test_table_talk_is_logged_and_rendered():
                 "message": "testing the loud one"}])
   text = render_agent(AgentView(public=pub, private=PrivateView(2, 0, 1, False)), "cut")
   assert 'said: "testing the loud one"' in text
+
+
+def test_discussion_phase_emits_coherent_statements():
+  # Every player speaks once per played round, after declarations and before that round's
+  # cuts (declare -> discuss -> cut).
+  _, log = Engine(num_players=4).play_game([TalkingStub() for _ in range(4)], seed=3)
+  stmts = _events(log, "statement")
+  played = {e["round"] for e in _events(log, "round_start")}
+  assert played and stmts
+  for r in played:
+    assert sorted(e["player"] for e in stmts if e["round"] == r) == [0, 1, 2, 3]
+    si = [e["i"] for e in log.events if e.get("round") == r and e["type"] == "statement"]
+    ci = [e["i"] for e in log.events if e.get("round") == r and e["type"] == "cut"]
+    if si and ci:
+      assert max(si) < min(ci)                    # statements precede the round's cuts
+
+
+def test_silent_agents_emit_no_statements():
+  # The default Agent.discuss returns None, so non-talking agents add no statement events.
+  _, log = Engine(num_players=4).play_game([StubAgent() for _ in range(4)], seed=3)
+  assert _events(log, "statement") == []
+
+
+def test_render_discuss_shows_declarations_and_prior_talk():
+  pub = _stub_pub(declarations=[1, 1, 0, 2],
+                  discussion_log=[{"round": 0, "speaker": 0, "message": "Clara is bluffing"}])
+  text = render_agent(AgentView(public=pub, private=PrivateView(1, 0, 1, False)), "discuss")
+  assert "YOUR TURN TO SPEAK" in text
+  assert "Declared wire counts — A=1" in text     # a discuss turn sees all declarations
+  assert 'Said — A: "Clara is bluffing"' in text  # ... and earlier speakers' statements
+  assert "TIME BOMB" in text                       # rules still seed the opener
 
 
 def test_session_mode_opens_once_then_sends_only_deltas(monkeypatch):

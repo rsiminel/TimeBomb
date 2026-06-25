@@ -38,21 +38,30 @@ from state import render_agent
 
 MODEL = "claude-haiku-4-5"   # fast model for play; reserve opus for deep-dives
 
-SYSTEM = ("You are an expert, strategic Time Bomb player. Play to win for your secret "
-          "team, reading the public declarations and cut history for tells. You think "
-          "privately, then commit to one move.")
+SYSTEM = ("You are an expert, strategic Time Bomb player, playing to win for your secret "
+          "team. Read the declarations, the table talk, and the cut results for tells. In "
+          "your private reasoning, argue from the specific evidence in front of you — who "
+          "declared what, who said what, what cuts revealed — rather than restating the "
+          "rules or the obvious; then commit to one move.")
 
 DECLARE_INSTRUCTION = (
     "Respond with ONLY a JSON object and nothing else:\n"
-    '{"reasoning": "<your private thinking, shown to no one>", '
+    '{"reasoning": "<private thinking about THIS situation, shown to no one>", '
     '"declaration": <the wire count you announce>}')
+
+DISCUSS_INSTRUCTION = (
+    "Respond with ONLY a JSON object and nothing else:\n"
+    '{"reasoning": "<private thinking about THIS situation, shown to no one>", '
+    '"message": "<one or two sentences you say OUT LOUD to the whole table — a claim, a '
+    'read on someone, an accusation, a defense, or a bluff; everyone hears and remembers '
+    'it>"}')
 
 CUT_INSTRUCTION = (
     "Respond with ONLY a JSON object and nothing else:\n"
-    '{"reasoning": "<your private thinking, shown to no one>", '
+    '{"reasoning": "<private thinking about THIS situation, shown to no one>", '
     '"target": <the player index you cut>, '
-    '"message": "<one short sentence you say OUT LOUD to the whole table about this cut; '
-    'everyone hears it and remembers it; it can be honest or misleading>"}')
+    '"message": "<one short sentence to the whole table about this cut — explain, accuse, '
+    'defend, or mislead; everyone hears and remembers it>"}')
 
 # Neutral cwd shared by all agents, so no CLAUDE.md is auto-discovered into a player.
 _NEUTRAL_CWD = tempfile.mkdtemp(prefix="tb_agent_")
@@ -69,6 +78,7 @@ class LLMAgent(Agent):
     self.thinking_tokens = thinking_tokens   # 0 disables extended thinking (the big speedup)
     self.last_reasoning = None
     self.last_message = None                  # the cutter's public table-talk for its last cut
+    self.last_statement = None                # this agent's last discussion-phase statement
     self.last_error = None
     self.memory = []                         # this agent's own past decisions + reasoning
     # One persistent `claude -p` session per agent (session mode). ``session_id`` is None
@@ -87,7 +97,8 @@ class LLMAgent(Agent):
     d = super().describe()
     d.update(model=self.model, thinking_tokens=self.thinking_tokens, session_mode=True,
              timeout=self.timeout, retries=self.retries, system=self.system,
-             declare_instruction=DECLARE_INSTRUCTION, cut_instruction=CUT_INSTRUCTION)
+             declare_instruction=DECLARE_INSTRUCTION, discuss_instruction=DISCUSS_INSTRUCTION,
+             cut_instruction=CUT_INSTRUCTION)
     return d
 
   def declare(self, view):
@@ -106,6 +117,14 @@ class LLMAgent(Agent):
       self._remember(view.public.round_index, "cut %s (Player %s).%s" % (who, value, said))
     return value
 
+  def discuss(self, view):
+    msg, self.last_reasoning, _ = self._decide(view, "discuss", "message",
+                                               DISCUSS_INSTRUCTION, cast=str)
+    self.last_statement = msg or None
+    if self.last_statement:
+      self._remember(view.public.round_index, 'said to the table: "%s"' % self.last_statement)
+    return self.last_statement
+
   # -- a private running record of this agent's own moves (for inspection; the live session
   #    is the model's real memory, so this is no longer fed back into the prompt) ----------
 
@@ -122,11 +141,13 @@ class LLMAgent(Agent):
 
   # -- one decision: view -> text -> validated action, over a resumed session, with retries -
 
-  def _decide(self, view, decision, key, instruction):
+  def _decide(self, view, decision, key, instruction, cast=int):
     """Return ``(value, reasoning, obj)``. Sends a full opener on the first turn (seeding the
     session) and a small delta on every later turn; the session id and narration cursor are
     advanced only on success, so a failed turn's events are re-narrated by the next one.
-    ``value`` is ``None`` after all retries fail, so the engine falls back to a legal move."""
+    ``cast`` coerces the action field (``int`` for a declaration/target, ``str`` for a
+    table-talk message). ``value`` is ``None`` after all retries fail, so the engine falls
+    back to a legal move (or, for a statement, to silence)."""
     if self.session_id is None:
       body, pending = render_agent(view, decision), st.cursor_after_opener(view, decision)
     else:
@@ -141,7 +162,7 @@ class LLMAgent(Agent):
       try:
         s, e = text.find("{"), text.rfind("}")
         obj = json.loads(text[s:e + 1])
-        value = int(obj[key])
+        value = cast(obj[key])
         if sid:
           self.session_id = sid                # capture/refresh the session to resume next turn
         self.cursor = pending                  # commit the narration cursor only on success

@@ -104,6 +104,18 @@ Event types and their additional fields:
 | `true_wires` | int | **Truth:** that player's real wire count this round. |
 | `reasoning` | str \| null | The agent's private reasoning (LLM); null for non-LLM agents. |
 
+### `statement` (table talk)
+Emitted in the **discussion phase** — after all declarations, before any cut — once per
+speaking player, in seating order (a later speaker has heard earlier ones this round). Silent
+agents (e.g. `RandomAgent`) emit none. Round flow: `declaration`s → `statement`s → `cut`s.
+
+| Field | Type | Meaning |
+| ----- | ---- | ------- |
+| `round` | int | Round index. |
+| `player` | int | The speaking player. |
+| `message` | str | The **public** statement said to the whole table (claim/read/accusation/defense/bluff). |
+| `reasoning` | str \| null | The speaker's **private** reasoning (LLM); null otherwise. |
+
 ### `cut`
 | Field | Type | Meaning |
 | ----- | ---- | ------- |

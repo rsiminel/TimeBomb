@@ -72,6 +72,7 @@ def render_markdown(log):
 
   cut_n = 0
   cuts_header_done = True
+  disc_header_done = True
   for e in events:
     t = e["type"]
     if t == "round_start":
@@ -86,10 +87,21 @@ def render_markdown(log):
       out.append("### Declarations")
       cut_n = 0
       cuts_header_done = False
+      disc_header_done = False
     elif t == "declaration":
       i = e["player"]
       out.append("- **%s** (%s) declares **%s**  _(truly holds %d)_"
                  % (names[i], _role(roles, i), e["declared"], e["true_wires"]))
+      q = _quote(e.get("reasoning"))
+      if q:
+        out.append(q)
+    elif t == "statement":
+      if not disc_header_done:
+        out.append("")
+        out.append("### Discussion")
+        disc_header_done = True
+      i = e["player"]
+      out.append('- **%s** (%s): "%s"' % (names[i], _role(roles, i), e["message"]))
       q = _quote(e.get("reasoning"))
       if q:
         out.append(q)
