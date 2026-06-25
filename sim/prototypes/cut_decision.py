@@ -68,8 +68,8 @@ def example_view():
       declarations=[2, 0, 1, 1],          # Player 0 over-declared; Player 2 (you) said 1
       revealed=[0, 1, 1, 0], found=[0, 0, 1, 0],
       cut_log=[
-          {"round": 1, "cutter": 0, "target": 1, "result": "blank/inactive"},
-          {"round": 1, "cutter": 1, "target": 2, "result": "active wire"},
+          {"round": 1, "cutter": 0, "target": 1, "result": "dud"},
+          {"round": 1, "cutter": 1, "target": 2, "result": "wire"},
       ],
       declaration_history=[[1, 1, 1, 0]],  # round 1's declarations
       current_cutter=2)

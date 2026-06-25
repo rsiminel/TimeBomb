@@ -4,9 +4,13 @@ the default system prompt replaced by a short player persona and run from a neut
 the repo's CLAUDE.md is not auto-injected (see sim/prototypes/cut_decision.py for the
 proof-of-concept and SPEC.md §6 for the design defaults).
 
-Stateless by construction: every call is a fresh, isolated subprocess fed the full
-observable history via ``render_agent``. The model returns a JSON object; we validate and
-the engine falls back on malformed output.
+Session mode: each player keeps one persistent `claude -p` session and only sends what is
+new each turn (``--resume <session_id>``). The first call seeds full context via
+``render_agent``; later calls send a small delta (``render_session_delta``) and the
+unchanged prefix is served from the prompt cache, so the growing history is paid for once,
+not re-sent every turn. The firewall is unchanged -- a session only ever receives its own
+player's legal views. The model returns a JSON object; we validate and the engine falls
+back on malformed output.
 
 Speed/robustness tuning (see the timing measurements in the git history):
   * ``MAX_THINKING_TOKENS=0`` is the decisive one. Claude Code runs the model with
@@ -29,6 +33,7 @@ import tempfile
 import time
 
 from base import Agent
+import state as st
 from state import render_agent
 
 MODEL = "claude-haiku-4-5"   # fast model for play; reserve opus for deep-dives
@@ -66,24 +71,34 @@ class LLMAgent(Agent):
     self.last_message = None                  # the cutter's public table-talk for its last cut
     self.last_error = None
     self.memory = []                         # this agent's own past decisions + reasoning
+    # One persistent `claude -p` session per agent (session mode). ``session_id`` is None
+    # until the first successful call seeds it; ``cursor`` tracks how far the session has
+    # been narrated so each later turn sends only the delta.
+    self.session_id = None
+    self.cursor = st.new_session_cursor()
+    # Running token/cost tally, summed from the `--output-format json` envelope's `usage`
+    # block over every subprocess call (retries included -- a failed call still costs). In
+    # session mode the replayed prefix shows up as `cache_read_input_tokens`.
+    self.usage = {"calls": 0, "input_tokens": 0, "output_tokens": 0,
+                  "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0,
+                  "cost_usd": 0.0}
 
   def describe(self):
     d = super().describe()
-    d.update(model=self.model, thinking_tokens=self.thinking_tokens,
+    d.update(model=self.model, thinking_tokens=self.thinking_tokens, session_mode=True,
              timeout=self.timeout, retries=self.retries, system=self.system,
              declare_instruction=DECLARE_INSTRUCTION, cut_instruction=CUT_INSTRUCTION)
     return d
 
   def declare(self, view):
-    prompt = render_agent(view, "declare") + self._memory_block() + "\n\n" + DECLARE_INSTRUCTION
-    value, self.last_reasoning, _ = self._decide(prompt, "declaration")
+    value, self.last_reasoning, _ = self._decide(view, "declare", "declaration",
+                                                 DECLARE_INSTRUCTION)
     if value is not None:
       self._remember(view.public.round_index, "declared %d" % value)
     return value
 
   def choose_cut(self, view):
-    prompt = render_agent(view, "cut") + self._memory_block() + "\n\n" + CUT_INSTRUCTION
-    value, self.last_reasoning, obj = self._decide(prompt, "target")
+    value, self.last_reasoning, obj = self._decide(view, "cut", "target", CUT_INSTRUCTION)
     self.last_message = obj.get("message") if value is not None else None
     if value is not None:
       who = view.public.player_names[value] if 0 <= value < view.public.num_players else value
@@ -91,38 +106,59 @@ class LLMAgent(Agent):
       self._remember(view.public.round_index, "cut %s (Player %s).%s" % (who, value, said))
     return value
 
-  # -- this agent's private running memory (no re-deriving each turn) --------
+  # -- a private running record of this agent's own moves (for inspection; the live session
+  #    is the model's real memory, so this is no longer fed back into the prompt) ----------
 
   def _memory_block(self):
     if not self.memory:
       return ""
     return ("\n\nYOUR OWN PRIVATE NOTES from earlier this game (your past moves and the "
-            "reasoning behind them — build on these instead of re-analysing from scratch):\n"
+            "reasoning behind them):\n"
             + "\n".join(self.memory))
 
   def _remember(self, round_index, action):
     self.memory.append("- [Round %d] You %s. Your reasoning then: %s"
                        % (round_index + 1, action, self.last_reasoning))
 
-  # -- one decision: state -> text -> validated action, with retries --------
+  # -- one decision: view -> text -> validated action, over a resumed session, with retries -
 
-  def _decide(self, prompt, key):
-    """Return ``(value, reasoning, obj)`` where ``obj`` is the full parsed reply (for any
-    extra fields like ``message``). ``value`` is ``None`` after all retries fail, so the
-    engine's validation falls back to a safe legal default."""
+  def _decide(self, view, decision, key, instruction):
+    """Return ``(value, reasoning, obj)``. Sends a full opener on the first turn (seeding the
+    session) and a small delta on every later turn; the session id and narration cursor are
+    advanced only on success, so a failed turn's events are re-narrated by the next one.
+    ``value`` is ``None`` after all retries fail, so the engine falls back to a legal move."""
+    if self.session_id is None:
+      body, pending = render_agent(view, decision), st.cursor_after_opener(view, decision)
+    else:
+      body, pending = st.render_session_delta(view, decision, self.cursor)
+    prompt = body + "\n\n" + instruction
     for attempt in range(self.retries):
       if attempt:
         time.sleep(1.5 * attempt)              # brief backoff on transient failures
-      text = self._call(prompt)
+      text, sid = self._call(prompt)
       if text is None:
         continue                               # subprocess/API failure -> retry
       try:
         s, e = text.find("{"), text.rfind("}")
         obj = json.loads(text[s:e + 1])
-        return int(obj[key]), obj.get("reasoning", ""), obj
+        value = int(obj[key])
+        if sid:
+          self.session_id = sid                # capture/refresh the session to resume next turn
+        self.cursor = pending                  # commit the narration cursor only on success
+        return value, obj.get("reasoning", ""), obj
       except (ValueError, KeyError):
         self.last_error = "parse failure: %r" % text[:200]
     return None, "(model call failed after %d attempts: %s)" % (self.retries, self.last_error), {}
+
+  def _account(self, env):
+    """Fold one CLI envelope's token usage + cost into ``self.usage``. Keys mirror the
+    Anthropic ``usage`` block; absent keys count as 0 so a thin envelope can't crash a run."""
+    u = env.get("usage") or {}
+    self.usage["calls"] += 1
+    for k in ("input_tokens", "output_tokens",
+              "cache_creation_input_tokens", "cache_read_input_tokens"):
+      self.usage[k] += u.get(k, 0) or 0
+    self.usage["cost_usd"] += env.get("total_cost_usd", 0) or 0
 
   def _env(self):
     """Child env. ``thinking_tokens >= 0`` caps extended thinking (0 disables it -- the big
@@ -133,33 +169,40 @@ class LLMAgent(Agent):
     return env
 
   def _call(self, prompt):
-    """One headless `claude -p` call. Returns the model's reply text, or ``None`` on a
-    retryable failure (with the cause recorded on ``self.last_error``)."""
+    """One headless `claude -p` call. Returns ``(reply_text, session_id)``, or
+    ``(None, None)`` on a retryable failure (cause recorded on ``self.last_error``). On the
+    opener (no session yet) we set the persona via ``--system-prompt``; on a resumed turn we
+    pass ``--resume <id>`` instead -- the session already carries the persona and history."""
+    cmd = ["claude", "-p", "--output-format", "json",
+           "--model", self.model,
+           "--strict-mcp-config"]               # no --mcp-config => skip MCP startup
+    if self.session_id is None:
+      cmd += ["--system-prompt", self.system]
+    else:
+      cmd += ["--resume", self.session_id]      # continue this player's session; send only the delta
+    # The prompt goes LAST, after a `--` sentinel: a delta can start with "--- Round N ..."
+    # and the CLI would otherwise parse a positional beginning with `--` as an unknown option.
+    cmd += ["--", prompt]
     try:
       proc = subprocess.run(
-          ["claude", "-p", prompt,
-           "--output-format", "json",
-           "--system-prompt", self.system,
-           "--model", self.model,
-           "--strict-mcp-config"],            # no --mcp-config => skip MCP startup
-          cwd=_NEUTRAL_CWD, stdin=subprocess.DEVNULL,
-          env=self._env(),
+          cmd, cwd=_NEUTRAL_CWD, stdin=subprocess.DEVNULL, env=self._env(),
           capture_output=True, text=True, timeout=self.timeout)
     except subprocess.TimeoutExpired:
       self.last_error = "timeout after %ss" % self.timeout
-      return None
+      return None, None
     except OSError as exc:
       self.last_error = "OSError: %s" % exc
-      return None
+      return None, None
     if proc.returncode != 0:
       self.last_error = "exit %d: %s" % (proc.returncode, proc.stderr[:200])
-      return None
+      return None, None
     try:
       env = json.loads(proc.stdout)
     except ValueError:
       self.last_error = "unparseable CLI envelope"
-      return None
+      return None, None
+    self._account(env)                         # count tokens before any is_error early-out
     if env.get("is_error"):
       self.last_error = "API error: %s" % str(env.get("result"))[:200]
-      return None
-    return env.get("result")
+      return None, None
+    return env.get("result"), env.get("session_id")

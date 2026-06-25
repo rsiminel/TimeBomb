@@ -49,7 +49,22 @@ def play_one(idx, players, agent_name, run_dir, seed, agent_kwargs):
   log.to_jsonl(base + ".jsonl")
   write_markdown(log, base + ".md")
   return {"idx": idx, "seed": seed, "good_guys_won": outcome["good_guys_won"],
-          "reason": outcome["reason"], "file": stem}
+          "reason": outcome["reason"], "file": stem, "usage": _sum_usage(agents)}
+
+
+def _sum_usage(agents):
+  """Sum every agent's token tally for one game (0 for non-LLM agents)."""
+  return _sum_usage_dicts(getattr(a, "usage", None) for a in agents)
+
+
+def _sum_usage_dicts(dicts):
+  """Sum a sequence of usage dicts (skipping ``None``) into a fresh total."""
+  total = {"calls": 0, "input_tokens": 0, "output_tokens": 0,
+           "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0, "cost_usd": 0.0}
+  for d in dicts:
+    for k, v in (d or {}).items():
+      total[k] += v
+  return total
 
 
 def main():
@@ -91,6 +106,7 @@ def main():
     results = [play_one(*j) for j in jobs]
   results.sort(key=lambda r: r["idx"])
 
+  run_usage = _sum_usage_dicts(r.get("usage") for r in results)
   manifest = {
       "schema_version": SCHEMA_VERSION,
       "label": label,
@@ -99,6 +115,7 @@ def main():
       "params": {"players": args.players, "agent": args.agent,
                  "games": args.games, "base_seed": args.seed},
       "agent_config": AGENTS[args.agent](**(agent_kwargs if args.agent == "llm" else {})).describe(),
+      "usage": run_usage,
       "games": results,
   }
   with open(os.path.join(run_dir, "manifest.json"), "w") as f:
@@ -106,10 +123,22 @@ def main():
 
   wins = sum(r["good_guys_won"] for r in results)
   for r in results:
-    print("  g%03d s%s: %s (%s)" % (r["idx"], r["seed"],
-                                    "good win" if r["good_guys_won"] else "bad win", r["reason"]))
+    u = r.get("usage") or {}
+    print("  g%03d s%s: %s (%s)  ·  %d calls, %d in / %d out tok, $%.4f"
+          % (r["idx"], r["seed"], "good win" if r["good_guys_won"] else "bad win",
+             r["reason"], u.get("calls", 0), u.get("input_tokens", 0),
+             u.get("output_tokens", 0), u.get("cost_usd", 0.0)))
   print("run '%s': %d games, good-guy wins %d/%d -> %s"
         % (label, len(results), wins, len(results), run_dir))
+  ng = max(len(results), 1)
+  print("tokens: %d in + %d out = %d total over %d calls (%d games)  ·  est. cost $%.4f"
+        % (run_usage["input_tokens"], run_usage["output_tokens"],
+           run_usage["input_tokens"] + run_usage["output_tokens"],
+           run_usage["calls"], len(results), run_usage["cost_usd"]))
+  print("per-game mean: %.0f calls, %.0f total tokens, $%.4f"
+        % (run_usage["calls"] / ng,
+           (run_usage["input_tokens"] + run_usage["output_tokens"]) / ng,
+           run_usage["cost_usd"] / ng))
 
 
 if __name__ == "__main__":

@@ -110,7 +110,7 @@ Event types and their additional fields:
 | `round` | int | Round index. |
 | `cutter` | int | Player holding the cutters (chose the target). |
 | `target` | int | Player whose card was cut (always `!= cutter`, had a face-down card). |
-| `result` | str | `"active wire"`, `"blank/inactive"`, or `"BOMB"`. |
+| `result` | str | `"wire"`, `"dud"`, or `"bomb"`. (Pre-rename logs used `"active wire"`/`"blank/inactive"`/`"BOMB"` — see §7.) |
 | `reasoning` | str \| null | The cutter's **private** reasoning (LLM); null otherwise. |
 | `message` | str \| null | The cutter's **public** table-talk — one short line said to everyone, shown in every later context. Null for non-speaking agents. |
 
@@ -151,6 +151,8 @@ Produced by `Agent.describe()`. Always present:
 | `name` | str | Short agent kind. |
 
 `LLMAgent` adds: `model`, `thinking_tokens` (0 off · >0 cap · <0 Claude Code default),
+`session_mode` (true: one persistent `claude -p` session per player, resumed each turn with
+only the new events sent — see the `usage` totals for the resulting `cache_read` share),
 `timeout`, `retries`, `system` (the persona prompt), and `declare_instruction` /
 `cut_instruction` (the exact action prompts). This is what lets a transcript be fully
 reproduced/understood later. New agent types extend `describe()` with their own knobs.

@@ -20,8 +20,10 @@ from state import (GroundTruth, PublicState, PrivateView, AgentView, EventLog,
                    legal_targets, SCHEMA_VERSION)
 
 
-# A cut reveals one of three things; the bomb ends the game.
-WIRE, BLANK, BOMB = "active wire", "blank/inactive", "BOMB"
+# A cut reveals one of three things; the bomb ends the game. These canonical strings are
+# the stored log values AND the agent-facing vocabulary (sim/LOGS.md §3) -- one word per
+# outcome, used end to end. NB: distinct from the backend count `active_wires` (model.md).
+WIRE, BLANK, BOMB = "wire", "dud", "bomb"
 
 
 class Engine:

@@ -6,6 +6,7 @@ agents -- no LLM, no network -- so it is fast and reproducible. Paths are set by
 repo conftest.py.
 """
 
+import json
 import random
 
 import pytest
@@ -279,6 +280,43 @@ def test_table_talk_is_logged_and_rendered():
                 "message": "testing the loud one"}])
   text = render_agent(AgentView(public=pub, private=PrivateView(2, 0, 1, False)), "cut")
   assert 'said: "testing the loud one"' in text
+
+
+def test_session_mode_opens_once_then_sends_only_deltas(monkeypatch):
+  # Drive a full game with the LLM subprocess mocked out: each agent must open exactly one
+  # session (--system-prompt, full RULES) and resume it thereafter (--resume, delta only).
+  import llm
+  calls = []
+
+  class FakeProc:
+    returncode, stderr = 0, ""
+    stdout = json.dumps({
+        "result": json.dumps({"reasoning": "r", "declaration": 1, "target": 1, "message": "hi"}),
+        "session_id": "sess", "is_error": False,
+        "usage": {"input_tokens": 10, "output_tokens": 2, "cache_read_input_tokens": 5}})
+
+  def fake_run(cmd, **kw):
+    calls.append(cmd)
+    return FakeProc()
+
+  monkeypatch.setattr(llm.subprocess, "run", fake_run)
+  agents = [LLMAgent() for _ in range(4)]
+  Engine(num_players=4).play_game(agents, seed=1)
+
+  # The prompt is passed last, after a `--` sentinel, so a delta beginning with "--- Round
+  # ..." is never mis-parsed as a CLI option (the real bug the mock alone missed).
+  prompt = lambda c: c[-1]
+  assert all(c[-2] == "--" for c in calls)
+  openers = [c for c in calls if "--system-prompt" in c]
+  resumes = [c for c in calls if "--resume" in c]
+  assert len(openers) == 4                              # exactly one session opener per player
+  assert not any("--resume" in c for c in openers)      # an opener never resumes
+  assert resumes and not any("--system-prompt" in c for c in resumes)
+  assert all("TIME BOMB" in prompt(c) for c in openers)         # opener seeds the rules
+  assert all("TIME BOMB" not in prompt(c) for c in resumes)     # deltas never re-send them
+  assert all(len(prompt(r)) < min(len(prompt(o)) for o in openers) for r in resumes)
+  assert any(prompt(c).startswith("--") for c in resumes)       # a leading-dash delta exists...
+  assert sum(a.usage["cache_read_input_tokens"] for a in agents) > 0   # cache reads accounted
 
 
 def test_llm_agent_accumulates_private_memory():

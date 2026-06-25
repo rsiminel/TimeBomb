@@ -100,15 +100,15 @@ def report(s):
   print("  (good_bomb = a GOOD guy who happens to hold the bomb -- model.md §3.6)")
 
   print("\nCUT BEHAVIOUR   (what each role's cuts reveal)")
-  print("  %-12s %7s %8s %8s %8s" % ("cutter", "cuts", "wire", "blank", "bomb"))
+  print("  %-12s %7s %8s %8s %8s" % ("cutter", "cuts", "wire", "dud", "bomb"))
   for role, label in ((0, "good"), (1, "bad")):
     c = s["cuts"][role]
     tot = sum(c.values())
     if not tot:
       continue
     print("  %-12s %7d %8s %8s %8s" % (
-        label, tot, _pct(c["active wire"], tot),
-        _pct(c["blank/inactive"], tot), _pct(c["BOMB"], tot)))
+        label, tot, _pct(c["wire"], tot),
+        _pct(c["dud"], tot), _pct(c["bomb"], tot)))
   print("=" * 64)
 
 

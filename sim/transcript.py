@@ -24,8 +24,9 @@ def _quote(text):
 def _fmt_agent(d):
   """One-line summary of an agent descriptor (see ``Agent.describe``)."""
   if "model" in d:
-    return "%s · model=%s · thinking_tokens=%s · retries=%s" % (
-        d.get("type", "LLMAgent"), d["model"], d.get("thinking_tokens"), d.get("retries"))
+    return "%s · model=%s · thinking_tokens=%s · retries=%s%s" % (
+        d.get("type", "LLMAgent"), d["model"], d.get("thinking_tokens"), d.get("retries"),
+        " · session" if d.get("session_mode") else "")
   return d.get("type", d.get("name", "?"))
 
 
@@ -76,7 +77,7 @@ def render_markdown(log):
     if t == "round_start":
       bomb_holder = next((i for i, b in enumerate(e["bombs"]) if b), None)
       out.append("")
-      out.append("## Round %d  ·  hand size %d  ·  %d active wires"
+      out.append("## Round %d  ·  hand size %d  ·  %d wires"
                  % (e["round"] + 1, e["hand_size"], e["active_wires"]))
       out.append("")
       out.append("_Hidden deal — wires per hand %s · bomb held by %s_"
