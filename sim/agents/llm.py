@@ -35,33 +35,11 @@ import time
 from base import Agent
 import state as st
 from state import render_agent
+# All agent-facing copy lives in prompts.py; re-exported here so the ``system=SYSTEM``
+# default, ``describe()``, and any caller using ``llm.SYSTEM`` keep working.
+from prompts import SYSTEM, DECLARE_INSTRUCTION, DISCUSS_INSTRUCTION, CUT_INSTRUCTION
 
 MODEL = "claude-haiku-4-5"   # fast model for play; reserve opus for deep-dives
-
-SYSTEM = ("You are an expert, strategic Time Bomb player, playing to win for your secret "
-          "team. Read the declarations, the table talk, and the cut results for tells. In "
-          "your private reasoning, argue from the specific evidence in front of you — who "
-          "declared what, who said what, what cuts revealed — rather than restating the "
-          "rules or the obvious; then commit to one move.")
-
-DECLARE_INSTRUCTION = (
-    "Respond with ONLY a JSON object and nothing else:\n"
-    '{"reasoning": "<private thinking about THIS situation, shown to no one>", '
-    '"declaration": <the wire count you announce>}')
-
-DISCUSS_INSTRUCTION = (
-    "Respond with ONLY a JSON object and nothing else:\n"
-    '{"reasoning": "<private thinking about THIS situation, shown to no one>", '
-    '"message": "<one or two sentences you say OUT LOUD to the whole table — a claim, a '
-    'read on someone, an accusation, a defense, or a bluff; everyone hears and remembers '
-    'it>"}')
-
-CUT_INSTRUCTION = (
-    "Respond with ONLY a JSON object and nothing else:\n"
-    '{"reasoning": "<private thinking about THIS situation, shown to no one>", '
-    '"target": <the player index you cut>, '
-    '"message": "<one short sentence to the whole table about this cut — explain, accuse, '
-    'defend, or mislead; everyone hears and remembers it>"}')
 
 # Neutral cwd shared by all agents, so no CLAUDE.md is auto-discovered into a player.
 _NEUTRAL_CWD = tempfile.mkdtemp(prefix="tb_agent_")
