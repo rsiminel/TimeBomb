@@ -58,7 +58,7 @@ cut → rounds → winner, AI within latency budget, exhibition mode included.
 
 ### Tests
 
-- [ ] T009 [P] [US1] Self-play gate in `tbgame/tests/test_self_play.py`: 100 seeded all-bot games run to completion, zero illegal intents, winner matches engine judgment, same seed ⇒ same deal (SC-005; mark `slow` per repo convention)
+- [ ] T009 [P] [US1] Self-play gate in `tbgame/tests/test_self_play.py`: 100 seeded all-bot games run to completion, zero illegal intents, winner matches engine judgment, same seed ⇒ same deal, and every solver-bot decision stays within the 2 s budget (SC-005, SC-002; mark `slow` per repo convention)
 - [ ] T010 [P] [US1] Beats-random gate in `tbgame/tests/test_solver_bot.py`: good-bot cut choices find safe wires above the uniform-random baseline using the self-calibrating threshold methodology of `tests/baseline_stats.py`, reimplemented here — the root suite cannot be imported-and-edited (SC-006)
 - [ ] T011 [P] [US1] API contract tests in `web/tests/test_game_api.py`: POST/GET/DELETE `/api/game`, `/api/game/intent` happy path + 422 illegal intent + 409 version conflict + 409 second game, per contracts/api.md
 
@@ -123,7 +123,7 @@ cut → rounds → winner, AI within latency budget, exhibition mode included.
 
 ### Implementation
 
-- [ ] T026 [US4] `web/panel_bridge.py`: hosted-game public events → 001 GameRecord (claims omitted) → `replay.replay_record` (research R4; zero probability code)
+- [ ] T026 [US4] `web/panel_bridge.py`: hosted-game public events → 001 GameRecord (claims omitted) → `replay.replay_record` (research R4; zero probability code). NB result-vocabulary mapping: engine `wire`/`dud`/`bomb` → GameRecord `safe`/`nothing`/`bomb`
 - [ ] T027 [US4] `GET /api/game/panel` in `web/app.py` (403 unless the game opted in) and the `panel_allowed` setup field end to end (`GameSetup` → create → TableView)
 - [ ] T028 [US4] Collapsible side drawer in `web/static/play/`: toggle visible only when allowed, collapsed by default, four-stat table per seat, updates with the poll cycle, no recommendation styling (FR-021)
 
@@ -162,7 +162,7 @@ cut → rounds → winner, AI within latency budget, exhibition mode included.
 
 ### Implementation
 
-- [ ] T033 [US6] Save store in `web/game_service.py` (or `web/save_store.py` if it outgrows the service): write/list/load/delete `web/saves/<name>.json` per data-model.md SaveFile; resume via `TableGame.from_events`
+- [ ] T033 [US6] Save store in `web/game_service.py` (or `web/save_store.py` if it outgrows the service): write/list/load/delete `web/saves/<name>.json` per data-model.md SaveFile; resume via `TableGame.from_events`; resuming a save with LLM seats while no key is configured offers solver-bot substitution instead of failing
 - [ ] T034 [US6] Endpoints in `web/app.py`: `GET/POST /api/saves`, `POST /api/saves/<name>/resume`, `DELETE /api/saves/<name>` (contracts/api.md)
 - [ ] T035 [US6] UI: save dialog in `web/static/play/`, resume list + delete (with confirm) on the home page `web/static/index.html`; finished saves open straight into replay
 
@@ -178,7 +178,7 @@ cut → rounds → winner, AI within latency budget, exhibition mode included.
 
 ### Tests
 
-- [ ] T036 [P] [US7] Stub-LLM tests in `web/tests/test_llm_seats.py`: a deliberately failing fake LLM agent pauses the game (`paused_llm`), `POST /api/game/llm-recover` retry and substitute paths both work; LLM seats rejected at setup when no key is configured
+- [ ] T036 [P] [US7] Stub-LLM tests in `web/tests/test_llm_seats.py`: a deliberately failing fake LLM agent pauses the game (`paused_llm`), `POST /api/game/llm-recover` retry and substitute paths both work; LLM seats rejected at setup when no key is configured; resuming an LLM-seat save without a key routes through the substitution path (T033)
 
 ### Implementation
 
