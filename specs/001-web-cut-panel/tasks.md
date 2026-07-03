@@ -39,7 +39,9 @@ every story and every endpoint response depends on these
 
 - [ ] T003 Implement GameRecord parsing and validation in `web/replay.py` per
       data-model.md: setup constraints (4–8 unique non-empty names, bomb flag,
-      `numBadOverride` legal for N) and event-shape/ordering constraints; invalid
+      `numBadOverride` legal for N — any `1 ≤ B ≤ N−1`, the range the solver
+      supports, since the override exists for unofficial tables) and
+      event-shape/ordering constraints; invalid
       records raise a structured error carrying `eventIndex` (−1 for setup) for the
       422 body of contracts/api.md
 - [ ] T004 Implement derived-state replay (rules bookkeeping only, zero probability
@@ -80,8 +82,9 @@ affordance
       (adjust the table, not the budget, if over 2 s)
 - [ ] T009 [P] [US1] Write solver-parity tests in `web/tests/test_solver_parity.py`
       (SC-003): scripted single-round games at N=4 (uncertain deal), N=5 (fixed
-      deal), and a `numBadOverride` game — every `belief` number exactly equals the
-      direct `General.py` computation
+      deal), a `numBadOverride` game, and a `bomb: false` game (`num_bom=0` path,
+      zero `pBomb` column) — every `belief` number exactly equals the direct
+      `General.py` computation
 - [ ] T010 [P] [US1] Write endpoint tests for panel responses in
       `web/tests/test_api.py`: `belief: null` before declarations, panel present
       after, fixed seat order preserved, `approx` flag set when capped
@@ -90,10 +93,13 @@ affordance
       with fixed-count override, client-side validation, GameRecord creation in
       `localStorage`
 - [ ] T012 [US1] Build the game screen in `web/static/index.html` +
-      `web/static/main.js`: declaration entry, cut entry (player + safe/nothing/bomb),
-      fetch to `/api/panel` after every entry, panel table rendered in seat order with
-      no sorting/highlighting (Constitution II), "approximate" label wired to
-      `approx`, record replayed from `localStorage` on page load (SC-005)
+      `web/static/main.js`: declaration entry, cut entry (player + safe/nothing/bomb;
+      `noCards` players rendered unselectable), fetch to `/api/panel` after every
+      entry, panel table rendered in seat order with no sorting/highlighting
+      (Constitution II), the spec's "information value" column showing `horizon`
+      (the depth-capped stat) with its "approximate" label wired to `approx` and
+      `onePly` as an optional secondary detail, record replayed from `localStorage`
+      on page load (SC-005)
 - [ ] T013 [P] [US1] Write `web/static/styles.css`: phone-first layout, panel readable
       on a small screen (spec Assumptions)
 
@@ -118,7 +124,8 @@ evidence; a bomb cut ends the game
       round-1 evidence accumulated, and differs from a fresh game fed only round-2
       entries
 - [ ] T016 [US2] Add round-advance and game-over UI to `web/static/main.js` +
-      `web/static/index.html`: new-round declaration prompt at the smaller hand size,
+      `web/static/index.html`: rounds auto-advance when the cut budget is spent (per
+      data-model.md transitions), new-round declaration prompt at the smaller hand size,
       winner banner (side + reason, no advice), entry controls disabled after game
       over, new-game action that discards the stored record
 - [ ] T017 [P] [US2] Extend `web/tests/test_api.py`: round rollover response fields,
