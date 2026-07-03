@@ -3,89 +3,72 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Time Bomb Assistant</title>
-  <link rel="stylesheet" href="styles.css">
+  <title>Time Bomb</title>
+  <!-- Two-door home (specs/002-host-local-game, T023). Self-contained styles:
+       the same design tokens as the assistant and the game, by value. -->
+  <style>
+    :root {
+      --ink: #1c2330; --paper: #f7f5f0; --card: #ffffff; --line: #d8d3c8;
+      --accent: #b3462e; --muted: #6b7280;
+      color-scheme: light;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --ink: #e9e5dd; --paper: #191817; --card: #24221f; --line: #423e38;
+        --accent: #d4644a; --muted: #9b958a;
+        color-scheme: dark;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0 auto; padding: 0 1rem 3rem; max-width: 40rem;
+      font-family: system-ui, sans-serif; font-size: 16px; line-height: 1.45;
+      color: var(--ink); background: var(--paper);
+    }
+    header { padding-top: 2rem; }
+    h1 { margin: 0; font-size: 1.7rem; }
+    .tagline { margin: 0.3rem 0 0; color: var(--muted); }
+    .doors { display: grid; gap: 1rem; margin-top: 1.6rem; }
+    @media (min-width: 480px) { .doors { grid-template-columns: 1fr 1fr; } }
+    a.door {
+      display: block; padding: 1.2rem 1.1rem; border: 1px solid var(--line);
+      border-radius: 12px; background: var(--card); color: inherit;
+      text-decoration: none;
+    }
+    a.door:hover, a.door:focus-visible { border-color: var(--accent); outline: none; }
+    .door h2 { margin: 0 0 0.35rem; font-size: 1.15rem; }
+    .door p { margin: 0; color: var(--muted); font-size: 0.92rem; }
+    #continue-note { margin-top: 1rem; font-size: 0.92rem; color: var(--muted); }
+    #continue-note a { color: var(--accent); }
+  </style>
 </head>
 <body>
   <header>
-    <div>
-      <h1>Time Bomb Assistant</h1>
-      <p class="tagline">Calibrated probabilities from the table's public information —
-        the numbers, never the call.</p>
-    </div>
-    <button type="button" id="theme-toggle" aria-label="Switch theme">Dark</button>
+    <h1>Time Bomb</h1>
+    <p class="tagline">Play the game, or bring the assistant to your real table.</p>
   </header>
 
   <main>
-    <!-- Setup screen -->
-    <section id="setup-screen" hidden>
-      <h2>New game</h2>
-      <form id="setup-form">
-        <label>Players
-          <select id="player-count"></select>
-        </label>
-        <div id="name-inputs"></div>
-        <label class="row">
-          <input type="checkbox" id="bomb-toggle" checked>
-          The bomb is in play
-        </label>
-        <label>Bad guys
-          <select id="role-deal"></select>
-        </label>
-        <p id="setup-error" class="error" hidden></p>
-        <button type="submit">Start game</button>
-      </form>
-    </section>
-
-    <!-- Game screen -->
-    <section id="game-screen" hidden>
-      <div id="status-bar"></div>
-      <div id="banner" hidden></div>
-      <div id="warnings"></div>
-
-      <div id="num-bad-chip" hidden></div>
-
-      <table id="panel-table" hidden>
-        <thead>
-          <tr>
-            <th>Player</th>
-            <th>P(bad)</th>
-            <th>P(bomb)</th>
-            <th>P(safe wire)</th>
-            <th id="info-header">Info</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-      <p id="panel-note" class="note" hidden></p>
-
-      <form id="decl-form" hidden>
-        <h2 id="decl-title"></h2>
-        <div id="decl-inputs"></div>
-        <p id="decl-error" class="error" hidden></p>
-        <button type="submit">Enter declarations</button>
-      </form>
-
-      <div id="cut-form" hidden>
-        <h2 id="cut-title"></h2>
-        <p class="cut-step">Whose wire was cut?</p>
-        <div id="cut-players"></div>
-        <p class="cut-step">The card showed…</p>
-        <div id="cut-results">
-          <button type="button" data-result="safe">Safe wire</button>
-          <button type="button" data-result="nothing">Nothing</button>
-          <button type="button" data-result="bomb" id="bomb-result">The bomb</button>
-        </div>
-        <button type="button" id="cut-submit" class="primary" disabled>Submit cut</button>
-      </div>
-
-      <div class="game-actions">
-        <button type="button" id="undo-button" hidden>Undo last entry</button>
-        <button type="button" id="new-game-button">New game</button>
-      </div>
-    </section>
+    <nav class="doors">
+      <a class="door" href="/play">
+        <h2>🕹️ Play</h2>
+        <p>Host a full game here — hotseat friends, AI opponents, or both.</p>
+      </a>
+      <a class="door" href="/assistant/">
+        <h2>🧮 Assistant</h2>
+        <p>Calibrated probabilities for a physical game in progress — the numbers,
+          never the call.</p>
+      </a>
+    </nav>
+    <!-- Continue/resume affordance: filled in by US6 (saves); until then it only
+         appears when a live game is already running. -->
+    <p id="continue-note" hidden>A game is in progress — <a href="/play">continue it</a>.</p>
   </main>
 
-  <script src="main.js"></script>
+  <script>
+    fetch("/api/game").then((resp) => {
+      if (resp.ok) document.getElementById("continue-note").hidden = false;
+    }).catch(() => {});
+  </script>
 </body>
 </html>

@@ -26,6 +26,13 @@ def index():
   return app.send_static_file("index.html")
 
 
+@app.get("/assistant/")
+def assistant():
+  # The v1 page, moved verbatim (T022); Flask redirects bare /assistant here, so
+  # its relative styles.css/main.js resolve under /assistant/.
+  return app.send_static_file("assistant/index.html")
+
+
 @app.get("/play")
 def play():
   return app.send_static_file("play/index.html")

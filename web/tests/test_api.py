@@ -64,7 +64,15 @@ class TestPanelResponses:
         assert resp.get_json()["eventIndex"] == 0
 
     def test_static_page_served(self, client):
+        # The v1 page moved verbatim to /assistant/ (002 T022); / is the home page.
         assert client.get("/").status_code == 200
+        resp = client.get("/assistant/")
+        assert resp.status_code == 200
+        assert b"Time Bomb Assistant" in resp.data
+        assert client.get("/assistant/main.js").status_code == 200
+        assert client.get("/assistant/styles.css").status_code == 200
+        # Bare /assistant redirects so the page's relative asset URLs resolve.
+        assert client.get("/assistant").status_code in (301, 308)
 
 
 def full_round(n, declarations, results):

@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Time Bomb Assistant</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Time Bomb Assistant</h1>
+      <p class="tagline">Calibrated probabilities from the table's public information —
+        the numbers, never the call.</p>
+    </div>
+    <button type="button" id="theme-toggle" aria-label="Switch theme">Dark</button>
+  </header>
+
+  <main>
+    <!-- Setup screen -->
+    <section id="setup-screen" hidden>
+      <h2>New game</h2>
+      <form id="setup-form">
+        <label>Players
+          <select id="player-count"></select>
+        </label>
+        <div id="name-inputs"></div>
+        <label class="row">
+          <input type="checkbox" id="bomb-toggle" checked>
+          The bomb is in play
+        </label>
+        <label>Bad guys
+          <select id="role-deal"></select>
+        </label>
+        <p id="setup-error" class="error" hidden></p>
+        <button type="submit">Start game</button>
+      </form>
+    </section>
+
+    <!-- Game screen -->
+    <section id="game-screen" hidden>
+      <div id="status-bar"></div>
+      <div id="banner" hidden></div>
+      <div id="warnings"></div>
+
+      <div id="num-bad-chip" hidden></div>
+
+      <table id="panel-table" hidden>
+        <thead>
+          <tr>
+            <th>Player</th>
+            <th>P(bad)</th>
+            <th>P(bomb)</th>
+            <th>P(safe wire)</th>
+            <th id="info-header">Info</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <p id="panel-note" class="note" hidden></p>
+
+      <form id="decl-form" hidden>
+        <h2 id="decl-title"></h2>
+        <div id="decl-inputs"></div>
+        <p id="decl-error" class="error" hidden></p>
+        <button type="submit">Enter declarations</button>
+      </form>
+
+      <div id="cut-form" hidden>
+        <h2 id="cut-title"></h2>
+        <p class="cut-step">Whose wire was cut?</p>
+        <div id="cut-players"></div>
+        <p class="cut-step">The card showed…</p>
+        <div id="cut-results">
+          <button type="button" data-result="safe">Safe wire</button>
+          <button type="button" data-result="nothing">Nothing</button>
+          <button type="button" data-result="bomb" id="bomb-result">The bomb</button>
+        </div>
+        <button type="button" id="cut-submit" class="primary" disabled>Submit cut</button>
+      </div>
+
+      <div class="game-actions">
+        <button type="button" id="undo-button" hidden>Undo last entry</button>
+        <button type="button" id="new-game-button">New game</button>
+      </div>
+    </section>
+  </main>
+
+  <script src="main.js"></script>
+</body>
+</html>

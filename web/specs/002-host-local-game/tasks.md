@@ -103,9 +103,9 @@ cut → rounds → winner, AI within latency budget, exhibition mode included.
 
 ### Implementation
 
-- [ ] T022 [US3] Move v1 static files to `web/static/assistant/` (index.html, main.js, styles.css — contents untouched) and serve `GET /assistant` from them in `web/app.py`; `POST /api/panel` unchanged
-- [ ] T023 [P] [US3] New home page `web/static/index.html` (+ shared styles): two doors (Assistant, Play), continue/resume affordance placeholder; `GET /` serves it
-- [ ] T024 [US3] Update v1 tests in `web/tests/` for the URL move only (static paths), then run the full v1 suite — behavior identical (SC-004)
+- [X] T022 [US3] Move v1 static files to `web/static/assistant/` (index.html, main.js, styles.css — contents untouched) and serve `GET /assistant` from them in `web/app.py`; `POST /api/panel` unchanged
+- [X] T023 [P] [US3] New home page `web/static/index.html` (+ shared styles): two doors (Assistant, Play), continue/resume affordance placeholder; `GET /` serves it
+- [X] T024 [US3] Update v1 tests in `web/tests/` for the URL move only (static paths), then run the full v1 suite — behavior identical (SC-004)
 
 **Checkpoint**: the front door exists; v1 users unaffected
 
