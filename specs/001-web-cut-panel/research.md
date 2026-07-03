@@ -82,15 +82,24 @@ Decisions resolving every open technical question in plan.md's Technical Context
 - **Decision**: the server calls `CutPanel(..., max_depth=d)` with a per-player-count
   cap chosen so the response beats the 2 s budget (SC-002), starting from the
   backend's own display default `max_depth=3` and reducing for large `N`; the response
-  reports `approx: true` whenever the cap bit, and the UI labels the stat. The exact
-  per-`N` cap table is fixed during implementation by measuring on the target machine
-  (a micro-benchmark run at N=5/N=8 is part of the task list); the contract and UI are
-  cap-agnostic.
-- **Rationale**: the exact lookahead is `O((2N)^stop)` (see `H_Min`) — unusable live at
-  N=8; the backend already depth-caps for display (`PrintPanel` default 3), and the
-  clarification session chose "depth-capped, always shown, labeled approximate". An
-  initial benchmark run (this session) confirmed deep lookahead at N=8 runs into
-  minutes, validating that the cap, not the budget, must give way.
+  reports `approx: true` whenever the cap bit, and the UI labels the stat. Measured
+  `CutPanel` wall time at a worst-case round start (hand 5, all wires live, this
+  machine):
+
+  | depth | N=5 | N=8 |
+  |-------|--------|---------|
+  | 1 | 0.05 s | 1.38 s |
+  | 2 | 0.26 s | 10.9 s |
+  | 3 | 2.5 s | 156 s |
+  | 4 | 25.9 s | 2237 s |
+
+  Each ply costs ~10×. Provisional cap table for the 2 s budget: `{4: 3, 5: 2, 6: 2,
+  7: 1, 8: 1}` — N=4 and N=6 to be confirmed by the same micro-benchmark during
+  implementation (N=6 may need 1). The contract and UI are cap-agnostic.
+- **Rationale**: the exact lookahead is `O((2N)^stop)` (see `H_Min`) — the table shows
+  it is unusable live beyond tiny depths at N=8; the backend already depth-caps for
+  display (`PrintPanel` default 3), and the clarification session chose "depth-capped,
+  always shown, labeled approximate". The cap, not the budget, gives way.
 - **Alternatives considered**: async fill-in and on-demand computation (both rejected
   in the clarification session); beam/analytic approximation (a *backend* roadmap item
   — deferred modelling refinement in TODO.md, not web work).
