@@ -58,16 +58,16 @@ cut → rounds → winner, AI within latency budget, exhibition mode included.
 
 ### Tests
 
-- [ ] T009 [P] [US1] Self-play gate in `tbgame/tests/test_self_play.py`: 100 seeded all-bot games run to completion, zero illegal intents, winner matches engine judgment, same seed ⇒ same deal, and every solver-bot decision stays within the 2 s budget (SC-005, SC-002; mark `slow` per repo convention)
-- [ ] T010 [P] [US1] Beats-random gate in `tbgame/tests/test_solver_bot.py`: good-bot cut choices find safe wires above the uniform-random baseline using the self-calibrating threshold methodology of `tests/baseline_stats.py`, reimplemented here — the root suite cannot be imported-and-edited (SC-006)
-- [ ] T011 [P] [US1] API contract tests in `web/tests/test_game_api.py`: POST/GET/DELETE `/api/game`, `/api/game/intent` happy path + 422 illegal intent + 409 version conflict + 409 second game, per contracts/api.md
+- [X] T009 [P] [US1] Self-play gate in `tbgame/tests/test_self_play.py`: 100 seeded all-bot games run to completion, zero illegal intents, winner matches engine judgment, same seed ⇒ same deal, and every solver-bot decision stays within the 2 s budget (SC-005, SC-002; mark `slow` per repo convention)
+- [X] T010 [P] [US1] Beats-random gate in `tbgame/tests/test_solver_bot.py`: good-bot cut choices find safe wires above the uniform-random baseline using the self-calibrating threshold methodology of `tests/baseline_stats.py`, reimplemented here — the root suite cannot be imported-and-edited (SC-006)
+- [X] T011 [P] [US1] API contract tests in `web/tests/test_game_api.py`: POST/GET/DELETE `/api/game`, `/api/game/intent` happy path + 422 illegal intent + 409 version conflict + 409 second game, per contracts/api.md
 
 ### Implementation
 
-- [ ] T012 [US1] Solver panel adapter in `tbgame/agents/solver.py` (or lifted from the arena's existing assistant adapter if one lives in `sim/run.py`/prototypes): `PublicState` → four-stat panel dict via `General.py` calls only
-- [ ] T013 [US1] `SolverBot` in `tbgame/agents/solver.py`: truthful/lying declaration policy by role, claim policy from posteriors, cut policy sampling over panel stats (research R5); legal-move guarantee; own unseeded RNG
-- [ ] T014 [US1] `web/game_service.py`: the single ActiveGame (create/abandon/get), monotonically increasing `version` with stale-echo rejection, background AI worker thread submitting bot decisions with per-seat `thinking` flags (data-model.md)
-- [ ] T015 [US1] Game routes in `web/app.py`: `POST/GET/DELETE /api/game`, `POST /api/game/intent`, `GET /play` — transport only, engine reasons forwarded verbatim (contracts/api.md)
+- [X] T012 [US1] Solver panel adapter in `tbgame/agents/solver.py` (or lifted from the arena's existing assistant adapter if one lives in `sim/run.py`/prototypes): `PublicState` → four-stat panel dict via `General.py` calls only
+- [X] T013 [US1] `SolverBot` in `tbgame/agents/solver.py`: truthful/lying declaration policy by role, claim policy from posteriors, cut policy sampling over panel stats (research R5); legal-move guarantee; own unseeded RNG
+- [X] T014 [US1] `web/game_service.py`: the single ActiveGame (create/abandon/get), monotonically increasing `version` with stale-echo rejection, background AI worker thread submitting bot decisions with per-seat `thinking` flags (data-model.md)
+- [X] T015 [US1] Game routes in `web/app.py`: `POST/GET/DELETE /api/game`, `POST /api/game/intent`, `GET /play` — transport only, engine reasons forwarded verbatim (contracts/api.md)
 - [ ] T016 [US1] Setup screen in `web/static/play/` (index.html + play.js + play.css): seat count/mix (0 humans allowed), names, official role-deal with validated manual override, optional seed
 - [ ] T017 [US1] Table UI in `web/static/play/`: seats around a styled-DOM table, card backs with revealed/found states, declaration input (bounded), legal-target cut picking, flip transition on results, claim-menu rider on declare/cut, thinking indicator, winner banner with role reveal
 - [ ] T018 [US1] Polling + version flow in `web/static/play/play.js`: refetch on action, ~1 s poll while `thinking`, stale-tab 409 handling; exhibition games render the open-information table

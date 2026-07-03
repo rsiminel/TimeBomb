@@ -18,3 +18,13 @@ def client():
     web_app.app.config["TESTING"] = True
     with web_app.app.test_client() as test_client:
         yield test_client
+
+
+@pytest.fixture(autouse=True)
+def _reset_active_game():
+    """The hosted game (specs/002-host-local-game) is a module-level singleton in
+    game_service.py; without this, one test's active game would 409 the next."""
+    import game_service
+    game_service.reset_for_tests()
+    yield
+    game_service.reset_for_tests()
