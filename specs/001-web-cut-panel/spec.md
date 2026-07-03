@@ -8,6 +8,29 @@
 
 **Input**: User description: "A browser assistant for playing Time Bomb with friends. The player sets up the game (number of players, names, number of bad guys, whether the bomb is in play), then each round enters what is publicly visible at the table: every player's declared wire count, and the result of each cut (safe wire, bomb, or nothing). After every entry the page shows an updated cut panel: for each player, the probability they are a bad guy, the probability they hold the bomb, the probability the next wire cut from their hand is a safe wire, and the information value of cutting them — the four-stat CutPanel computed by the timebomb/General.py solver. The panel presents these calibrated quantities only; it never tells the player whom to cut. The existing web/ folder (a small Python backend serving a static page) is being reworked to this; its old in-page math is discarded in favour of calling the solver."
 
+## Clarifications
+
+### Session 2026-07-03
+
+- Q: At setup, how should the number of bad guys be specified? → A: Official
+  uncertainty — setup offers the official role-deal for the player count, which can
+  leave the true bad-guy count uncertain; the solver's joint inference handles it. A
+  fixed count remains available as a manual override.
+- Q: Should the assistant use the user's own private knowledge (their hand and role),
+  or only public table information? → A: Public info only — the panel is computed
+  from declarations and cut results everyone can see; own-hand conditioning is out of
+  scope (it would need new solver interfaces).
+- Q: Where will the assistant actually run when used at a table? → A: Local machine —
+  the user starts it themselves and opens it in a browser (possibly from a phone on
+  the same Wi-Fi). No accounts, no public hosting; security and multi-user isolation
+  are out of scope.
+- Q: How far back should undo reach? → A: Full history — undo steps back through
+  every entry of the game, one at a time.
+- Q: When computing the information-value stat would be too slow, what should the
+  panel do? → A: Depth-capped, always shown — the stat is always displayed, computed
+  at whatever lookahead depth fits the 2-second budget, and labeled as approximate
+  when capped.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Live-game assistance (Priority: P1)
@@ -98,8 +121,9 @@ restores the previous panel.
 2. **Given** a set of declarations that cannot all be true under the game's rules,
    **When** the last one is entered, **Then** a warning is shown and the panel still
    renders using the assistant's fallback interpretation.
-3. **Given** any entry just made, **When** the user chooses undo, **Then** the game
-   state and panel return exactly to what they were before that entry.
+3. **Given** any sequence of entries, **When** the user chooses undo repeatedly,
+   **Then** each undo steps the game state and panel back exactly one entry, all the
+   way to the start of the game if desired.
 
 ---
 
@@ -120,9 +144,10 @@ restores the previous panel.
 ### Functional Requirements
 
 - **FR-001**: Users MUST be able to set up a game by choosing the number of players,
-  entering player names, choosing the number of bad guys, and choosing whether the
-  bomb is in play; the setup MUST offer the official defaults for the chosen player
-  count.
+  entering player names, and choosing whether the bomb is in play; the setup MUST
+  default to the official role-deal for the chosen player count — including deals
+  where the true bad-guy count is uncertain (e.g. "2 or 3"), which the panel MUST
+  reflect faithfully — with a manual override to a fixed bad-guy count.
 - **FR-002**: Each round, users MUST be able to enter every player's declared wire
   count; entries outside the valid range for the current hand size MUST be rejected
   with a clear message.
@@ -131,7 +156,10 @@ restores the previous panel.
 - **FR-004**: After every completed entry (a full set of declarations, or a cut), the
   page MUST display the updated four-stat cut panel for every player: probability of
   being a bad guy, probability of holding the bomb, probability that a cut from their
-  hand reveals a safe wire, and the information value of cutting them.
+  hand reveals a safe wire, and the information value of cutting them. The
+  information value is always shown, computed at whatever precision fits the panel's
+  latency budget (SC-002) and visibly labeled as approximate when reduced precision
+  was used.
 - **FR-005**: All four displayed quantities MUST come from the project's validated
   solver; the web layer MUST NOT compute, approximate, or adjust any probability
   itself (Constitution I).
@@ -148,14 +176,16 @@ restores the previous panel.
 - **FR-010**: When entries are well-formed but jointly impossible under the game's
   rules, the assistant MUST show a warning (at most once per round), continue with its
   best fallback interpretation, and never block or crash.
-- **FR-011**: Users MUST be able to undo the most recent entry, restoring the previous
-  game state and panel.
+- **FR-011**: Users MUST be able to undo entries one at a time, stepping back through
+  the game's full entry history; each undo restores the exact prior game state and
+  panel.
 - **FR-012**: An in-progress game MUST survive a page reload on the same device; users
   MUST be able to abandon it and start a new game at any time.
 
 ### Key Entities
 
-- **Game**: one play-through — the player list, bad-guy count, bomb flag, current
+- **Game**: one play-through — the player list, the possible bad-guy counts (a single
+  number, or the official uncertain deal for the player count), bomb flag, current
   round, and accumulated evidence; ends with a winning side.
 - **Player**: a named seat at the table; has a per-round declared wire count and a
   shrinking hand; the subject of one panel row.
@@ -184,12 +214,18 @@ restores the previous panel.
 
 - One assistant per table: a single user on a single device enters what they see; no
   accounts, no multi-device synchronisation.
+- The assistant is started by the user on their own machine and used from a browser on
+  the same device or a phone on the same network; public hosting, authentication, and
+  multi-user isolation are out of scope.
 - The game follows the official Time Bomb structure (4–8 players; four rounds with
   hands of 5, 4, 3, 2 cards; cuts per round equal to the number of players; safe wires
   to find equal to the number of players), while setup still lets the user choose the
   bad-guy count and bomb presence the table actually uses.
 - The assistant is used on a phone or laptop at a live table, so the panel must be
   readable on a small screen.
+- The assistant works from public table information only — declarations and cut
+  results. The user's own hand and role are never entered or used; every player at the
+  table could legitimately look at the same panel.
 - Persistence beyond the current game (history of past games, statistics) is out of
   scope.
 - The existing `web/` folder is reworked in place; its previous in-page math is
