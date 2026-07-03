@@ -27,8 +27,8 @@ Three source roots at the repo root (`timebomb/` — frozen, `sim/`, and the new
 
 **Purpose**: skeleton and hygiene for the new package and web storage
 
-- [ ] T001 Create the `tbgame/` source-root skeleton (`tbgame/`, `tbgame/agents/`, `tbgame/tests/`) and add `tbgame` + `tbgame/agents` to the source-root list in `conftest.py` (repo root — the one shared-infrastructure edit, noted in plan.md)
-- [ ] T002 [P] Add `web/saves/` and `web/instance/` to `.gitignore` and create the (empty) directories
+- [X] T001 Create the `tbgame/` source-root skeleton (`tbgame/`, `tbgame/agents/`, `tbgame/tests/`) and add `tbgame` + `tbgame/agents` to the source-root list in `conftest.py` (repo root — the one shared-infrastructure edit, noted in plan.md)
+- [X] T002 [P] Add `web/saves/` and `web/instance/` to `.gitignore` and create the (empty) directories
 
 ---
 
@@ -38,12 +38,12 @@ Three source roots at the repo root (`timebomb/` — frozen, `sim/`, and the new
 (constitution v2.0.0 carve-out). ⚠️ No user story work until this phase is done and
 the untouched root suite passes.
 
-- [ ] T003 Move the state objects from `sim/state.py` to `tbgame/state.py` (GroundTruth, PublicState, PrivateView, AgentView, EventLog, `legal_targets`) extended per data-model.md (claim_log, phase, pending; a new engine `SCHEMA_VERSION` constant — the arena's stays untouched at its current value); the renderer and prompt assembly stay behind in `sim/state.py`
-- [ ] T004 [P] Write engine contract tests in `tbgame/tests/test_table_game.py` — state transitions of data-model.md, `IllegalIntent` on every bad intent shape (wrong seat/kind/range/claim), deal determinism under a fixed seed, `from_events` round-trip equality, reveal only when finished, per contracts/engine.md (independent of T005's internals; run red first)
-- [ ] T005 Implement `tbgame/engine.py::TableGame` — stepwise event-sourced core: `__init__(setup)` with SetupError validation (seats 4–8, names, role-deal feasibility, 0-human allowed), `from_events` with SchemaError, `pending`, `submit(intent)` incl. claim riders and automatic round advance / win judgment, `public_state()`, `private_view(seat)`, `reveal()`, instance `random.Random(seed)` for role sample + `General.DistributeWires` deals + cut draws; rule behavior byte-compatible with today's `sim/engine.py`
-- [ ] T006 Implement `tbgame/driver.py::Engine` — the blocking arena API (`play_game(agents, seed)`) over `TableGame`: threaded simultaneous declarations, sequential free-text `discuss` → `statement` events, malformed-output fallbacks, `panel_for`/`assistant` adapter, `wire`/`dud`/`bomb` vocabulary, per contracts/engine.md
-- [ ] T007 Move `sim/agents/base.py::Agent` to `tbgame/agents/base.py` and add the no-op `claim(view)` hook
-- [ ] T008 Convert `sim/engine.py`, `sim/state.py`, `sim/agents/base.py` into re-export shims (renderer/prompt code stays in `sim/state.py`); then run the **unmodified** root suite `.venv/bin/python -m pytest -q` and `tbgame/tests` — all green (if `tests/test_arena_engine.py` proves to depend on global-RNG sequences, keep global seeding in the driver only, per research R2)
+- [X] T003 Move the state objects from `sim/state.py` to `tbgame/state.py` (GroundTruth, PublicState, PrivateView, AgentView, EventLog, `legal_targets`) extended per data-model.md (claim_log, phase, pending; a new engine `SCHEMA_VERSION` constant — the arena's stays untouched at its current value); the renderer and prompt assembly stay behind in `sim/state.py`
+- [X] T004 [P] Write engine contract tests in `tbgame/tests/test_table_game.py` — state transitions of data-model.md, `IllegalIntent` on every bad intent shape (wrong seat/kind/range/claim), deal determinism under a fixed seed, `from_events` round-trip equality, reveal only when finished, per contracts/engine.md (independent of T005's internals; run red first)
+- [X] T005 Implement `tbgame/engine.py::TableGame` — stepwise event-sourced core: `__init__(setup)` with SetupError validation (seats 4–8, names, role-deal feasibility, 0-human allowed), `from_events` with SchemaError, `pending`, `submit(intent)` incl. claim riders and automatic round advance / win judgment, `public_state()`, `private_view(seat)`, `reveal()`, instance `random.Random(seed)` for role sample + `General.DistributeWires` deals + cut draws; rule behavior byte-compatible with today's `sim/engine.py`
+- [X] T006 Implement `tbgame/driver.py::Engine` — the blocking arena API (`play_game(agents, seed)`) over `TableGame`: threaded simultaneous declarations, sequential free-text `discuss` → `statement` events, malformed-output fallbacks, `panel_for`/`assistant` adapter, `wire`/`dud`/`bomb` vocabulary, per contracts/engine.md
+- [X] T007 Move `sim/agents/base.py::Agent` to `tbgame/agents/base.py` and add the no-op `claim(view)` hook
+- [X] T008 Convert `sim/engine.py`, `sim/state.py`, `sim/agents/base.py` into re-export shims (renderer/prompt code stays in `sim/state.py`); then run the **unmodified** root suite `.venv/bin/python -m pytest -q` and `tbgame/tests` — all green (if `tests/test_arena_engine.py` proves to depend on global-RNG sequences, keep global seeding in the driver only, per research R2)
 
 **Checkpoint**: shared engine live; sim arena unaffected; user stories can start
 
