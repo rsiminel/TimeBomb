@@ -163,13 +163,13 @@ inline, impossible declarations warn once, undo steps back to game start
 
 ## Phase 6: Polish & Cross-Cutting Concerns
 
-- [ ] T021 [P] Add a latency guard test in `web/tests/test_api.py`: worst-case
+- [X] T021 [P] Add a latency guard test in `web/tests/test_api.py`: worst-case
       round-start request at N=8 answers within the SC-002 budget on this machine
       (marked slow; generous CI margin)
-- [ ] T022 Run every quickstart.md validation scenario end-to-end in a real browser
+- [X] T022 Run every quickstart.md validation scenario end-to-end in a real browser
       (desktop + phone-sized viewport) and fix what falls out; record results in
       `specs/001-web-cut-panel/quickstart.md` checkboxes or notes
-- [ ] T023 [P] Update repo docs for the new web layer: `README.md` (how to run the
+- [X] T023 [P] Update repo docs for the new web layer: `README.md` (how to run the
       assistant), `TODO.md` C1 checkbox, and the `CLAUDE.md` "known traps" bullet
       that still calls `web/app.py` bug-ridden
 

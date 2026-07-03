@@ -18,7 +18,7 @@ See **[docs/model.md](docs/model.md)** for the mathematics and
 | ------------------- | -------------------------------------------------------------------------- |
 | `timebomb/`         | The backend solver **`General.py`** (arbitrary bad-guy count + bomb, joint inference over the bad count), the shared `UsefulFunctions.py` / `Consistency.py`, and the `AI.py` RL agent (on hold). Also the four **frozen** hardcoded variants (`OneBadGuyNoBomb`, `TwoBadGuysNoBomb`, `OneBadGuyOneBomb`, `TwoBadGuysOneBomb`) — independent reference oracles that cross-check `General.py`; **do not modify them**. |
 | `tests/`            | Test suites (independent `math.comb` brute-force references).               |
-| `web/`              | Flask API + browser "Time Bomb Assistant" UI, on hold.                      |
+| `web/`              | The browser assistant: a static page + one stateless Flask endpoint that replays the game's event log through `General.py` (no math of its own). See "The web assistant" below. |
 | `docs/`, `TODO.md`  | Model reference, roadmap, decision records (ADRs), and open work items.     |
 
 ## Playing
@@ -35,6 +35,26 @@ See **[docs/model.md](docs/model.md)** for the mathematics and
 # Simulate a 5-player game with the backend solver
 PYTHONPATH=timebomb python3 -c "from General import PlayAuto; PlayAuto(num_players=5, verbosity=1)"
 ```
+
+## The web assistant
+
+The same assistant in the browser, for use at a live table (phone-friendly). It needs
+Flask in the venv (`.venv/bin/python -m pip install flask`), then:
+
+```bash
+.venv/bin/python web/app.py            # http://127.0.0.1:5000
+.venv/bin/python web/app.py --host 0.0.0.0   # reachable from a phone on the same Wi-Fi
+```
+
+Set up the game (4–8 players; the official role deal — including the counts the deal
+leaves uncertain — or a fixed override), then enter each round's declarations and cut
+results as they happen. After every entry the page shows, per player, P(bad), P(bomb),
+P(safe wire), and the information value of cutting them — computed by `General.py`
+exactly as the interactive `Play` loop does. Mistyped entries can be undone all the way
+back; jointly impossible table claims warn but never block; a reload restores the game
+(the whole game state lives in the browser, the server is stateless). Design artifacts
+live in `specs/001-web-cut-panel/`; web tests run with
+`.venv/bin/python -m pytest web/tests -q`.
 
 ## Testing
 

@@ -36,9 +36,14 @@ hardcoded variant is its `(num_bad, num_bom)` projection.
 ## Axis C — Downstream (blocked on the now-finished backend)
 
 ### C1 — `web/` — fix up the website
-- [ ] Re-port the cleaned `General.py` math (`web/app.py` duplicates an old
-      `General.py`-style impl) and present the quantities-only four-stat panel (§3.5, the
-      `CutPanel`) in the browser assistant rather than a single dictated cut.
+- [x] **Rebuilt via Spec Kit** (`specs/001-web-cut-panel/`): the old in-page math is
+      gone; a stateless Flask endpoint replays the browser-held event log through
+      `General.py` (mirroring `Play`'s call pattern) and serves the quantities-only
+      §3.5 panel plus P(bad)/P(num_bad). Full-history undo, reload survival,
+      Consistency warnings; parity suite in `web/tests/` pins responses to direct
+      solver output. Known limit: at N=8 the panel takes ~2.1 s (solver floor —
+      per-player `ProbCut` sweep in stats 3–4; a beam/analytic `H_Min` approximation
+      is the backend follow-up, see "Deferred modelling refinements").
 
 ### C2 — `AI.py` — create the AI
 - [ ] Retrain / benchmark the REINFORCE cut agent against the cleaned analytic strategies

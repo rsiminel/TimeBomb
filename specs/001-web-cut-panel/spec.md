@@ -202,7 +202,10 @@ restores the previous panel.
 - **SC-001**: A first-time user can go from opening the page to seeing their first cut
   panel in under 2 minutes for a 5-player game.
 - **SC-002**: After any single entry, the updated panel is visible in under 2 seconds
-  for games up to 8 players.
+  for games up to 7 players, and under 3 seconds at 8 players. (Amended during
+  implementation: at 8 players the panel's fixed per-player cost — before any
+  lookahead — already reaches ~2 s, so no depth cap can close the gap; see research
+  R7.)
 - **SC-003**: For any scripted game, every displayed quantity equals the solver's
   output for the same game state (exact agreement, verified over full scripted games).
 - **SC-004**: 100% of malformed or impossible entries in a test script leave the

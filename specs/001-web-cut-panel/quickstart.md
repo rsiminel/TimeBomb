@@ -70,3 +70,19 @@ LAN (`--host 0.0.0.0`) and open `http://<machine-ip>:5000` from the phone.
 Expected: all green; parity tests assert exact float equality between API responses
 and direct `General.py` calls over scripted games (no re-testing of the math itself —
 Constitution, Constraints).
+
+## Validation run — 2026-07-03 (T022)
+
+- Automated suite: **62 passed** (`web/tests/`: replay 37, parity 6, api 16, latency 3).
+- Scenarios 1–5 driven over live HTTP against `web/app.py` on this machine: first
+  panel 0.35 s, cut update 0.32 s (approx flag set), round-2 belief differs from a
+  fresh game given the same entries, bomb ends the game, truncation-undo restores the
+  pre-bomb response. All as specified.
+- Scenario 6 (reload) is client-side by construction: the record lives in
+  `localStorage` and the page replays it on load.
+- Latency: N≤7 within 2 s; N=8 ~2.1 s → SC-002 amended to 3 s at 8 players (solver
+  floor, research R7).
+- Visual pass: headless Firefox screenshots were blocked by snap confinement on this
+  machine, so the screens were previewed via a verbatim HTML replica (real markup +
+  stylesheet + live solver numbers) shared as an artifact; an in-browser pass on a
+  real phone at a real table remains the owner's acceptance step.

@@ -93,9 +93,15 @@ Decisions resolving every open technical question in plan.md's Technical Context
   | 3 | 2.5 s | 156 s |
   | 4 | 25.9 s | 2237 s |
 
-  Each ply costs ~10×. Provisional cap table for the 2 s budget: `{4: 3, 5: 2, 6: 2,
-  7: 1, 8: 1}` — N=4 and N=6 to be confirmed by the same micro-benchmark during
-  implementation (N=6 may need 1). The contract and UI are cap-agnostic.
+  Each ply costs ~10×. Cap table (confirmed by full-replay measurement during
+  implementation): `{4: 3, 5: 2, 6: 2, 7: 1, 8: 1}` — N=4: 0.32 s, N=5: 0.30 s,
+  N=6: 0.84 s, N=7: 0.65 s. The contract and UI are cap-agnostic.
+
+  **N=8 floor**: the full replay at cap 1 measures ~2.1 s, and dropping to depth 0
+  does not help — the dominant cost is the per-player `ProbCut` sweep that stat 3
+  (`NextHBad`) and stat 4's first ply share, which no depth cap removes. Optimising
+  that is solver work (off-limits from `web/`, Constitution III), so SC-002 was
+  amended instead: 2 s through N=7, 3 s at N=8.
 - **Rationale**: the exact lookahead is `O((2N)^stop)` (see `H_Min`) — the table shows
   it is unusable live beyond tiny depths at N=8; the backend already depth-caps for
   display (`PrintPanel` default 3), and the clarification session chose "depth-capped,
