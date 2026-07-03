@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 
 import numpy as np
 
+import Consistency as cons
 import General as gen
 
 INITIAL_HAND_SIZE = 5
@@ -87,7 +88,7 @@ class _Replay:
     self.revealed = None
     self.found = None
     self.cuts_made = 0
-    self.warnings = []
+    self.warnings = []          # (event_index, dict) — surfaced for the latest event only
     self.decl_warned = False    # at most one of each warning per round, as in Play
     self.cut_warned = False
 
@@ -122,6 +123,14 @@ class _Replay:
     self.decl_warned = False
     self.cut_warned = False
     self.awaiting = "cut"
+    # Jointly impossible declarations (a likely miscount): warn and continue with the
+    # solver's uniform fallback, exactly as Play does (model.md §3.6).
+    if not any(cons.declarations_feasible(self.decls, self.hand_size, self.total_active,
+                                          b, self.num_bom)
+               for b in self.candidate_bs):
+      self.warnings.append((idx, {"code": "impossible_declarations",
+                                  "message": cons.DECL_WARNING}))
+      self.decl_warned = True
 
   def _apply_cut(self, event, idx):
     if self.awaiting != "cut":
@@ -147,12 +156,29 @@ class _Replay:
       self.found[player] += 1
       self.active_wires -= 1
     self.cuts_made += 1
+    self._check_cut_possible(idx)
     if self.active_wires <= 0:
       self.game_over = {"winner": "good", "reason": "wires"}
       self.awaiting = "over"
       return
     if self.cuts_made == self.n:
       self._close_round()
+
+  def _check_cut_possible(self, idx):
+    """Play's impossible-cut signal, at most once per round: ``ProbCut`` returning its
+    prior unchanged (with the belief not already degenerate) means no configuration can
+    explain this cut result — the belief was silently left as-is."""
+    if self.cut_warned:
+      return
+    b0 = self.candidate_bs[0]
+    chk = gen.ProbDeclaration(self.decls, self.hand_size, self.total_active,
+                              b0, self.num_bom)
+    posterior = gen.ProbCut(self.decls, chk, self.revealed, self.found,
+                            self.hand_size, self.active_wires, b0, self.num_bom)
+    if posterior is chk and chk.max() < 1:
+      self.warnings.append((idx, {"code": "impossible_cut",
+                                  "message": cons.CUT_WARNING}))
+      self.cut_warned = True
 
   def _close_round(self):
     """The round's cut budget is spent: fold its evidence and advance (Play's round end)."""
@@ -248,8 +274,12 @@ def replay_record(record):
   replay = _Replay(players, bomb, override)
   for idx, event in enumerate(events):
     replay.apply(event, idx)
+  # A warning belongs to the entry that raised it: surface only those triggered by the
+  # log's final event, so each shows once — when it happens — and not on every later
+  # replay of the same log.
+  last = len(events) - 1
   return {
       "state": replay.state(),
       "belief": replay.belief(),
-      "warnings": replay.warnings,
+      "warnings": [w for idx, w in replay.warnings if idx == last],
   }

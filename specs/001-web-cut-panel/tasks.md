@@ -143,16 +143,16 @@ impossibility warnings, full-history undo
 **Independent Test**: quickstart.md scenario 5 — out-of-range declaration rejected
 inline, impossible declarations warn once, undo steps back to game start
 
-- [ ] T018 [US3] Implement warning detection in `web/replay.py` mirroring
+- [X] T018 [US3] Implement warning detection in `web/replay.py` mirroring
       `General.Play`: declaration feasibility via `Consistency` across candidate bad
       counts, impossible-cut signal (`ProbCut` returning its prior), each emitted at
       most once per round in the `warnings` array (200, never 422 — contract
       invariant 3)
-- [ ] T019 [US3] Add mistake handling to `web/static/main.js`: inline `[0, hand
+- [X] T019 [US3] Add mistake handling to `web/static/main.js`: inline `[0, hand
       size]` declaration validation before any request, warning banner rendering,
       undo button that truncates the stored log by one event and refetches, and 422
       recovery that surfaces `eventIndex` with an undo offer
-- [ ] T020 [P] [US3] Write warning-discipline and undo tests in
+- [X] T020 [P] [US3] Write warning-discipline and undo tests in
       `web/tests/test_api.py` + `web/tests/test_replay.py`: jointly impossible
       declarations → 200 with one warning (not repeated next entry), impossible cut →
       warning with belief left at prior, undo-to-start equivalence (SC-004)

@@ -110,6 +110,62 @@ class TestRoundsAndGameEnd:
         assert resp.get_json()["eventIndex"] == 2
 
 
+class TestWarningDiscipline:
+    """Jointly impossible entries are legal input: 200 with a warning, never 422, and
+    each warning fires once — on the entry that raised it (SC-004, contract inv. 3)."""
+
+    IMPOSSIBLE_DECLS = [5, 5, 5, 5]  # >=2 good players would jointly hold 10 of 4 wires
+
+    def test_impossible_declarations_warn_once(self, client):
+        events = [decl(*self.IMPOSSIBLE_DECLS)]
+        resp = client.post("/api/panel", json=record(events=events))
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert [w["code"] for w in body["warnings"]] == ["impossible_declarations"]
+        assert body["belief"] is not None  # fallback belief still renders
+
+        # The first cut on a degenerate round also reads as impossible — exactly what
+        # the interactive Play loop reports — but each warning fires at most once per
+        # round: the second cut is quiet.
+        events.append(cut(0, "nothing"))
+        body = client.post("/api/panel", json=record(events=events)).get_json()
+        assert [w["code"] for w in body["warnings"]] == ["impossible_cut"]
+        events.append(cut(1, "nothing"))
+        body = client.post("/api/panel", json=record(events=events)).get_json()
+        assert body["warnings"] == []
+
+    def test_impossible_cut_warns_and_continues(self, client):
+        # One bad guy, no bomb, declarations [3,0,0,0] with 4 wires live: the lone
+        # liar holds exactly one wire, so ONE safe cut on a zero-declarer is
+        # explicable (they're the bad guy) — but a second, on a different
+        # zero-declarer, cannot be.
+        events = [decl(3, 0, 0, 0), cut(1, "safe")]
+        body = client.post("/api/panel",
+                           json=record(bomb=False, override=1, events=events)).get_json()
+        assert body["warnings"] == []
+
+        events.append(cut(2, "safe"))
+        resp = client.post("/api/panel",
+                           json=record(bomb=False, override=1, events=events))
+        assert resp.status_code == 200  # impossible input is a warning, never a 422
+        body = resp.get_json()
+        assert [w["code"] for w in body["warnings"]] == ["impossible_cut"]
+        assert body["belief"] is not None  # the assistant keeps rendering (SC-004)
+        assert all(0.0 <= p <= 1.0 for p in body["belief"]["pBad"])
+
+    def test_undo_restores_the_pre_mistake_response(self, client):
+        """Client undo = truncate the log: the server response for the shorter log is
+        exactly the pre-mistake response (full-history undo, FR-011)."""
+        good = record(events=[decl(1, 1, 1, 1), cut(0, "safe")])
+        before = client.post("/api/panel", json=good).get_json()
+
+        with_mistake = record(events=good["events"] + [cut(3, "nothing")])
+        client.post("/api/panel", json=with_mistake)
+
+        undone = client.post("/api/panel", json=good).get_json()
+        assert undone == before
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main([__file__, "-q", "-n0"]))

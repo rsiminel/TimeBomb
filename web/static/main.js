@@ -118,6 +118,7 @@ function showGame() {
 }
 
 async function refresh() {
+  $("undo-button").hidden = record.events.length === 0;
   let response;
   try {
     response = await fetch("/api/panel", {
@@ -130,7 +131,12 @@ async function refresh() {
   }
   const body = await response.json();
   if (!response.ok) {
-    return showWarnings([{ message: `Rejected entry: ${body.error}` }]);
+    // A stored record the server rejects (stale or hand-edited): point at the entry
+    // and leave the undo button as the way out.
+    return showWarnings([{
+      message: `Rejected entry${body.eventIndex >= 0 ? ` #${body.eventIndex + 1}` : ""}: ` +
+        `${body.error}. Undo to fix it.`,
+    }]);
   }
   render(body);
 }
@@ -303,12 +309,26 @@ function initGameHandlers() {
   $("decl-form").addEventListener("submit", (ev) => {
     ev.preventDefault();
     const n = record.setup.players.length;
+    const max = Number($("decl-0").max);
     const values = [];
     for (let i = 0; i < n; i++) {
       const value = Number($(`decl-${i}`).value);
+      if (!Number.isInteger(value) || value < 0 || value > max) {
+        const err = $("decl-error");
+        err.textContent = `${record.setup.players[i]}'s declaration must be a whole ` +
+          `number between 0 and ${max}.`;
+        err.hidden = false;
+        return; // rejected inline — nothing is sent (US3)
+      }
       values.push(value);
     }
     appendEvent({ type: "declarations", values });
+  });
+
+  $("undo-button").addEventListener("click", () => {
+    record.events.pop(); // full-history undo: one entry per press, back to the start
+    saveRecord();
+    refresh();
   });
 
   $("cut-results").addEventListener("click", (ev) => {
