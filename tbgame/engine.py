@@ -155,6 +155,16 @@ def _claims_so_far(events):
            "target": e.get("target")} for e in events if e["type"] == "claim"]
 
 
+# Event fields that stay server-side until reveal(): the deal (round_start carries
+# wires/bombs so from_events can replay without re-rolling) and declaration truth.
+_HIDDEN_EVENT_FIELDS = ("wires", "bombs", "true_wires")
+
+
+def public_event(event):
+  """The event as safe to show any player mid-game (FR-008)."""
+  return {k: v for k, v in event.items() if k not in _HIDDEN_EVENT_FIELDS}
+
+
 # ---------------------------------------------------------------------------
 # TableGame -- the stepwise core
 # ---------------------------------------------------------------------------
@@ -252,6 +262,10 @@ class TableGame:
   @property
   def occupants(self):
     return list(self._occupants)
+
+  @property
+  def exhibition(self):
+    return self._exhibition
 
   def public_state(self):
     """Deep-copied ``PublicState`` snapshot."""

@@ -328,6 +328,7 @@ function renderTurnPanel() {
 
   if (seat === null) {
     panel.hidden = true;
+    $("handoff-overlay").hidden = true;
     if (view.phase === "finished") {
       waiting.hidden = true;
     } else {
@@ -340,15 +341,27 @@ function renderTurnPanel() {
   panel.hidden = false;
 
   const unlocked = priv !== null && priv.myIndex === seat;
-  $("pass-prompt").hidden = unlocked;
+  const humans = view.occupants.filter((o) => o === "human").length;
+  // With several humans on the device, the handoff masks the whole screen
+  // (FR-009); a lone human just gets the inline tap-to-reveal.
+  const useOverlay = humans > 1 && !unlocked;
+  $("handoff-overlay").hidden = !useOverlay;
+  $("pass-prompt").hidden = unlocked || useOverlay;
   $("action-box").hidden = !unlocked;
 
   if (!unlocked) {
     const name = view.playerNames[seat];
     const verb = view.pending.kind === "declare" ? "declare" : "cut a wire";
-    $("pass-text").textContent = `Pass the device to ${name} — it's their turn to ${verb}.`;
-    $("show-hand").textContent = `I'm ${name} — show my hand`;
-    $("show-hand").onclick = () => unlockSeat(seat);
+    if (useOverlay) {
+      $("handoff-text").textContent =
+        `Pass the device to ${name} — it's their turn to ${verb}.`;
+      $("handoff-reveal").textContent = `I'm ${name} — show my hand`;
+      $("handoff-reveal").onclick = () => unlockSeat(seat);
+    } else {
+      $("pass-text").textContent = `It's your turn to ${verb}, ${name}.`;
+      $("show-hand").textContent = `I'm ${name} — show my hand`;
+      $("show-hand").onclick = () => unlockSeat(seat);
+    }
     return;
   }
 
@@ -525,4 +538,6 @@ function initTheme() {
 initTheme();
 initSetup();
 initGameScreen();
-refresh(); // 404 → setup screen; 200 → rejoin the running game (FR-024)
+// Page load re-locks all private views (FR-009: fresh eyes on the screen), then
+// rejoins the running game if there is one (FR-024) or shows setup on 404.
+api("POST", "/api/game/lock").finally(refresh);

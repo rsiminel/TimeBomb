@@ -84,12 +84,12 @@ cut → rounds → winner, AI within latency budget, exhibition mode included.
 
 ### Tests
 
-- [ ] T019 [P] [US2] Privacy test in `web/tests/test_privacy.py`: script a 3-human game through the API and assert no response body ever contains another seat's role/wires/bomb fields; unlock for seat A then requesting seat B's view is refused (SC-003, FR-008)
+- [X] T019 [P] [US2] Privacy test in `web/tests/test_privacy.py`: script a 3-human game through the API and assert no response body ever contains another seat's role/wires/bomb fields; unlock for seat A then requesting seat B's view is refused (SC-003, FR-008)
 
 ### Implementation
 
 - [X] T020 [US2] Unlock/lock in `web/game_service.py` + `web/app.py`: `POST /api/game/unlock` (version-checked, human seats only, single unlocked seat) returning PrivateView, `POST /api/game/lock`, implicit re-lock on any accepted intent and on game load (contracts/api.md)
-- [ ] T021 [US2] Pass-the-device flow in `web/static/play/`: full-viewport named handoff overlay, tap-to-reveal private view (role + hand), explicit hide, auto re-lock on refresh (server is authoritative)
+- [X] T021 [US2] Pass-the-device flow in `web/static/play/`: full-viewport named handoff overlay, tap-to-reveal private view (role + hand), explicit hide, auto re-lock on refresh (server is authoritative)
 
 **Checkpoint**: US1 + US2 — human-only and mixed tables playable
 

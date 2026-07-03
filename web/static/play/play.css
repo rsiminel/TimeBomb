@@ -291,6 +291,24 @@ button.selected {
   border-top: 1px solid var(--line);
 }
 
+/* --- Pass-the-device handoff (FR-009) --- */
+
+#handoff-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  background: var(--paper);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 1.5rem;
+}
+#handoff-overlay[hidden] { display: none; }
+.handoff-inner { max-width: 22rem; }
+#handoff-text { font-size: 1.25rem; font-weight: 600; }
+#handoff-reveal { font-size: 1.05rem; padding: 0.8rem 1.4rem; }
+
 @media (max-width: 480px) {
   body { font-size: 15px; }
   button { padding: 0.5rem 0.8rem; }

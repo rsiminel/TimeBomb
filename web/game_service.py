@@ -7,7 +7,7 @@ own (constitution I).
 import threading
 import time
 
-from tbgame.engine import TableGame, SetupError, IllegalIntent
+from tbgame.engine import TableGame, SetupError, IllegalIntent, public_event
 from tbgame.state import AgentView, legal_targets
 from tbgame.agents.solver import SolverBot
 
@@ -158,7 +158,9 @@ def submit_intent(seat, kind, value, claim, version):
       raise ActiveGameError(err.reason, 422) from err
     active.version += 1
     active.unlocked_seat = None
-    return active.version, events
+    # A round-crossing cut appends the next round_start, which records the fresh
+    # deal for replay -- redact it (and declaration truth) before it leaves (FR-008).
+    return active.version, [public_event(e) for e in events]
 
 
 # ---------------------------------------------------------------------------
@@ -179,17 +181,21 @@ def _worker_loop(generation):
       pending = active.game.pending
       occupants = active.game.occupants
       ai_seats = [s for s in pending.seats if _ai_agent_for(occupants[s]) is not None]
-      if not ai_seats:
-        time.sleep(AI_POLL_INTERVAL_S)
-        continue
-      active.thinking.update(ai_seats)
-      pending_kind = pending.kind
-      # Snapshot views under the lock (PublicState.snapshot() deep-copies); the
-      # decision itself runs outside it so a human's request is never blocked on a
-      # bot "thinking" (research R3).
-      views = {s: AgentView(public=active.game.public_state(),
-                            private=active.game.private_view(s)) for s in ai_seats}
-      agents = {s: _ai_agent_for(occupants[s]) for s in ai_seats}
+      if ai_seats:
+        active.thinking.update(ai_seats)
+        pending_kind = pending.kind
+        # Snapshot views under the lock (PublicState.snapshot() deep-copies); the
+        # decision itself runs outside it so a human's request is never blocked on
+        # a bot "thinking" (research R3).
+        views = {s: AgentView(public=active.game.public_state(),
+                              private=active.game.private_view(s)) for s in ai_seats}
+        agents = {s: _ai_agent_for(occupants[s]) for s in ai_seats}
+
+    # The idle sleep must sit outside the lock: sleeping while holding it would
+    # starve every request in an all-human game.
+    if not ai_seats:
+      time.sleep(AI_POLL_INTERVAL_S)
+      continue
 
     decisions = {}
     for seat, agent in agents.items():

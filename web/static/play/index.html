@@ -107,6 +107,15 @@
     </section>
   </main>
 
+  <!-- Full-viewport pass-the-device handoff (FR-009): masks the screen between
+       humans; the private view appears only after the named player's explicit tap. -->
+  <div id="handoff-overlay" hidden>
+    <div class="handoff-inner">
+      <p id="handoff-text"></p>
+      <button type="button" id="handoff-reveal" class="primary"></button>
+    </div>
+  </div>
+
   <script src="/play/play.js"></script>
 </body>
 </html>
