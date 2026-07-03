@@ -67,6 +67,49 @@ class TestPanelResponses:
         assert client.get("/").status_code == 200
 
 
+def full_round(n, declarations, results):
+    events = [decl(*declarations)]
+    events += [cut(p, results[p]) for p in range(n)]
+    return events
+
+
+class TestRoundsAndGameEnd:
+    def test_round_rollover_fields(self, client):
+        events = full_round(4, [1, 1, 1, 1], ["safe", "nothing", "nothing", "nothing"])
+        body = client.post("/api/panel", json=record(events=events)).get_json()
+        state = body["state"]
+        assert state["round"] == 2
+        assert state["handSize"] == 4
+        assert state["awaiting"] == "declarations"
+        assert body["belief"]["panel"] is None  # between rounds: no live cut stats
+
+    def test_game_over_bomb(self, client):
+        events = [decl(1, 1, 1, 1), cut(2, "bomb")]
+        body = client.post("/api/panel", json=record(events=events)).get_json()
+        assert body["state"]["gameOver"] == {"winner": "bad", "reason": "bomb"}
+        assert body["state"]["awaiting"] == "over"
+        assert body["belief"] is not None  # final belief still shown
+
+    def test_game_over_wires(self, client):
+        events = [decl(1, 1, 1, 1)] + [cut(p, "safe") for p in range(4)]
+        body = client.post("/api/panel", json=record(events=events)).get_json()
+        assert body["state"]["gameOver"] == {"winner": "good", "reason": "wires"}
+
+    def test_game_over_time(self, client):
+        events = []
+        for _ in range(4):
+            events += full_round(4, [0, 0, 0, 0],
+                                 ["nothing", "nothing", "nothing", "nothing"])
+        body = client.post("/api/panel", json=record(events=events)).get_json()
+        assert body["state"]["gameOver"] == {"winner": "bad", "reason": "time"}
+
+    def test_no_entries_after_game_over(self, client):
+        events = [decl(1, 1, 1, 1), cut(2, "bomb"), cut(0, "safe")]
+        resp = client.post("/api/panel", json=record(events=events))
+        assert resp.status_code == 422
+        assert resp.get_json()["eventIndex"] == 2
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main([__file__, "-q", "-n0"]))

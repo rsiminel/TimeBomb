@@ -115,20 +115,20 @@ game ends with a winner banner
 **Independent Test**: quickstart.md scenarios 3–4 — two scripted rounds show carried
 evidence; a bomb cut ends the game
 
-- [ ] T014 [US2] Implement cross-round evidence accumulation in `web/replay.py`: sum
+- [X] T014 [US2] Implement cross-round evidence accumulation in `web/replay.py`: sum
       `RoundLogU` per candidate bad count over completed rounds (exactly as
       `General.Play` does at round end) so the current round's belief conditions on
       all prior rounds
-- [ ] T015 [P] [US2] Extend `web/tests/test_solver_parity.py` with a scripted
+- [X] T015 [P] [US2] Extend `web/tests/test_solver_parity.py` with a scripted
       two-round game: round-2 `belief` equals the direct solver computation with
       round-1 evidence accumulated, and differs from a fresh game fed only round-2
       entries
-- [ ] T016 [US2] Add round-advance and game-over UI to `web/static/main.js` +
+- [X] T016 [US2] Add round-advance and game-over UI to `web/static/main.js` +
       `web/static/index.html`: rounds auto-advance when the cut budget is spent (per
       data-model.md transitions), new-round declaration prompt at the smaller hand size,
       winner banner (side + reason, no advice), entry controls disabled after game
       over, new-game action that discards the stored record
-- [ ] T017 [P] [US2] Extend `web/tests/test_api.py`: round rollover response fields,
+- [X] T017 [P] [US2] Extend `web/tests/test_api.py`: round rollover response fields,
       all three `gameOver` variants, and no-entries-accepted-after-game-over (422)
 
 **Checkpoint**: a complete 4-round game is playable without leaving the page

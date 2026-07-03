@@ -116,6 +116,61 @@ class TestSingleRoundParity:
         assert all(row["pBomb"] == 0.0 for row in out["belief"]["panel"])
 
 
+class TestMultiRoundParity:
+    def test_two_round_accumulation(self):
+        """Round-2 belief conditions on round-1 evidence (US2 / FR-008): it equals the
+        direct solver computation with round 1's RoundLogU accumulated, and differs
+        from a fresh game fed only the round-2 entries."""
+        names = ["Alice", "Bob", "Clara", "Darryl"]
+        d1 = [2, 1, 1, 1]
+        round1_cuts = [(0, "safe"), (1, "nothing"), (2, "safe"), (3, "nothing")]
+        events = [{"type": "declarations", "values": d1}]
+        events += [{"type": "cut", "player": p, "result": r} for p, r in round1_cuts]
+        d2 = [1, 0, 1, 1]
+        events.append({"type": "declarations", "values": d2})
+        events.append({"type": "cut", "player": 1, "result": "safe"})
+        out = replay_record(record(names, events=events))
+
+        # Direct solver: round 1 folded at its final cut state (hand 5, started at 4
+        # wires, ended at 2), then the round-2 readout at hand 4.
+        prior_b = gen.NUM_BAD_PRIOR(4)
+        log_u = {
+            b: gen.RoundLogU(np.array(d1), np.array([1, 1, 1, 1]),
+                             np.array([1, 0, 1, 0]), 5, 4, 2, b, 1)
+            for b in prior_b
+        }
+        expected = play_readout(d2, [0, 1, 0, 0], [0, 1, 0, 0], hand_size=4,
+                                total_active=2, active_wires=1, prior_b=prior_b,
+                                num_bom=1, log_u_by_b=log_u)
+        assert_belief_matches(out["belief"], *expected)
+
+        # And the carried evidence matters: a fresh game given only round-2 entries
+        # (its own hand size and wire count) believes something else.
+        fresh = play_readout(d2, [0, 1, 0, 0], [0, 1, 0, 0], hand_size=4,
+                             total_active=2, active_wires=1, prior_b=prior_b,
+                             num_bom=1, log_u_by_b=None)
+        assert out["belief"]["pBad"] != [float(p) for p in fresh[0]]
+
+    def test_between_rounds_belief_has_no_panel(self):
+        """After a round closes, pBad/pNumBad come from accumulated evidence alone."""
+        names = ["Alice", "Bob", "Clara", "Darryl"]
+        d1 = [1, 1, 1, 1]
+        events = [{"type": "declarations", "values": d1}]
+        events += [{"type": "cut", "player": p, "result": "nothing"} for p in range(4)]
+        out = replay_record(record(names, events=events))
+        assert out["state"]["awaiting"] == "declarations"
+        assert out["belief"]["panel"] is None
+        prior_b = gen.NUM_BAD_PRIOR(4)
+        log_u = {
+            b: gen.RoundLogU(np.array(d1), np.ones(4, dtype=int),
+                             np.zeros(4, dtype=int), 5, 4, 4, b, 1)
+            for b in prior_b
+        }
+        p_bad, p_num_bad, _ = gen.JointBadBelief(log_u, prior_b)
+        assert out["belief"]["pBad"] == [float(p) for p in p_bad]
+        assert out["belief"]["pNumBad"] == {str(b): float(p) for b, p in p_num_bad.items()}
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main([__file__, "-q", "-n0"]))
