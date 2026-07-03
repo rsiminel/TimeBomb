@@ -7,6 +7,10 @@ models
 sim/logs/
 sim/_*.log
 
+# Hosted web game: local saves and instance settings (specs/002-host-local-game)
+web/saves/
+web/instance/
+
 # Local Claude Code config and agent guidance (not tracked)
 .claude/
 CLAUDE.md

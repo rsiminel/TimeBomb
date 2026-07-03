@@ -12,3 +12,11 @@ _root = Path(__file__).parent
 # Source roots on sys.path (same bare-import convention for the sim/ sub-project).
 for _src in ("timebomb", "sim", "sim/agents"):
   sys.path.insert(0, str(_root / _src))
+
+# tbgame/ (specs/002-host-local-game) is a real package (tbgame/__init__.py), not a bare
+# source root: sim/state.py, sim/engine.py, sim/agents/base.py share bare filenames with
+# their tbgame/ counterparts (both promoted from/shimming to the same names), so bare
+# `import state` can only ever resolve to one of them per process. Dotted access
+# (`tbgame.state`, `tbgame.engine.TableGame`, per contracts/engine.md) sidesteps the
+# collision entirely. The repo root just needs to be on sys.path for that.
+sys.path.insert(0, str(_root))
