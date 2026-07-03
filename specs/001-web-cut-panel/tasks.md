@@ -70,29 +70,29 @@ after every entry, quantities only
 declarations and cuts, see the panel update after each entry with no recommendation
 affordance
 
-- [ ] T007 [US1] Implement belief orchestration in `web/replay.py`, mirroring
+- [X] T007 [US1] Implement belief orchestration in `web/replay.py`, mirroring
       `General.Play`'s call pattern exactly (research R3): `NUM_BAD_PRIOR`/override →
       per-cut `ProbDeclaration` → `ProbCut` on cumulative `revealed`/`found` →
       provisional `RoundLogU` fold-in → `JointBadBelief` → `Separate` for P(bomb) →
       `CutPanel(..., max_depth)`; populate the `belief` block of contracts/api.md
       verbatim from solver outputs (NaN rows → `noCards`)
-- [ ] T008 [US1] Add the per-player-count depth-cap table from research R7 to
+- [X] T008 [US1] Add the per-player-count depth-cap table from research R7 to
       `web/replay.py` (`{4:3, 5:2, 6:2, 7:1, 8:1}`), set `approx`/`maxDepth` in the
       response, and confirm the N=4 and N=6 entries with the R7 micro-benchmark
       (adjust the table, not the budget, if over 2 s)
-- [ ] T009 [P] [US1] Write solver-parity tests in `web/tests/test_solver_parity.py`
+- [X] T009 [P] [US1] Write solver-parity tests in `web/tests/test_solver_parity.py`
       (SC-003): scripted single-round games at N=4 (uncertain deal), N=5 (fixed
       deal), a `numBadOverride` game, and a `bomb: false` game (`num_bom=0` path,
       zero `pBomb` column) — every `belief` number exactly equals the direct
       `General.py` computation
-- [ ] T010 [P] [US1] Write endpoint tests for panel responses in
+- [X] T010 [P] [US1] Write endpoint tests for panel responses in
       `web/tests/test_api.py`: `belief: null` before declarations, panel present
       after, fixed seat order preserved, `approx` flag set when capped
-- [ ] T011 [P] [US1] Build the setup screen in `web/static/index.html` +
+- [X] T011 [P] [US1] Build the setup screen in `web/static/index.html` +
       `web/static/main.js`: player count/names, bomb toggle, official-deal default
       with fixed-count override, client-side validation, GameRecord creation in
       `localStorage`
-- [ ] T012 [US1] Build the game screen in `web/static/index.html` +
+- [X] T012 [US1] Build the game screen in `web/static/index.html` +
       `web/static/main.js`: declaration entry, cut entry (player + safe/nothing/bomb;
       `noCards` players rendered unselectable), fetch to `/api/panel` after every
       entry, panel table rendered in seat order with no sorting/highlighting
@@ -100,7 +100,7 @@ affordance
       (the depth-capped stat) with its "approximate" label wired to `approx` and
       `onePly` as an optional secondary detail, record replayed from `localStorage`
       on page load (SC-005)
-- [ ] T013 [P] [US1] Write `web/static/styles.css`: phone-first layout, panel readable
+- [X] T013 [P] [US1] Write `web/static/styles.css`: phone-first layout, panel readable
       on a small screen (spec Assumptions)
 
 **Checkpoint**: MVP — a full round is playable end-to-end against the real solver

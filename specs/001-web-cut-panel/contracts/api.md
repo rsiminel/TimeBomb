@@ -63,7 +63,10 @@ Field semantics:
 - `belief.panel[i]` — row i of `CutPanel` untouched; `noCards: true` replaces the four
   numbers (solver NaN row) when player i has no face-down card.
 - `belief.approx` — the round-horizon stat was depth-capped; the UI must label it.
-- `belief` is `null` before the first declarations event (`awaiting: "declarations"`).
+- `belief` is `null` before the first declarations event. Between rounds and after a
+  time-out ending (no round in progress), `belief.pBad`/`pNumBad` reflect the
+  accumulated completed-round evidence and `belief.panel` is `null` — there is no
+  live round to compute cut stats for.
 - `warnings` — array of `{ "code": "impossible_declarations" | "impossible_cut",
   "message": "..." }`; the replay emits each at most once per round, mirroring the
   `Consistency` behaviour of the interactive `Play` loop.

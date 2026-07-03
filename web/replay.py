@@ -21,6 +21,10 @@ MIN_PLAYERS = 4
 MAX_PLAYERS = 8
 RESULTS = ("safe", "nothing", "bomb")
 
+# Lookahead cap for the round-horizon info stat, per player count: the largest depth
+# whose worst-case CutPanel beats the 2 s budget of SC-002 (measured, research R7).
+DEPTH_CAP = {4: 3, 5: 2, 6: 2, 7: 1, 8: 1}
+
 
 class RecordError(Exception):
   """A record that violates the data model. ``event_index`` pinpoints the first
@@ -153,12 +157,15 @@ class _Replay:
   def _close_round(self):
     """The round's cut budget is spent: fold its evidence and advance (Play's round end)."""
     self._fold_round()
+    self.decls = None  # this round's evidence now lives in log_u_by_b only
+    self.revealed = None
+    self.found = None
+    self.cuts_made = 0
     if self.hand_size == FINAL_HAND_SIZE:
       self.game_over = {"winner": "bad", "reason": "time"}
       self.awaiting = "over"
       return
     self.hand_size -= 1
-    self.decls = None
     self.awaiting = "declarations"
 
   def _fold_round(self):
@@ -183,7 +190,56 @@ class _Replay:
     }
 
   def belief(self):
-    return None  # solver orchestration lands with User Story 1
+    """The solver-computed belief block of contracts/api.md — General.Play's readout.
+
+    Every number here is a raw solver output. With a round in progress (declarations
+    entered), the joint belief folds the current round in provisionally and the panel
+    is computed on the round's live posterior — exactly the readout Play prints before
+    each cut. Between rounds (or after a time-out ending) only the accumulated
+    evidence exists, so the panel is null; before any declarations, belief is null.
+    """
+    if self.decls is None:
+      if self.round_num == 0:
+        return None
+      p_bad, p_num_bad, _ = gen.JointBadBelief(self.log_u_by_b, self.prior_b)
+      return self._belief_dict(p_bad, p_num_bad, panel_rows=None, approx=False,
+                               max_depth=None)
+    b0 = self.candidate_bs[0]
+    probs = gen.ProbDeclaration(self.decls, self.hand_size, self.total_active,
+                                b0, self.num_bom)
+    probs = gen.ProbCut(self.decls, probs, self.revealed, self.found,
+                        self.hand_size, self.active_wires, b0, self.num_bom)
+    provisional = {}
+    for b in self.candidate_bs:
+      provisional[b] = self.log_u_by_b[b] + gen.RoundLogU(
+          self.decls, self.revealed, self.found, self.hand_size,
+          self.total_active, self.active_wires, b, self.num_bom)
+    p_bad, p_num_bad, _ = gen.JointBadBelief(provisional, self.prior_b)
+    cap = DEPTH_CAP[self.n]
+    panel = gen.CutPanel(self.decls, probs, self.revealed, self.found,
+                         self.hand_size, self.active_wires, b0, self.num_bom,
+                         max_depth=cap)
+    cuts_left = self.n - int(np.sum(self.revealed))
+    rows = []
+    for i in range(self.n):
+      if np.all(np.isnan(panel[i])):
+        rows.append({"noCards": True})
+      else:
+        p_safe, p_bomb, one_ply, horizon = panel[i]
+        rows.append({"pSafe": float(p_safe), "pBomb": float(p_bomb),
+                     "onePly": float(one_ply), "horizon": float(horizon),
+                     "noCards": False})
+    return self._belief_dict(p_bad, p_num_bad, panel_rows=rows,
+                             approx=cap < cuts_left, max_depth=cap)
+
+  def _belief_dict(self, p_bad, p_num_bad, panel_rows, approx, max_depth):
+    return {
+        "pBad": [float(p) for p in p_bad],
+        "pNumBad": {str(b): float(p) for b, p in p_num_bad.items()},
+        "panel": panel_rows,
+        "approx": approx,
+        "maxDepth": max_depth,
+    }
 
 
 def replay_record(record):
