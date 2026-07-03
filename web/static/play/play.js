@@ -56,6 +56,8 @@ async function refresh() {
     return;
   }
   const unchanged = view !== null && data.version === view.version;
+  // A resumed finished save opens straight into the replay (contracts/api.md).
+  if (view === null && data.phase === "finished") replayOpen = true;
   view = data;
   if (priv !== null && view.unlockedSeat !== priv.myIndex) priv = null; // re-locked
   // Skip the re-render on a no-op poll tick, so it can't wipe a form mid-typing.
@@ -185,6 +187,7 @@ function renderGame() {
   renderBanner();
   renderTurnPanel();
   renderPanelDrawer();
+  if (view.phase === "finished") renderReplay();
 }
 
 function renderStatus() {
@@ -716,9 +719,19 @@ function initGameScreen() {
     showSetup();
   });
   $("abandon-button").addEventListener("click", async () => {
-    if (!confirm("Abandon this game? Its progress is lost.")) return;
+    if (!confirm("Abandon this game? Progress since the last save is lost.")) return;
     await api("DELETE", "/api/game");
     showSetup();
+  });
+  $("save-button").addEventListener("click", async () => {
+    const name = prompt("Name this save:");
+    if (name === null || name.trim() === "") return;
+    const { status, data } = await api("POST", "/api/saves", { name: name.trim() });
+    const note = $("save-note");
+    note.textContent = status === 201
+      ? `Saved as “${name.trim()}” — resumable from the home page.`
+      : (data && data.error) || `Save failed (${status})`;
+    note.hidden = false;
   });
 
   // A backgrounded tab stops polling; catch up the moment it returns.

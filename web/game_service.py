@@ -4,16 +4,25 @@ ActiveGame). Transport-adjacent bookkeeping only -- every rule decision comes fr
 -> ``replay.py`` -> ``General.py``. This module holds no math and no rule logic of its
 own (constitution I).
 """
+import datetime
+import json
+import re
 import threading
 import time
+from pathlib import Path
 
 import panel_bridge
 import replay
-from tbgame.engine import TableGame, SetupError, IllegalIntent, public_event
+from tbgame.engine import (TableGame, SetupError, IllegalIntent, SchemaError,
+                           public_event)
 from tbgame.state import AgentView, legal_targets
 from tbgame.agents.solver import SolverBot
 
 AI_POLL_INTERVAL_S = 0.2
+
+# Manual named saves (data-model.md SaveFile), git-ignored local storage.
+SAVES_DIR = Path(__file__).resolve().parent / "saves"
+_SAVE_NAME_RE = re.compile(r"^[\w][\w \-]{0,39}$")   # filesystem-safe, no traversal
 
 
 class ActiveGameError(Exception):
@@ -27,8 +36,9 @@ class ActiveGameError(Exception):
 
 
 class _ActiveGame:
-  def __init__(self, game, panel_allowed, num_bad_override):
+  def __init__(self, game, setup, panel_allowed, num_bad_override):
     self.game = game
+    self.setup = setup          # as received; persisted verbatim into SaveFiles
     self.version = 1
     self.unlocked_seat = None
     self.thinking = set()
@@ -58,14 +68,19 @@ def create_game(setup):
       game = TableGame(setup)
     except SetupError as err:
       raise ActiveGameError(err.reason, 422) from err
-    role_deal = setup.get("role_deal", "official")
-    _active = _ActiveGame(game, panel_allowed=bool(setup.get("panel_allowed", False)),
-                          num_bad_override=None if role_deal == "official" else role_deal)
+    _active = _new_active(game, setup)
     _generation += 1
     generation = _generation
     version = _active.version
   _start_worker(generation)
   return version
+
+
+def _new_active(game, setup):
+  role_deal = setup.get("role_deal", "official")
+  return _ActiveGame(game, setup,
+                     panel_allowed=bool(setup.get("panel_allowed", False)),
+                     num_bad_override=None if role_deal == "official" else role_deal)
 
 
 def abandon_game():
@@ -180,6 +195,77 @@ def submit_intent(seat, kind, value, claim, version):
     # A round-crossing cut appends the next round_start, which records the fresh
     # deal for replay -- redact it (and declaration truth) before it leaves (FR-008).
     return active.version, [public_event(e) for e in events]
+
+
+# ---------------------------------------------------------------------------
+# Manual named saves (FR-023): write/list/load/delete web/saves/<name>.json.
+# The event log alone reduces back to an identical TableGame (from_events).
+# ---------------------------------------------------------------------------
+
+def _save_path(name):
+  if not isinstance(name, str) or not _SAVE_NAME_RE.match(name):
+    raise ActiveGameError("save name must be 1-40 letters, digits, spaces or dashes", 422)
+  return SAVES_DIR / (name + ".json")
+
+
+def save_game(name):
+  path = _save_path(name)
+  with _lock:
+    active = _require_active()
+    if path.exists():
+      raise ActiveGameError("a save named %r already exists" % name, 409)
+    data = {
+        "schema_version": active.game.events[0]["schema_version"],
+        "name": name,
+        "created": datetime.datetime.now().isoformat(timespec="seconds"),
+        "setup": active.setup,
+        "events": active.game.events,
+        # Convenience cache for the resume list; the events stay authoritative.
+        "phase": active.game.public_state().phase,
+    }
+    SAVES_DIR.mkdir(exist_ok=True)
+    path.write_text(json.dumps(data))
+
+
+def list_saves():
+  out = []
+  for path in sorted(SAVES_DIR.glob("*.json")):
+    try:
+      data = json.loads(path.read_text())
+      out.append({"name": data["name"], "created": data["created"],
+                  "seats": [s["name"] for s in data["setup"]["seats"]],
+                  "phase": data.get("phase")})
+    except (ValueError, KeyError, TypeError):
+      continue   # an unreadable file never breaks the listing
+  return out
+
+
+def resume_game(name):
+  global _active, _generation
+  path = _save_path(name)
+  if not path.exists():
+    raise ActiveGameError("no save named %r" % name, 404)
+  with _lock:
+    if _active is not None:
+      raise ActiveGameError("a game is already active", 409)
+    data = json.loads(path.read_text())
+    try:
+      game = TableGame.from_events(data["events"])
+    except SchemaError as err:
+      raise ActiveGameError(err.reason, 422) from err
+    _active = _new_active(game, data["setup"])
+    _generation += 1
+    generation = _generation
+    version = _active.version
+  _start_worker(generation)
+  return version
+
+
+def delete_save(name):
+  path = _save_path(name)
+  if not path.exists():
+    raise ActiveGameError("no save named %r" % name, 404)
+  path.unlink()
 
 
 # ---------------------------------------------------------------------------

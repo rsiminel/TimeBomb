@@ -78,6 +78,32 @@ def delete_game():
   return "", 204
 
 
+@app.get("/api/saves")
+def list_saves():
+  return jsonify(game_service.list_saves()), 200
+
+
+@app.post("/api/saves")
+def create_save():
+  body = request.get_json(silent=True)
+  if not isinstance(body, dict):
+    return jsonify({"error": "body must be JSON"}), 400
+  game_service.save_game(body.get("name"))
+  return "", 201
+
+
+@app.post("/api/saves/<name>/resume")
+def resume_save(name):
+  version = game_service.resume_game(name)
+  return jsonify({"version": version}), 200
+
+
+@app.delete("/api/saves/<name>")
+def delete_save(name):
+  game_service.delete_save(name)
+  return "", 204
+
+
 @app.get("/api/game/panel")
 def game_panel():
   return jsonify(game_service.panel()), 200

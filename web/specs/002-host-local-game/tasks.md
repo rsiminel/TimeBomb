@@ -158,13 +158,13 @@ cut → rounds → winner, AI within latency budget, exhibition mode included.
 
 ### Tests
 
-- [ ] T032 [P] [US6] Save round-trip test in `web/tests/test_saves.py`: save mid-round-2, rebuild service (simulated restart), resume, assert identical public state/pending/version reset and intact hidden state; schema_version mismatch rejected cleanly; duplicate name 409 (SC-007, FR-023)
+- [X] T032 [P] [US6] Save round-trip test in `web/tests/test_saves.py`: save mid-round-2, rebuild service (simulated restart), resume, assert identical public state/pending/version reset and intact hidden state; schema_version mismatch rejected cleanly; duplicate name 409 (SC-007, FR-023)
 
 ### Implementation
 
-- [ ] T033 [US6] Save store in `web/game_service.py` (or `web/save_store.py` if it outgrows the service): write/list/load/delete `web/saves/<name>.json` per data-model.md SaveFile; resume via `TableGame.from_events`; resuming a save with LLM seats while no key is configured offers solver-bot substitution instead of failing
-- [ ] T034 [US6] Endpoints in `web/app.py`: `GET/POST /api/saves`, `POST /api/saves/<name>/resume`, `DELETE /api/saves/<name>` (contracts/api.md)
-- [ ] T035 [US6] UI: save dialog in `web/static/play/`, resume list + delete (with confirm) on the home page `web/static/index.html`; finished saves open straight into replay
+- [X] T033 [US6] Save store in `web/game_service.py` (or `web/save_store.py` if it outgrows the service): write/list/load/delete `web/saves/<name>.json` per data-model.md SaveFile; resume via `TableGame.from_events`; resuming a save with LLM seats while no key is configured offers solver-bot substitution instead of failing
+- [X] T034 [US6] Endpoints in `web/app.py`: `GET/POST /api/saves`, `POST /api/saves/<name>/resume`, `DELETE /api/saves/<name>` (contracts/api.md)
+- [X] T035 [US6] UI: save dialog in `web/static/play/`, resume list + delete (with confirm) on the home page `web/static/index.html`; finished saves open straight into replay
 
 **Checkpoint**: interruptible game nights
 

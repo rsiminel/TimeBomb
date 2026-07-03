@@ -40,6 +40,20 @@
     .door p { margin: 0; color: var(--muted); font-size: 0.92rem; }
     #continue-note { margin-top: 1rem; font-size: 0.92rem; color: var(--muted); }
     #continue-note a { color: var(--accent); }
+    #saves { margin-top: 1.6rem; }
+    #saves h2 { font-size: 1.05rem; margin: 0 0 0.5rem; }
+    .save-row {
+      display: flex; align-items: center; gap: 0.6rem; padding: 0.5rem 0.2rem;
+      border-bottom: 1px solid var(--line); font-size: 0.92rem;
+    }
+    .save-row .save-meta { flex: 1; min-width: 0; }
+    .save-row .save-name { font-weight: 600; }
+    .save-row .save-sub { color: var(--muted); font-size: 0.85rem; }
+    .save-row button {
+      font-size: 0.85rem; padding: 0.35rem 0.7rem; border: 1px solid var(--line);
+      border-radius: 8px; background: var(--card); color: var(--ink); cursor: pointer;
+    }
+    .save-row button.resume { border-color: var(--accent); color: var(--accent); }
   </style>
 </head>
 <body>
@@ -60,15 +74,69 @@
           never the call.</p>
       </a>
     </nav>
-    <!-- Continue/resume affordance: filled in by US6 (saves); until then it only
-         appears when a live game is already running. -->
     <p id="continue-note" hidden>A game is in progress — <a href="/play">continue it</a>.</p>
+
+    <!-- Named saves (specs/002 US6): resumable on this machine across restarts. -->
+    <section id="saves" hidden>
+      <h2>Saved games</h2>
+      <div id="save-list"></div>
+    </section>
   </main>
 
   <script>
     fetch("/api/game").then((resp) => {
       if (resp.ok) document.getElementById("continue-note").hidden = false;
     }).catch(() => {});
+
+    function renderSaves(saves) {
+      const box = document.getElementById("saves");
+      const list = document.getElementById("save-list");
+      list.replaceChildren();
+      box.hidden = saves.length === 0;
+      for (const save of saves) {
+        const row = document.createElement("div");
+        row.className = "save-row";
+        const meta = document.createElement("div");
+        meta.className = "save-meta";
+        const name = document.createElement("div");
+        name.className = "save-name";
+        name.textContent = save.name;
+        const sub = document.createElement("div");
+        sub.className = "save-sub";
+        const when = (save.created || "").replace("T", " ");
+        sub.textContent = `${save.seats.join(", ")} — ` +
+          (save.phase === "finished" ? "finished (opens in replay)" : "in progress") +
+          (when ? ` — ${when}` : "");
+        meta.append(name, sub);
+
+        const resume = document.createElement("button");
+        resume.className = "resume";
+        resume.textContent = "Resume";
+        resume.addEventListener("click", async () => {
+          const resp = await fetch(`/api/saves/${encodeURIComponent(save.name)}/resume`,
+                                   { method: "POST" });
+          if (resp.ok) { location.href = "/play"; return; }
+          const body = await resp.json().catch(() => null);
+          alert((body && body.error) || `Resume failed (${resp.status})`);
+        });
+
+        const del = document.createElement("button");
+        del.textContent = "Delete";
+        del.addEventListener("click", async () => {
+          if (!confirm(`Delete the save “${save.name}”? This cannot be undone.`)) return;
+          await fetch(`/api/saves/${encodeURIComponent(save.name)}`, { method: "DELETE" });
+          loadSaves();
+        });
+
+        row.append(meta, resume, del);
+        list.append(row);
+      }
+    }
+
+    function loadSaves() {
+      fetch("/api/saves").then((r) => r.json()).then(renderSaves).catch(() => {});
+    }
+    loadSaves();
   </script>
 </body>
 </html>
