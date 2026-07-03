@@ -8,6 +8,31 @@
 
 **Input**: User description: "Version 2 of the TimeBomb web app: natively host the Time Bomb game with a tabletop feel, playable against AI opponents and/or local human friends, alongside the untouched v1 assistant. A new home page at / offers two doors: the v1 assistant, moved as-is to /assistant (its only change is its URL), and the hosted game at /play. The hosted game: at setup the user picks the seat mix (human hotseat seats and AI seats), player names, official role-deal for the player count (manual override available), optional random seed for a reproducible deal, and whether the public-info stats panel is allowed this game (opt-in per game; when a per-player private panel becomes possible via future solver interfaces, it will be a separate per-game opt-in). Play is hotseat on one device: pass-the-device privacy screens (tap to reveal your hand and role, tap to hide before passing), but the architecture is LAN-shaped — game state and per-player hidden-information views are constructed server-side from day one so a future online/LAN update is a transport change, not a rewrite; secrets are never shipped to the browser and merely hidden. The rules engine (dealing, declaration collection, cut resolution, win judgment, per-player views) is the referee promoted out of sim/engine.py into a shared top-level package that both sim/ and web/ import; the web layer presents state and forwards intents only, and every probability shown still comes from timebomb/General.py (constitution v2.0.0). AI opponents are pluggable behind the existing agent interface: solver-driven bots ship in this version (using General.py posteriors from their private view plus a bluffing/cut policy), with LLM agents (sim/ arena style) as an optional mode for those with an API key. Table talk is structured claims only: humans and AIs can emit formal claims from a fixed menu (e.g. trust/distrust/accusation-style claims) — no free-text chat. During play, a toggleable, collapsible side window shows the public-info four-stat CutPanel (when the game opted in). Quality of life: a hosted game can be saved and resumed later on the same machine; when a game ends, all roles and hands are revealed and players can step back through the event history to see who lied when (post-game replay); seeded games give reproducible deals. Visuals: styled-DOM tabletop — player seats around a table, card backs, flip/cut transitions — vanilla JS, no framework, no build step. Out of scope for this version: online/remote play, accounts, free-text chat, per-player private stats panels (needs new solver interfaces), and any modification to the v1 assistant's behavior."
 
+## Clarifications
+
+### Session 2026-07-03
+
+- Q: What is the save/resume model for the single active game? → A: Manual saves
+  only — the game persists across app restarts only when a player explicitly saves
+  (named saves, listable and resumable); progress since the last explicit save is
+  lost if the app stops. Browser refresh loses nothing regardless, because game state
+  is authoritative server-side while the app runs.
+- Q: Are solver bots deterministic given the game seed? → A: Deal-only seed — the
+  seed fixes the deal (roles, bomb, wires, re-deals); solver bots keep their own
+  fresh randomness each run, so seeded games share a deal but not a transcript.
+- Q: On a shared hotseat device, how are human claims attributed? → A: Only on your
+  own turn — claims are emitted by the seat currently acting (while declaring or
+  cutting), giving airtight attribution; AIs likewise emit claims at their own
+  decision points.
+- Q: How is the API key for optional LLM opponents provided? → A: Both — the hosting
+  machine's environment/launch config wins when set; otherwise an in-app settings
+  surface can supply a key, which is stored on the hosting machine, masked in the
+  interface, and never echoed back to the browser once saved.
+- Q: Can a game have zero human seats (all-AI)? → A: Yes — setup permits 0 human
+  seats as an exhibition mode: the table plays itself with all information shown
+  openly on screen (hidden-information delivery rules apply only to games with at
+  least one human seat).
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Solo game against AI opponents (Priority: P1)
@@ -168,9 +193,11 @@ truth annotations (e.g. a declaration marked as a lie against the actual dealt h
 
 ### User Story 6 - Save and resume (Priority: P6)
 
-A game in progress can be saved and resumed later on the same machine — same seats,
-same hands, same round, same pending turn — even after the app has been stopped and
-restarted. A game interrupted by a browser refresh simply resumes where it was.
+A game in progress can be explicitly saved under a name and resumed later on the same
+machine — same seats, same hands, same round, same pending turn — even after the app
+has been stopped and restarted. Saving is manual: unsaved progress does not survive an
+app stop. A game interrupted by a mere browser refresh simply resumes where it was, no
+save needed, because the running app holds the authoritative state.
 
 **Why this priority**: Real games get interrupted; but this is pure quality of life on
 top of a working game.
@@ -264,7 +291,8 @@ rest of setup is unaffected.
 
 - **FR-003**: Users MUST be able to configure a game: number of seats (the player
   counts the official game supports), each seat as human or AI, and a display name per
-  seat.
+  seat. Zero human seats is allowed: an all-AI game runs as an exhibition, with all
+  information (roles, hands, decisions' outcomes) shown openly as it plays.
 - **FR-004**: Setup MUST offer the official role-deal for the chosen seat count as the
   default (including its inherent uncertainty in the number of bad guys), with a
   manual override; impossible overrides are rejected at setup.
@@ -281,10 +309,11 @@ rest of setup is unaffected.
   by the single shared rules engine promoted from the simulation referee, used by both
   the simulation arena and the web app. The web layer presents state and forwards
   player intents only.
-- **FR-008**: Per-seat hidden information (role, uncut hand, bomb possession) MUST be
-  compartmentalized server-side: a browser is only ever sent the view it is entitled
-  to at that moment. Secrets MUST NOT be delivered to the client and merely hidden by
-  the interface.
+- **FR-008**: In any game with at least one human seat, per-seat hidden information
+  (role, uncut hand, bomb possession) MUST be compartmentalized server-side: a browser
+  is only ever sent the view it is entitled to at that moment. Secrets MUST NOT be
+  delivered to the client and merely hidden by the interface. (All-AI exhibition
+  games are exempt: everything is deliberately public.)
 - **FR-009**: Human seats' private information MUST sit behind a pass-the-device
   privacy screen: the screen names the player, reveals role and hand only on an
   explicit tap, and offers an explicit hide before the device is passed on. Leaving or
@@ -296,9 +325,10 @@ rest of setup is unaffected.
   humans via bounded input within the legal declaration range), and declarations MUST
   be public to all seats once made.
 - **FR-011**: Players (human and AI) MUST be able to emit structured claims from a
-  fixed menu (directed trust/distrust and accusation-style claims); claims are public,
-  attributed, timestamped in the event history, and have no mechanical effect on the
-  rules. Free-text chat is excluded.
+  fixed menu (directed trust/distrust and accusation-style claims). A claim can only
+  be emitted by the seat whose turn it is, as part of its declaration or cut turn —
+  attribution is therefore inherent. Claims are public, timestamped in the event
+  history, and have no mechanical effect on the rules. Free-text chat is excluded.
 - **FR-012**: On their turn, the cutter MUST choose among legal target hands only; the
   cut's result (safe wire, dud, or bomb) MUST be revealed to all seats, and the turn
   MUST pass according to the official rules.
@@ -318,8 +348,11 @@ rest of setup is unaffected.
   entitled to (their private view plus public state), MUST make only legal moves, and
   MUST be capable of deception when dealt a bad-guy role (e.g. lying in declarations).
 - **FR-017**: LLM-driven agents MUST be selectable as an optional per-seat mode when
-  the user has configured an API key; without a key the option is unavailable and the
-  rest of the game is unaffected. A failed LLM decision MUST degrade gracefully
+  an API key is configured; without a key the option is unavailable and the rest of
+  the game is unaffected. The key is taken from the hosting machine's launch
+  environment when set; otherwise it MAY be entered once via an in-app settings
+  surface and stored on the hosting machine — masked in the interface and never sent
+  back to a browser after saving. A failed LLM decision MUST degrade gracefully
   (retry, then offer to substitute a solver bot).
 - **FR-018**: AI decisions MUST respect a latency budget: solver-bot actions feel
   immediate; any AI wait beyond a moment shows a per-seat thinking indicator.
@@ -341,11 +374,14 @@ rest of setup is unaffected.
 - **FR-022**: The full game history MUST be recorded as an ordered event log
   sufficient to reconstruct the game (setup, deal, declarations, claims, cuts,
   round advances, judgment).
-- **FR-023**: A game in progress MUST be saveable and resumable on the same machine,
-  surviving app restarts, with hidden information intact and still hidden; an
-  incompatible save is rejected with a clear error.
-- **FR-024**: A browser refresh or page reopen mid-game MUST return to the current
-  game position without loss (privacy screens re-locked).
+- **FR-023**: A game in progress MUST be saveable by an explicit, player-initiated
+  action under a chosen name, and named saves MUST be listable and resumable on the
+  same machine across app restarts, with hidden information intact and still hidden.
+  Saving is manual only: progress since the last explicit save is lost if the app
+  stops. An incompatible save is rejected with a clear error.
+- **FR-024**: While the app is running, a browser refresh or page reopen mid-game
+  MUST return to the current game position without loss (privacy screens re-locked);
+  this holds with or without any explicit save.
 - **FR-025**: When a game ends, all roles and remaining hands MUST be revealed, and a
   replay MUST let users step through the event history in both directions with truth
   annotations (e.g. declarations marked truthful or lies against the actual dealt
@@ -386,15 +422,15 @@ rest of setup is unaffected.
   (1 human + AI seats) in under 90 seconds.
 - **SC-002**: A full solo game at the default seat count completes in under 15 minutes
   of wall-clock time, with every solver-bot decision resolving in at most 2 seconds.
-- **SC-003**: Across an entire game, no server response delivered to the browser ever
+- **SC-003**: Across an entire game with human seats, no server response delivered to the browser ever
   contains another seat's role, uncut hand contents, or bomb possession — verifiable
   by inspecting all traffic in a played game (100% of responses clean).
 - **SC-004**: The complete v1 assistant test suite passes unchanged (URL move aside);
   a v1 user following the v1 quickstart notices no behavioral difference.
 - **SC-005**: 100 seeded self-play games (solver bots in every seat) all run to
   completion with zero illegal moves and a winner matching the shared rules engine's
-  judgment; re-running any seed reproduces the identical deal and, for deterministic
-  bot policies, the identical game.
+  judgment; re-running any seed reproduces the identical deal (bot decisions may
+  differ — the seed fixes the deal only).
 - **SC-006**: Solver-bot play is better than chance: over the self-play corpus, the
   good-guys' cut choices find safe wires at a rate measurably above uniform-random
   cutting (using the repo's established beats-random methodology).
@@ -415,9 +451,9 @@ rest of setup is unaffected.
   "[seat] is lying", plus the self-claim "my declaration is honest". The exact menu is
   expected to be refined during clarification/planning; the requirement is a fixed,
   finite menu with attribution, not this exact list.
-- **Claim timing**: claims are emitted from the shared table surface between actions,
-  attributed to an explicitly chosen seat (hotseat has no per-seat sessions); AIs emit
-  claims at their decision points.
+- **Claim timing**: resolved by clarification — claims are part of the acting seat's
+  turn (see Clarifications, FR-011); there is no free-floating claim entry from the
+  shared surface.
 - **One active game at a time**: the app hosts a single in-progress game per running
   instance; starting a new game requires finishing, saving, or abandoning the current
   one. (The LAN-shaped state model may later host several, but v2.0 does not.)
@@ -433,8 +469,9 @@ rest of setup is unaffected.
   into a shared package (with the simulation adapted to import it, its tests still
   passing) is part of this feature, per constitution v2.0.0's carve-out.
 - **English-only UI**, matching v1.
-- **No spectator mode**: every human present holds a seat; watching without a seat is
-  out of scope.
+- **No spectator mode in human games**: in any game with human seats, every human
+  present holds a seat; watching a human game without a seat is out of scope. The
+  all-AI exhibition mode (see Clarifications) is the one watch-only experience.
 
 ## Out of Scope (this version)
 
