@@ -18,7 +18,8 @@ See **[docs/model.md](docs/model.md)** for the mathematics and
 | ------------------- | -------------------------------------------------------------------------- |
 | `timebomb/`         | The backend solver **`General.py`** (arbitrary bad-guy count + bomb, joint inference over the bad count), the shared `UsefulFunctions.py` / `Consistency.py`, and the `AI.py` RL agent (on hold). Also the four **frozen** hardcoded variants (`OneBadGuyNoBomb`, `TwoBadGuysNoBomb`, `OneBadGuyOneBomb`, `TwoBadGuysOneBomb`) — independent reference oracles that cross-check `General.py`; **do not modify them**. |
 | `tests/`            | Test suites (independent `math.comb` brute-force references).               |
-| `web/`              | The browser assistant: a static page + one stateless Flask endpoint that replays the game's event log through `General.py` (no math of its own). See "The web assistant" below. |
+| `tbgame/`           | The shared, stepwise game engine (`tbgame.engine.TableGame`, a real Python package): rules, hidden information, event-sourced history. Promoted from the arena referee (specs/002); `sim/state.py`, `sim/engine.py`, `sim/agents/base.py` are re-export shims over it. Also `tbgame/agents/solver.py`, the offline solver bot. |
+| `web/`              | The browser app: a hosted Time Bomb game at `/play` (hotseat humans and/or AI seats, transport-only over `tbgame`) plus the v1 assistant at `/assistant` (a static page + one stateless Flask endpoint replaying the event log through `General.py` — no math of its own). See "The web app" below. |
 | `docs/`, `TODO.md`  | Model reference, roadmap, decision records (ADRs), and open work items.     |
 
 ## Playing
@@ -36,25 +37,37 @@ See **[docs/model.md](docs/model.md)** for the mathematics and
 PYTHONPATH=timebomb python3 -c "from General import PlayAuto; PlayAuto(num_players=5, verbosity=1)"
 ```
 
-## The web assistant
+## The web app
 
-The same assistant in the browser, for use at a live table (phone-friendly). It needs
-Flask in the venv (`.venv/bin/python -m pip install flask`), then:
+Two doors from one home page (phone-friendly). It needs Flask in the venv
+(`.venv/bin/python -m pip install flask`), then:
 
 ```bash
 .venv/bin/python web/app.py            # http://127.0.0.1:5000
 .venv/bin/python web/app.py --host 0.0.0.0   # reachable from a phone on the same Wi-Fi
 ```
 
-Set up the game (4–8 players; the official role deal — including the counts the deal
-leaves uncertain — or a fixed override), then enter each round's declarations and cut
-results as they happen. After every entry the page shows, per player, P(bad), P(bomb),
-P(safe wire), and the information value of cutting them — computed by `General.py`
-exactly as the interactive `Play` loop does. Mistyped entries can be undone all the way
-back; jointly impossible table claims warn but never block; a reload restores the game
-(the whole game state lives in the browser, the server is stateless). Design artifacts
-live in `specs/001-web-cut-panel/`; web tests run with
-`.venv/bin/python -m pytest web/tests -q`.
+**Play** (`/play`, specs/002-host-local-game) hosts the actual game: 4–8 seats, each
+human or AI, dealt and adjudicated server-side by the shared `tbgame` engine. Hotseat
+humans pass one device behind a privacy screen (secrets never leave the server);
+solver bots play offline off `General.py`'s numbers; LLM seats are optional and
+key-gated, with retry/substitute recovery when a call fails. Games support structured
+table claims, an opt-in public-info stats panel (numerically identical to the
+assistant), manual named saves that survive restarts (`web/saves/`), and a post-game
+reveal with a truth-annotated replay. An all-AI setup runs as an open-information
+exhibition.
+
+**Assistant** (`/assistant`, specs/001-web-cut-panel) is the play-along tool for a
+physical table: set up the game (4–8 players; the official role deal — including the
+counts the deal leaves uncertain — or a fixed override), then enter each round's
+declarations and cut results as they happen. After every entry the page shows, per
+player, P(bad), P(bomb), P(safe wire), and the information value of cutting them —
+computed by `General.py` exactly as the interactive `Play` loop does. Mistyped entries
+can be undone all the way back; jointly impossible table claims warn but never block;
+a reload restores the game (state lives in the browser, the endpoint is stateless).
+
+Web tests: `.venv/bin/python -m pytest web/tests -q`. Engine tests:
+`.venv/bin/python -m pytest tbgame/tests -q`.
 
 ## Testing
 

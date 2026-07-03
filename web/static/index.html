@@ -19,6 +19,17 @@
         color-scheme: dark;
       }
     }
+    /* Honor the theme chosen on the assistant/play pages (same mechanism). */
+    :root[data-theme="light"] {
+      --ink: #1c2330; --paper: #f7f5f0; --card: #ffffff; --line: #d8d3c8;
+      --accent: #b3462e; --muted: #6b7280;
+      color-scheme: light;
+    }
+    :root[data-theme="dark"] {
+      --ink: #e9e5dd; --paper: #191817; --card: #24221f; --line: #423e38;
+      --accent: #d4644a; --muted: #9b958a;
+      color-scheme: dark;
+    }
     * { box-sizing: border-box; }
     body {
       margin: 0 auto; padding: 0 1rem 3rem; max-width: 40rem;
@@ -84,6 +95,11 @@
   </main>
 
   <script>
+    const savedTheme = localStorage.getItem("timebomb-theme");
+    if (savedTheme === "dark" || savedTheme === "light") {
+      document.documentElement.dataset.theme = savedTheme;
+    }
+
     fetch("/api/game").then((resp) => {
       if (resp.ok) document.getElementById("continue-note").hidden = false;
     }).catch(() => {});

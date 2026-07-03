@@ -192,9 +192,9 @@ cut → rounds → winner, AI within latency budget, exhibition mode included.
 
 ## Phase 10: Polish & Cross-Cutting
 
-- [ ] T040 [P] Docs: update repo `README.md` and `CLAUDE.md` web-layer notes for the v2 layout (`tbgame/` source root, `/assistant` + `/play` routes, new test suites and commands)
-- [ ] T041 [P] Responsive + dark-mode pass over home and play surfaces (seat ellipse degrades to a list on phone widths, FR-014; same dark-mode mechanism as v1)
-- [ ] T042 Run every quickstart.md scenario (A–H) against a fresh venv start; fix what falls out
+- [X] T040 [P] Docs: update repo `README.md` and `CLAUDE.md` web-layer notes for the v2 layout (`tbgame/` source root, `/assistant` + `/play` routes, new test suites and commands)
+- [X] T041 [P] Responsive + dark-mode pass over home and play surfaces (seat ellipse degrades to a list on phone widths, FR-014; same dark-mode mechanism as v1)
+- [X] T042 Run every quickstart.md scenario (A–H) against a fresh venv start; fix what falls out
 - [ ] T043 Full sweep: `.venv/bin/python -m pytest -q` (frozen root suite) + `.venv/bin/python -m pytest tbgame/tests web/tests -q` — all green; commit in clean chunks per constitution
 
 ---

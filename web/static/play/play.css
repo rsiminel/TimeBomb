@@ -394,9 +394,26 @@ button.selected {
 #handoff-text { font-size: 1.25rem; font-weight: 600; }
 #handoff-reveal { font-size: 1.05rem; padding: 0.8rem 1.4rem; }
 
+/* Phone widths: the seat ellipse degrades to a seat list (FR-014) — the felt
+ * disappears and each seat becomes a full-width row, cards on the right. */
 @media (max-width: 480px) {
   body { font-size: 15px; }
   button { padding: 0.5rem 0.8rem; }
-  .seat { width: 4.6rem; font-size: 0.7rem; }
-  .card-mini { width: 0.8rem; height: 1.2rem; }
+  #table-wrap { aspect-ratio: auto; max-height: none; }
+  #table-felt { display: none; }
+  .seat {
+    position: static;
+    transform: none;
+    width: auto;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    text-align: left;
+    margin: 0.35rem 0;
+    padding: 0.4rem 0.6rem;
+    font-size: 0.85rem;
+  }
+  .seat .seat-name { flex-shrink: 0; }
+  .seat .seat-sub { flex: 1; min-height: 0; }
+  .seat .cards { margin: 0; }
 }
