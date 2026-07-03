@@ -71,6 +71,21 @@ def delete_game():
   return "", 204
 
 
+@app.post("/api/game/unlock")
+def unlock_seat():
+  body = request.get_json(silent=True)
+  if not isinstance(body, dict):
+    return jsonify({"error": "body must be JSON"}), 400
+  view = game_service.unlock(body.get("seat"), body.get("version"))
+  return jsonify(view), 200
+
+
+@app.post("/api/game/lock")
+def lock_seat():
+  game_service.lock()
+  return "", 204
+
+
 @app.post("/api/game/intent")
 def submit_intent():
   body = request.get_json(silent=True)

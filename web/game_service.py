@@ -8,7 +8,7 @@ import threading
 import time
 
 from tbgame.engine import TableGame, SetupError, IllegalIntent
-from tbgame.state import AgentView
+from tbgame.state import AgentView, legal_targets
 from tbgame.agents.solver import SolverBot
 
 AI_POLL_INTERVAL_S = 0.2
@@ -110,6 +110,11 @@ def _table_view_locked(active):
       "phase": pub.phase,
       "pending": (None if pending is None
                  else {"kind": pending.kind, "seats": list(pending.seats)}),
+      # The engine's rule, surfaced for the cut picker (constitution I: no rule
+      # logic client-side; the engine re-validates on submit regardless).
+      "legalTargets": (legal_targets(pub, pending.seats[0])
+                       if pending is not None and pending.kind == "cut" else None),
+      "occupants": list(active.game.occupants),
       "thinking": sorted(active.thinking),
       "panelAllowed": active.panel_allowed,
       "unlockedSeat": active.unlocked_seat,
@@ -125,7 +130,8 @@ def unlock(seat, version):
     if version != active.version:
       raise ActiveGameError("version mismatch", 409)
     occupants = active.game.occupants
-    if not (0 <= seat < len(occupants)) or occupants[seat] != "human":
+    if (not isinstance(seat, int) or isinstance(seat, bool)
+        or not 0 <= seat < len(occupants) or occupants[seat] != "human"):
       raise ActiveGameError("seat is not human", 403)
     if active.unlocked_seat is not None and active.unlocked_seat != seat:
       raise ActiveGameError("another seat is unlocked", 403)

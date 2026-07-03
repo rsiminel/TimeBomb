@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Time Bomb — Play</title>
+  <link rel="stylesheet" href="/play/play.css">
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Time Bomb</h1>
+      <p class="tagline">Hosted game — humans and AI around one table.</p>
+    </div>
+    <button type="button" id="theme-toggle" aria-label="Switch theme">Dark</button>
+  </header>
+
+  <main>
+    <!-- Setup screen (T016) -->
+    <section id="setup-screen" hidden>
+      <h2>New game</h2>
+      <form id="setup-form">
+        <label>Seats
+          <select id="seat-count"></select>
+        </label>
+        <div id="seat-rows"></div>
+        <label>Bad guys
+          <select id="role-deal"></select>
+        </label>
+        <label>Seed <span class="hint">(optional — same setup + same seed = same deal)</span>
+          <input type="number" id="seed-input" inputmode="numeric" placeholder="random">
+        </label>
+        <label class="row">
+          <input type="checkbox" id="panel-optin">
+          Allow the public-info stats panel during play
+        </label>
+        <p id="setup-error" class="error" hidden></p>
+        <button type="submit">Start game</button>
+      </form>
+      <div id="conflict-box" hidden>
+        <p class="warning">A game is already in progress on this machine.</p>
+        <button type="button" id="return-to-game">Return to it</button>
+        <button type="button" id="abandon-and-start">Abandon it and start this one</button>
+      </div>
+    </section>
+
+    <!-- Table screen (T017) -->
+    <section id="game-screen" hidden>
+      <div id="status-bar"></div>
+      <div id="banner" hidden></div>
+
+      <div id="table-wrap">
+        <div id="table-felt"></div>
+      </div>
+      <p id="last-cut" class="note" hidden></p>
+
+      <!-- Turn panel: pass-the-device prompt, then the seat's action form -->
+      <div id="turn-panel" hidden>
+        <div id="pass-prompt" hidden>
+          <p id="pass-text"></p>
+          <button type="button" id="show-hand" class="primary"></button>
+        </div>
+
+        <div id="action-box" hidden>
+          <div id="private-card"></div>
+
+          <form id="declare-form" hidden>
+            <label>Wires you declare
+              <input type="number" id="declare-value" inputmode="numeric" min="0" required>
+            </label>
+            <div class="claim-menu">
+              <label>Say something? <span class="hint">(no rules effect)</span>
+                <select id="declare-claim-kind"></select>
+              </label>
+              <label id="declare-claim-target-row" hidden>About
+                <select id="declare-claim-target"></select>
+              </label>
+            </div>
+            <p id="declare-error" class="error" hidden></p>
+            <button type="submit" class="primary">Declare</button>
+            <button type="button" class="hide-hand">Hide my hand</button>
+          </form>
+
+          <form id="cut-form" hidden>
+            <p class="cut-step">Cut a wire from…</p>
+            <div id="cut-targets"></div>
+            <div class="claim-menu">
+              <label>Say something? <span class="hint">(no rules effect)</span>
+                <select id="cut-claim-kind"></select>
+              </label>
+              <label id="cut-claim-target-row" hidden>About
+                <select id="cut-claim-target"></select>
+              </label>
+            </div>
+            <p id="cut-error" class="error" hidden></p>
+            <button type="submit" class="primary" id="cut-submit" disabled>Cut</button>
+            <button type="button" class="hide-hand">Hide my hand</button>
+          </form>
+        </div>
+      </div>
+      <p id="waiting-note" class="note" hidden></p>
+
+      <div class="game-actions">
+        <button type="button" id="new-game-button" hidden>New game</button>
+        <button type="button" id="abandon-button">Abandon game</button>
+      </div>
+    </section>
+  </main>
+
+  <script src="/play/play.js"></script>
+</body>
+</html>
