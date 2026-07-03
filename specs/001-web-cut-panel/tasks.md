@@ -20,11 +20,11 @@ increment.
 
 **Purpose**: clear out the old implementation, put the new skeleton in place
 
-- [ ] T001 Delete the old implementation (`web/app.py`, `web/index.html`,
+- [X] T001 Delete the old implementation (`web/app.py`, `web/index.html`,
       `web/main.js`, `web/styles.css`), create the `web/static/` and `web/tests/`
       directories per plan.md, and install Flask into the project venv
       (`.venv/bin/pip install flask`)
-- [ ] T002 [P] Create `web/tests/conftest.py`: insert the `timebomb/` source root on
+- [X] T002 [P] Create `web/tests/conftest.py`: insert the `timebomb/` source root on
       `sys.path` (mirroring the repo-root `conftest.py`) and provide a Flask
       test-client fixture for the app
 
@@ -37,22 +37,22 @@ every story and every endpoint response depends on these
 
 **⚠️ CRITICAL**: no user story work until this phase is complete
 
-- [ ] T003 Implement GameRecord parsing and validation in `web/replay.py` per
+- [X] T003 Implement GameRecord parsing and validation in `web/replay.py` per
       data-model.md: setup constraints (4–8 unique non-empty names, bomb flag,
       `numBadOverride` legal for N — any `1 ≤ B ≤ N−1`, the range the solver
       supports, since the override exists for unofficial tables) and
       event-shape/ordering constraints; invalid
       records raise a structured error carrying `eventIndex` (−1 for setup) for the
       422 body of contracts/api.md
-- [ ] T004 Implement derived-state replay (rules bookkeeping only, zero probability
+- [X] T004 Implement derived-state replay (rules bookkeeping only, zero probability
       code) in `web/replay.py`: round number, hand size 5→2, round-start
       `total_active`, per-round `revealed`/`found`, cut budget, `awaiting`, and
       game-over detection (bomb / wires / time) per data-model.md's transition table
-- [ ] T005 [P] Write validation + bookkeeping tests in `web/tests/test_replay.py`:
+- [X] T005 [P] Write validation + bookkeeping tests in `web/tests/test_replay.py`:
       hand-worked scripted logs covering every 422 case in contracts/api.md, round
       rollover, all three game-over reasons, and replay purity (truncated log ≡
       shorter game)
-- [ ] T006 Implement the Flask app in `web/app.py`: serve `web/static/` at `/`, wire
+- [X] T006 Implement the Flask app in `web/app.py`: serve `web/static/` at `/`, wire
       `POST /api/panel` to the replay (400 malformed / 422 invalid / 200 with
       `state` block), no game state held server-side
 
