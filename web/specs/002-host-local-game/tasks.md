@@ -178,13 +178,13 @@ cut → rounds → winner, AI within latency budget, exhibition mode included.
 
 ### Tests
 
-- [ ] T036 [P] [US7] Stub-LLM tests in `web/tests/test_llm_seats.py`: a deliberately failing fake LLM agent pauses the game (`paused_llm`), `POST /api/game/llm-recover` retry and substitute paths both work; LLM seats rejected at setup when no key is configured; resuming an LLM-seat save without a key routes through the substitution path (T033)
+- [X] T036 [P] [US7] Stub-LLM tests in `web/tests/test_llm_seats.py`: a deliberately failing fake LLM agent pauses the game (`paused_llm`), `POST /api/game/llm-recover` retry and substitute paths both work; LLM seats rejected at setup when no key is configured; resuming an LLM-seat save without a key routes through the substitution path (T033)
 
 ### Implementation
 
-- [ ] T037 [US7] Settings in `web/app.py` + `web/game_service.py`: `GET/PUT /api/settings/llm` (env wins, file fallback `web/instance/settings.json`, key never echoed) per contracts/api.md
-- [ ] T038 [US7] LLM seat wiring in `web/game_service.py`: instantiate the arena's `sim/agents/llm.py` agent behind the shared Agent interface with a claim-menu-constrained ask (web-side configuration only — arena prompts untouched, research R7); thinking flag on the AI worker; failure → `paused_llm`
-- [ ] T039 [US7] UI: LLM seat option in setup (disabled + hint without a key), per-seat thinking indicator styling, retry/substitute dialog in `web/static/play/`
+- [X] T037 [US7] Settings in `web/app.py` + `web/game_service.py`: `GET/PUT /api/settings/llm` (env wins, file fallback `web/instance/settings.json`, key never echoed) per contracts/api.md
+- [X] T038 [US7] LLM seat wiring in `web/game_service.py`: instantiate the arena's `sim/agents/llm.py` agent behind the shared Agent interface with a claim-menu-constrained ask (web-side configuration only — arena prompts untouched, research R7); thinking flag on the AI worker; failure → `paused_llm`
+- [X] T039 [US7] UI: LLM seat option in setup (disabled + hint without a key), per-seat thinking indicator styling, retry/substitute dialog in `web/static/play/`
 
 **Checkpoint**: all seven stories done
 

@@ -37,6 +37,16 @@
         <p id="setup-error" class="error" hidden></p>
         <button type="submit">Start game</button>
       </form>
+      <!-- LLM key entry (FR-017): stored on the hosting machine, masked, never
+           echoed back. Hidden once a key is configured (or the env var is set). -->
+      <div id="llm-key-box" hidden>
+        <label>Claude API key
+          <span class="hint">(unlocks LLM seats; stored on this machine, never shown again)</span>
+          <input type="password" id="llm-key-input" autocomplete="off">
+        </label>
+        <button type="button" id="llm-key-save">Save key</button>
+        <p id="llm-key-note" class="note" hidden></p>
+      </div>
       <div id="conflict-box" hidden>
         <p class="warning">A game is already in progress on this machine.</p>
         <button type="button" id="return-to-game">Return to it</button>
@@ -103,6 +113,13 @@
         </div>
       </div>
       <p id="waiting-note" class="note" hidden></p>
+
+      <!-- A failed LLM decision pauses the game (FR-017): retry or substitute. -->
+      <div id="llm-pause" class="warning" hidden>
+        <p id="llm-pause-text"></p>
+        <button type="button" id="llm-retry">Retry</button>
+        <button type="button" id="llm-substitute">Substitute a solver bot</button>
+      </div>
 
       <!-- Post-game reveal & replay (T031): step through the truth-annotated
            history once everything is public. -->

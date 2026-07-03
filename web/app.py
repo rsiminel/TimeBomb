@@ -78,6 +78,29 @@ def delete_game():
   return "", 204
 
 
+@app.get("/api/settings/llm")
+def get_llm_settings():
+  return jsonify(game_service.llm_settings()), 200   # never the key itself
+
+
+@app.put("/api/settings/llm")
+def put_llm_settings():
+  body = request.get_json(silent=True)
+  if not isinstance(body, dict):
+    return jsonify({"error": "body must be JSON"}), 400
+  game_service.set_llm_key(body.get("api_key"))
+  return "", 204
+
+
+@app.post("/api/game/llm-recover")
+def llm_recover():
+  body = request.get_json(silent=True)
+  if not isinstance(body, dict):
+    return jsonify({"error": "body must be JSON"}), 400
+  version = game_service.llm_recover(body.get("seat"), body.get("action"))
+  return jsonify({"version": version}), 200
+
+
 @app.get("/api/saves")
 def list_saves():
   return jsonify(game_service.list_saves()), 200

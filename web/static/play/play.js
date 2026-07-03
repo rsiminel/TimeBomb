@@ -32,6 +32,7 @@ let seenCuts = 0;       // cutLog length already rendered (drives the flip)
 let seenClaims = 0;
 let pendingSetup = null; // setup JSON held while the 409 conflict box is up
 let selectedCutTarget = null;
+let llmConfigured = false; // GET /api/settings/llm at boot gates the LLM seat option
 
 /* ---------------- transport ---------------- */
 
@@ -85,6 +86,7 @@ function showSetup() {
   $("game-screen").hidden = true;
   $("conflict-box").hidden = true;
   $("setup-error").hidden = true;
+  $("llm-key-box").hidden = llmConfigured;
 }
 
 function initSetup() {
@@ -105,6 +107,27 @@ function initSetup() {
     await api("DELETE", "/api/game");
     if (pendingSetup) await createGame(pendingSetup);
   });
+
+  $("llm-key-save").addEventListener("click", async () => {
+    const key = $("llm-key-input").value.trim();
+    if (key === "") return;
+    const { status, data } = await api("PUT", "/api/settings/llm", { api_key: key });
+    $("llm-key-input").value = "";           // never keep the key around client-side
+    const note = $("llm-key-note");
+    if (status === 204) {
+      llmConfigured = true;
+      $("llm-key-box").hidden = true;
+      // Unlock the LLM option on the already-built seat rows in place.
+      for (const row of $("seat-rows").children) {
+        const opt = [...row.children[1].options].find((o) => o.value.startsWith("llm:"));
+        opt.disabled = false;
+        opt.textContent = "LLM (Claude)";
+      }
+    } else {
+      note.textContent = (data && data.error) || `Could not save the key (${status})`;
+      note.hidden = false;
+    }
+  });
 }
 
 function renderSeatRows() {
@@ -124,6 +147,11 @@ function renderSeatRows() {
     const kind = document.createElement("select");
     kind.add(new Option("Human", "human"));
     kind.add(new Option("Solver bot", "solver_bot"));
+    const llmOpt = new Option(
+      llmConfigured ? "LLM (Claude)" : "LLM (Claude) — needs an API key",
+      "llm:claude-haiku-4-5");
+    llmOpt.disabled = !llmConfigured;          // key-gated (FR-017)
+    kind.add(llmOpt);
     kind.value = i === 0 ? "human" : "solver_bot";
     row.append(name, kind);
     rows.append(row);
@@ -187,7 +215,25 @@ function renderGame() {
   renderBanner();
   renderTurnPanel();
   renderPanelDrawer();
+  renderLlmPause();
   if (view.phase === "finished") renderReplay();
+}
+
+function renderLlmPause() {
+  const box = $("llm-pause");
+  const paused = view.pausedLlm;
+  box.hidden = !paused;
+  if (!paused) return;
+  $("llm-pause-text").textContent =
+    `${view.playerNames[paused.seat]}'s AI could not decide (${paused.error}). ` +
+    "Retry, or hand the seat to a solver bot for the rest of the game.";
+  $("llm-retry").onclick = () => recoverLlm(paused.seat, "retry");
+  $("llm-substitute").onclick = () => recoverLlm(paused.seat, "substitute");
+}
+
+async function recoverLlm(seat, action) {
+  await api("POST", "/api/game/llm-recover", { seat, action });
+  refresh();
 }
 
 function renderStatus() {
@@ -767,11 +813,16 @@ function initTheme() {
 
 /* ---------------- boot ---------------- */
 
-initTheme();
-initSetup();
-initGameScreen();
-initPanelDrawer();
-initReplay();
-// Page load re-locks all private views (FR-009: fresh eyes on the screen), then
-// rejoins the running game if there is one (FR-024) or shows setup on 404.
-api("POST", "/api/game/lock").finally(refresh);
+(async () => {
+  initTheme();
+  const settings = await api("GET", "/api/settings/llm").catch(() => null);
+  llmConfigured = !!(settings && settings.status === 200 && settings.data.configured);
+  initSetup();
+  initGameScreen();
+  initPanelDrawer();
+  initReplay();
+  // Page load re-locks all private views (FR-009: fresh eyes on the screen), then
+  // rejoins the running game if there is one (FR-024) or shows setup on 404.
+  await api("POST", "/api/game/lock").catch(() => {});
+  refresh();
+})();
