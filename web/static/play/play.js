@@ -156,6 +156,9 @@ async function createGame(setup) {
     pendingSetup = null;
     seenCuts = 0;
     seenClaims = 0;
+    replayOpen = false;
+    replayCursor = null;
+    panelVersion = 0;
     $("last-cut").hidden = true;
     await refresh();
     return;
@@ -302,6 +305,9 @@ function renderBanner() {
   if (view.phase !== "finished") {
     banner.hidden = true;
     $("new-game-button").hidden = true;
+    $("reveal-line").hidden = true;
+    $("replay-toggle").hidden = true;
+    $("replay-box").hidden = true;
     return;
   }
   const outcome = view.reveal.outcome;
@@ -312,6 +318,14 @@ function renderBanner() {
     : `💥 The bad team wins — ${outcome.reason}!`;
   banner.hidden = false;
   $("new-game-button").hidden = false;
+
+  const badSeats = view.reveal.roles
+    .map((role, i) => (role === 1 ? view.playerNames[i] : null))
+    .filter((name) => name !== null);
+  $("reveal-line").textContent = `The bad guy${badSeats.length === 1 ? " was" : "s were"}: ` +
+    badSeats.join(", ") + ".";
+  $("reveal-line").hidden = false;
+  $("replay-toggle").hidden = false;
 }
 
 /* ---------------- turn panel: pass-the-device + action forms ---------------- */
@@ -459,6 +473,107 @@ function readClaim(prefix) {
   if (kind === "") return null;
   if (!DIRECTED_CLAIMS.includes(kind)) return { kind };
   return { kind, target: Number($(`${prefix}-claim-target`).value) };
+}
+
+/* ---------------- post-game replay (T031, FR-025) ---------------- */
+
+let replayOpen = false;
+let replayCursor = null;   // index of the last event shown; null = full history
+
+function replayEvents() {
+  // Skip bookkeeping-only entries; every remaining event reads as a story beat.
+  return view.reveal.events.filter((e) => e.type !== "round_end");
+}
+
+function describeEvent(e) {
+  const name = (i) => view.playerNames[i];
+  switch (e.type) {
+    case "game_start":
+      return { text: `Game start — ${e.num_players} players.` };
+    case "round_start": {
+      const hands = e.wires
+        .map((w, i) => `${name(i)}: ${w}${e.bombs[i] ? " +💣" : ""}`)
+        .join(", ");
+      return { text: `Round ${e.round + 1} — ${e.hand_size} cards each. ` +
+                     `Dealt wires: ${hands}.` };
+    }
+    case "declaration":
+      return { text: `${name(e.player)} declared ${e.declared}`, decl: e };
+    case "claim": {
+      const target = e.target === null ? "" : name(e.target);
+      const text = {
+        trust: `I trust ${target}`,
+        distrust: `I don't trust ${target}`,
+        accuse_lie: `${target} lied about their wires`,
+        self_honest: "my declaration is honest",
+      }[e.kind];
+      return { text: `${name(e.speaker)} says: “${text}”.` };
+    }
+    case "cut": {
+      const what = { wire: "a safe wire 🟢", dud: "nothing",
+                     bomb: "💥 THE BOMB" }[e.result];
+      return { text: `${name(e.cutter)} cut ${name(e.target)}: ${what}.` };
+    }
+    case "cut_skipped":
+      return { text: `${name(e.cutter)} had no legal target — the round ends early.` };
+    case "game_end":
+      return { text: e.good_guys_won
+        ? `🎉 The good team wins — ${e.reason}.`
+        : `💥 The bad team wins — ${e.reason}.` };
+    default:
+      return { text: e.type };
+  }
+}
+
+function renderReplay() {
+  $("replay-box").hidden = !replayOpen;
+  if (!replayOpen) return;
+  const events = replayEvents();
+  if (replayCursor === null || replayCursor >= events.length) {
+    replayCursor = events.length - 1;
+  }
+  $("replay-pos").textContent = `${replayCursor + 1} / ${events.length}`;
+  $("replay-prev").disabled = replayCursor <= 0;
+  $("replay-next").disabled = replayCursor >= events.length - 1;
+
+  const log = $("replay-log");
+  log.replaceChildren();
+  for (let i = 0; i <= replayCursor; i++) {
+    const item = document.createElement("li");
+    const { text, decl } = describeEvent(events[i]);
+    item.append(text);
+    if (decl) {
+      item.append(" — ");
+      const badge = document.createElement("span");
+      if (decl.lie) {
+        badge.className = "lie-badge";
+        badge.textContent = `LIED (had ${decl.true_wires})`;
+      } else {
+        badge.className = "truth-badge";
+        badge.textContent = "truthful";
+      }
+      item.append(badge);
+    }
+    if (i === replayCursor) item.className = "current";
+    log.append(item);
+  }
+  log.lastChild?.scrollIntoView({ block: "nearest" });
+}
+
+function initReplay() {
+  $("replay-toggle").addEventListener("click", () => {
+    replayOpen = !replayOpen;
+    replayCursor = null;     // (re)open on the full history
+    renderReplay();
+  });
+  $("replay-prev").addEventListener("click", () => {
+    replayCursor = Math.max(0, replayCursor - 1);
+    renderReplay();
+  });
+  $("replay-next").addEventListener("click", () => {
+    replayCursor += 1;
+    renderReplay();
+  });
 }
 
 /* ---------------- opt-in stats drawer (T028, FR-019/020/021) ---------------- */
@@ -643,6 +758,7 @@ initTheme();
 initSetup();
 initGameScreen();
 initPanelDrawer();
+initReplay();
 // Page load re-locks all private views (FR-009: fresh eyes on the screen), then
 // rejoins the running game if there is one (FR-024) or shows setup on 404.
 api("POST", "/api/game/lock").finally(refresh);

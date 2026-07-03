@@ -104,7 +104,20 @@
       </div>
       <p id="waiting-note" class="note" hidden></p>
 
+      <!-- Post-game reveal & replay (T031): step through the truth-annotated
+           history once everything is public. -->
+      <div id="reveal-line" class="note" hidden></div>
+      <div id="replay-box" hidden>
+        <div class="replay-controls">
+          <button type="button" id="replay-prev">⟨ Back</button>
+          <span id="replay-pos" class="note"></span>
+          <button type="button" id="replay-next">Forward ⟩</button>
+        </div>
+        <ol id="replay-log"></ol>
+      </div>
+
       <div class="game-actions">
+        <button type="button" id="replay-toggle" hidden>📜 Replay history</button>
         <button type="button" id="new-game-button" hidden>New game</button>
         <button type="button" id="abandon-button">Abandon game</button>
       </div>

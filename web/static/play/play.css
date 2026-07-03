@@ -291,6 +291,37 @@ button.selected {
   border-top: 1px solid var(--line);
 }
 
+/* --- Post-game reveal & replay (T031) --- */
+
+#reveal-line { font-size: 0.95rem; }
+#replay-box {
+  margin-top: 0.8rem;
+  padding: 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+}
+.replay-controls { display: flex; align-items: center; gap: 0.6rem; }
+#replay-log {
+  margin: 0.6rem 0 0;
+  padding-left: 1.4rem;
+  font-size: 0.9rem;
+  max-height: 18rem;
+  overflow-y: auto;
+}
+#replay-log li { margin: 0.15rem 0; }
+#replay-log li.current { font-weight: 700; }
+.lie-badge {
+  display: inline-block;
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  background: var(--bad);
+  color: #fff;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+.truth-badge { color: var(--good); font-weight: 600; font-size: 0.85rem; }
+
 /* --- Opt-in stats drawer (FR-019/020/021) --- */
 
 .status-row {

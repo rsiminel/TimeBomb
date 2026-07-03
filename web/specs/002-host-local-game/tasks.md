@@ -139,12 +139,12 @@ cut → rounds → winner, AI within latency budget, exhibition mode included.
 
 ### Tests
 
-- [ ] T029 [P] [US5] Reveal/annotation test in `tbgame/tests/test_reveal.py`: `reveal()` raises before finish (non-exhibition), exposes roles/hands after, and annotates every declaration truthful/lie against recorded `true_wires` (SC-009)
+- [X] T029 [P] [US5] Reveal/annotation test in `tbgame/tests/test_reveal.py`: `reveal()` raises before finish (non-exhibition), exposes roles/hands after, and annotates every declaration truthful/lie against recorded `true_wires` (SC-009)
 
 ### Implementation
 
-- [ ] T030 [US5] Include the reveal payload (truth-annotated event list) in TableView when `phase == finished` (and always for exhibition) via `web/game_service.py`
-- [ ] T031 [US5] Replay UI in `web/static/play/`: end-screen reveal (roles + hands), enter replay, step backward/forward through declarations/claims/cuts with lie badges
+- [X] T030 [US5] Include the reveal payload (truth-annotated event list) in TableView when `phase == finished` (and always for exhibition) via `web/game_service.py`
+- [X] T031 [US5] Replay UI in `web/static/play/`: end-screen reveal (roles + hands), enter replay, step backward/forward through declarations/claims/cuts with lie badges
 
 **Checkpoint**: the post-mortem works
 
