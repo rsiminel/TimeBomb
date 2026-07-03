@@ -1,50 +1,54 @@
-# [PROJECT_NAME] Constitution
-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+<!--
+Sync Impact Report
+- Version change: (template) → 1.0.0 (initial ratification)
+- Scope: the web/ assistant only — backend rules live in CLAUDE.md and docs/, not here
+- Modified principles: three defined from scratch (template's five-slot layout reduced)
+- Added sections: Core Principles (I–III), Constraints, Governance
+- Removed sections: template Section 3 placeholder (workflow covered by Constraints)
+- Templates requiring updates:
+  ✅ plan-template.md / spec-template.md / tasks-template.md — gates resolve against
+     this file at plan time; no edits needed
+- Follow-up TODOs: none
+-->
+
+# TimeBomb Web Assistant Constitution
 
 ## Core Principles
 
-### [PRINCIPLE_1_NAME]
-<!-- Example: I. Library-First -->
-[PRINCIPLE_1_DESCRIPTION]
-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+### I. The Solver Owns the Math
 
-### [PRINCIPLE_2_NAME]
-<!-- Example: II. CLI Interface -->
-[PRINCIPLE_2_DESCRIPTION]
-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+Every probability shown in the browser comes from `timebomb/General.py`. The web layer
+contains zero probability formulas — no duplicated, re-derived, or "ported" math. If the
+UI needs a quantity the solver doesn't expose, the solver grows an interface (as a
+separate backend change); the web layer never grows a formula.
 
-### [PRINCIPLE_3_NAME]
-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
-[PRINCIPLE_3_DESCRIPTION]
-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+*Rationale*: the current `web/app.py` is a stale copy of an old solver — exactly the
+failure mode that motivates this rework.
 
-### [PRINCIPLE_4_NAME]
-<!-- Example: IV. Integration Testing -->
-[PRINCIPLE_4_DESCRIPTION]
-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
+### II. Quantities, Not Commands (ADR 0006)
 
-### [PRINCIPLE_5_NAME]
-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
-[PRINCIPLE_5_DESCRIPTION]
-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
+The site presents the solver's calibrated numbers — the four-stat `CutPanel` — and never
+collapses them into a single dictated cut. The player makes the call; the site supplies
+honest numbers.
 
-## [SECTION_2_NAME]
-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
+### III. Web Work Stays in web/
 
-[SECTION_2_CONTENT]
-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
+Building the site MUST NOT modify anything under `timebomb/` or `tests/`. Missing solver
+interfaces are raised as backend tasks, not patched inline.
 
-## [SECTION_3_NAME]
-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
+## Constraints
 
-[SECTION_3_CONTENT]
-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
+- The web app's tests verify presentation against live `General.py` output (what the
+  browser shows equals what the solver returns) — they do not re-test the math itself.
+- Keep the stack simple and dependency-light; prefer the existing shape (small Python
+  backend + static frontend) unless the spec justifies otherwise.
+- Commit verified work in clean, well-scoped chunks.
 
 ## Governance
-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
 
-[GOVERNANCE_RULES]
-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
+Amendments bump the version per semver (MAJOR: principle removed/redefined; MINOR:
+principle added/expanded; PATCH: clarification) in a commit that states the change.
+Every plan's Constitution Check gate verifies Principles I–III; a violation needs a
+justification in the plan's Complexity Tracking table or the plan does not proceed.
 
-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
+**Version**: 1.0.0 | **Ratified**: 2026-07-03 | **Last Amended**: 2026-07-03
