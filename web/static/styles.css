@@ -1,4 +1,6 @@
-/* Time Bomb assistant — phone-first (specs/001-web-cut-panel, T013). */
+/* Time Bomb assistant — phone-first, light + dark (specs/001-web-cut-panel, T013/T025).
+ * All colors live in the token block; the theme toggle stamps data-theme on <html>,
+ * which must win over the OS preference in both directions. */
 
 :root {
   --ink: #1c2330;
@@ -9,6 +11,57 @@
   --good: #2e7d4f;
   --bad: #b3462e;
   --muted: #6b7280;
+  --warn-bg: #fdf3d7;
+  --warn-line: #e7cf8c;
+  --button-ink: #f7f5f0;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ink: #e9e5dd;
+    --paper: #191817;
+    --card: #24221f;
+    --line: #423e38;
+    --accent: #d4644a;
+    --good: #3f9a68;
+    --bad: #c14f36;
+    --muted: #9b958a;
+    --warn-bg: #37301d;
+    --warn-line: #6b5a2c;
+    --button-ink: #191817;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="light"] {
+  --ink: #1c2330;
+  --paper: #f7f5f0;
+  --card: #ffffff;
+  --line: #d8d3c8;
+  --accent: #b3462e;
+  --good: #2e7d4f;
+  --bad: #b3462e;
+  --muted: #6b7280;
+  --warn-bg: #fdf3d7;
+  --warn-line: #e7cf8c;
+  --button-ink: #f7f5f0;
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  --ink: #e9e5dd;
+  --paper: #191817;
+  --card: #24221f;
+  --line: #423e38;
+  --accent: #d4644a;
+  --good: #3f9a68;
+  --bad: #c14f36;
+  --muted: #9b958a;
+  --warn-bg: #37301d;
+  --warn-line: #6b5a2c;
+  --button-ink: #191817;
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -24,10 +77,22 @@ body {
   background: var(--paper);
 }
 
-header { padding-top: 1.25rem; }
+header {
+  padding-top: 1.25rem;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.8rem;
+}
 h1 { margin: 0; font-size: 1.5rem; }
 h2 { font-size: 1.1rem; margin: 1.2rem 0 0.5rem; }
 .tagline { margin: 0.2rem 0 0; color: var(--muted); font-size: 0.9rem; }
+#theme-toggle {
+  flex-shrink: 0;
+  margin-top: 0.15rem;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.85rem;
+}
 
 section {
   background: var(--card);
@@ -49,6 +114,8 @@ input[type="text"], input[type="number"], select {
   max-width: 16rem;
   display: block;
   margin-top: 0.2rem;
+  background: var(--card);
+  color: var(--ink);
 }
 input[type="number"] { max-width: 6rem; }
 
@@ -59,10 +126,25 @@ button {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--card);
+  color: var(--ink);
   cursor: pointer;
 }
-button[type="submit"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+button[type="submit"], button.primary {
+  background: var(--ink);
+  color: var(--button-ink);
+  border-color: var(--ink);
+}
 button:disabled { opacity: 0.4; cursor: not-allowed; }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* A chosen (but not yet submitted) cut option. */
+button.selected {
+  background: var(--ink);
+  color: var(--button-ink);
+  border-color: var(--ink);
+}
+#bomb-result { border-color: var(--bad); color: var(--bad); }
+#bomb-result.selected { background: var(--bad); color: var(--button-ink); }
 
 #status-bar {
   font-weight: 600;
@@ -82,8 +164,8 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 .warning {
   margin: 0.6rem 0 0;
   padding: 0.55rem 0.8rem;
-  background: #fdf3d7;
-  border: 1px solid #e7cf8c;
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-line);
   border-radius: 8px;
   font-size: 0.92rem;
 }
@@ -129,8 +211,7 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 
 #cut-players button { min-width: 5.5rem; }
 #cut-results { margin-top: 0.6rem; }
-#cut-results p { margin: 0.2rem 0 0.4rem; font-weight: 600; }
-#bomb-result { border-color: var(--bad); color: var(--bad); }
+.cut-step { margin: 0.5rem 0 0.2rem; font-size: 0.9rem; color: var(--muted); }
 
 .game-actions {
   margin-top: 1.1rem;

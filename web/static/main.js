@@ -8,6 +8,7 @@
 "use strict";
 
 const STORAGE_KEY = "timebomb-game";
+const THEME_KEY = "timebomb-theme";
 // UI copy for the official role deal per player count (mirrors the solver's
 // NUM_BAD_PRIOR composition; the server is the authority).
 const OFFICIAL_DEAL = { 4: "1 or 2", 5: "2", 6: "2", 7: "2 or 3", 8: "3" };
@@ -16,6 +17,7 @@ const $ = (id) => document.getElementById(id);
 
 let record = loadRecord();
 let pendingCutSeat = null;
+let pendingCutResult = null; // nothing is preselected — least of all the bomb
 
 /* ---------------- storage ---------------- */
 
@@ -277,7 +279,7 @@ function buildDeclForm(state, players) {
 }
 
 function buildCutForm(state, players) {
-  $("cut-title").textContent = "Whose wire was cut?";
+  $("cut-title").textContent = `Record cut ${state.cutsMade + 1} of ${state.cutsThisRound}`;
   const box = $("cut-players");
   box.innerHTML = "";
   players.forEach((name, i) => {
@@ -287,14 +289,24 @@ function buildCutForm(state, players) {
     button.disabled = state.revealed[i] >= state.handSize;
     button.addEventListener("click", () => {
       pendingCutSeat = i;
-      $("cut-chosen").textContent = `${name}'s card showed…`;
-      $("cut-results").hidden = false;
+      [...box.children].forEach((b) => b.classList.remove("selected"));
+      button.classList.add("selected");
+      updateCutSubmit();
     });
     box.appendChild(button);
   });
   $("bomb-result").hidden = !record.setup.bomb;
-  $("cut-results").hidden = true;
+  // Fresh entry every cut: no player and no result preselected.
   pendingCutSeat = null;
+  pendingCutResult = null;
+  for (const b of $("cut-results").querySelectorAll("button")) {
+    b.classList.remove("selected");
+  }
+  updateCutSubmit();
+}
+
+function updateCutSubmit() {
+  $("cut-submit").disabled = pendingCutSeat === null || pendingCutResult === null;
 }
 
 /* ---------------- entries ---------------- */
@@ -333,13 +345,18 @@ function initGameHandlers() {
 
   $("cut-results").addEventListener("click", (ev) => {
     const result = ev.target.dataset?.result;
-    if (result && pendingCutSeat !== null) {
-      appendEvent({ type: "cut", player: pendingCutSeat, result });
+    if (!result) return;
+    pendingCutResult = result;
+    for (const b of $("cut-results").querySelectorAll("button")) {
+      b.classList.toggle("selected", b === ev.target);
     }
+    updateCutSubmit();
   });
-  $("cut-cancel").addEventListener("click", () => {
-    $("cut-results").hidden = true;
-    pendingCutSeat = null;
+
+  // Nothing is sent until the choice is reviewed and explicitly submitted.
+  $("cut-submit").addEventListener("click", () => {
+    if (pendingCutSeat === null || pendingCutResult === null) return;
+    appendEvent({ type: "cut", player: pendingCutSeat, result: pendingCutResult });
   });
 
   $("new-game-button").addEventListener("click", () => {
@@ -355,8 +372,34 @@ function formatPct(x) {
   return `${(100 * x).toFixed(1)}%`;
 }
 
+/* ---------------- theme ---------------- */
+
+function applyTheme(theme) {
+  if (theme === "dark" || theme === "light") {
+    document.documentElement.dataset.theme = theme;
+  } else {
+    delete document.documentElement.dataset.theme; // follow the OS preference
+  }
+  const dark = theme === "dark" ||
+    (!theme && matchMedia("(prefers-color-scheme: dark)").matches);
+  $("theme-toggle").textContent = dark ? "Light" : "Dark";
+}
+
+function initTheme() {
+  applyTheme(localStorage.getItem(THEME_KEY));
+  $("theme-toggle").addEventListener("click", () => {
+    const dark = document.documentElement.dataset.theme === "dark" ||
+      (!document.documentElement.dataset.theme &&
+        matchMedia("(prefers-color-scheme: dark)").matches);
+    const next = dark ? "light" : "dark";
+    localStorage.setItem(THEME_KEY, next);
+    applyTheme(next);
+  });
+}
+
 /* ---------------- boot ---------------- */
 
+initTheme();
 initSetupScreen();
 initGameHandlers();
 if (record) {

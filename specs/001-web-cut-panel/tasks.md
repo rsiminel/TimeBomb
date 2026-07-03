@@ -175,6 +175,18 @@ inline, impossible declarations warn once, undo steps back to game start
 
 ---
 
+## Phase 7: Post-implementation amendments (owner review, 2026-07-03)
+
+- [X] T024 Two-step cut entry with explicit submit (FR-003 as amended): player and
+      result are toggle-selections with nothing preselected — the bomb never a
+      default — and a Submit button (enabled only when both are chosen) sends the
+      event; `web/static/index.html` + `web/static/main.js`
+- [X] T025 Dark mode (FR-013): token-based themes in `web/static/styles.css`
+      (`prefers-color-scheme` default, `data-theme` override), header toggle
+      persisted in `localStorage`; `web/static/main.js`
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies

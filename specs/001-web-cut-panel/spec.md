@@ -152,7 +152,11 @@ restores the previous panel.
   count; entries outside the valid range for the current hand size MUST be rejected
   with a clear message.
 - **FR-003**: Users MUST be able to record each cut as it happens: which player was
-  cut and whether it revealed a safe wire, the bomb, or nothing.
+  cut and whether it revealed a safe wire, the bomb, or nothing. Both choices start
+  unselected (in particular the bomb is never a default), and nothing is sent until
+  the user reviews the pair and explicitly submits it. *(Amended 2026-07-03 after the
+  first build: the original tap-to-send flow made a mis-tap at a live table too
+  costly.)*
 - **FR-004**: After every completed entry (a full set of declarations, or a cut), the
   page MUST display the updated four-stat cut panel for every player: probability of
   being a bad guy, probability of holding the bomb, probability that a cut from their
@@ -181,6 +185,9 @@ restores the previous panel.
   panel.
 - **FR-012**: An in-progress game MUST survive a page reload on the same device; users
   MUST be able to abandon it and start a new game at any time.
+- **FR-013**: The page MUST offer light and dark themes: following the device
+  preference by default, switchable with one control, and remembered across visits.
+  *(Added 2026-07-03: the assistant is used at dim game tables.)*
 
 ### Key Entities
 

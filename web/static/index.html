@@ -8,9 +8,12 @@
 </head>
 <body>
   <header>
-    <h1>Time Bomb Assistant</h1>
-    <p class="tagline">Calibrated probabilities from the table's public information —
-      the numbers, never the call.</p>
+    <div>
+      <h1>Time Bomb Assistant</h1>
+      <p class="tagline">Calibrated probabilities from the table's public information —
+        the numbers, never the call.</p>
+    </div>
+    <button type="button" id="theme-toggle" aria-label="Switch theme">Dark</button>
   </header>
 
   <main>
@@ -65,14 +68,15 @@
 
       <div id="cut-form" hidden>
         <h2 id="cut-title"></h2>
+        <p class="cut-step">Whose wire was cut?</p>
         <div id="cut-players"></div>
-        <div id="cut-results" hidden>
-          <p id="cut-chosen"></p>
+        <p class="cut-step">The card showed…</p>
+        <div id="cut-results">
           <button type="button" data-result="safe">Safe wire</button>
           <button type="button" data-result="nothing">Nothing</button>
           <button type="button" data-result="bomb" id="bomb-result">The bomb</button>
-          <button type="button" id="cut-cancel">Cancel</button>
         </div>
+        <button type="button" id="cut-submit" class="primary" disabled>Submit cut</button>
       </div>
 
       <div class="game-actions">
