@@ -7,6 +7,8 @@ own (constitution I).
 import threading
 import time
 
+import panel_bridge
+import replay
 from tbgame.engine import TableGame, SetupError, IllegalIntent, public_event
 from tbgame.state import AgentView, legal_targets
 from tbgame.agents.solver import SolverBot
@@ -25,12 +27,15 @@ class ActiveGameError(Exception):
 
 
 class _ActiveGame:
-  def __init__(self, game, panel_allowed):
+  def __init__(self, game, panel_allowed, num_bad_override):
     self.game = game
     self.version = 1
     self.unlocked_seat = None
     self.thinking = set()
     self.panel_allowed = panel_allowed
+    # The *declared* setup override (None = official deal); what the panel bridge
+    # feeds replay.py as numBadOverride. Never the sampled truth.
+    self.num_bad_override = num_bad_override
 
 
 _lock = threading.RLock()
@@ -53,7 +58,9 @@ def create_game(setup):
       game = TableGame(setup)
     except SetupError as err:
       raise ActiveGameError(err.reason, 422) from err
-    _active = _ActiveGame(game, panel_allowed=bool(setup.get("panel_allowed", False)))
+    role_deal = setup.get("role_deal", "official")
+    _active = _ActiveGame(game, panel_allowed=bool(setup.get("panel_allowed", False)),
+                          num_bad_override=None if role_deal == "official" else role_deal)
     _generation += 1
     generation = _generation
     version = _active.version
@@ -122,6 +129,18 @@ def _table_view_locked(active):
   if pub.phase == "finished" or active.game.exhibition:
     view["reveal"] = active.game.reveal()
   return view
+
+
+def panel():
+  """The opt-in public-info panel: the v1 replay pipeline over the hosted game's
+  public record (FR-019/020/021). Numbers are replay.py's verbatim."""
+  with _lock:
+    active = _require_active()
+    if not active.panel_allowed:
+      raise ActiveGameError("this game did not opt in to the stats panel", 403)
+    record = panel_bridge.game_record(active.game.public_state(),
+                                      active.num_bad_override)
+  return replay.replay_record(record)
 
 
 def unlock(seat, version):

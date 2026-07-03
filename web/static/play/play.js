@@ -181,6 +181,7 @@ function renderGame() {
   renderTicker();
   renderBanner();
   renderTurnPanel();
+  renderPanelDrawer();
 }
 
 function renderStatus() {
@@ -460,6 +461,109 @@ function readClaim(prefix) {
   return { kind, target: Number($(`${prefix}-claim-target`).value) };
 }
 
+/* ---------------- opt-in stats drawer (T028, FR-019/020/021) ---------------- */
+
+let panelOpen = false;
+let panelBusy = false;
+let panelVersion = 0;   // game version the drawer currently shows
+
+function renderPanelDrawer() {
+  $("panel-toggle").hidden = !view.panelAllowed;
+  $("panel-drawer").hidden = !(view.panelAllowed && panelOpen);
+  if (view.panelAllowed && panelOpen) maybeFetchPanel();
+}
+
+/* Refetch only when the table moved (the drawer rides the poll cycle) and never
+ * concurrently — a 7-8 player panel can take the solver a couple of seconds. */
+async function maybeFetchPanel() {
+  if (panelBusy || panelVersion === view.version) return;
+  panelBusy = true;
+  const fetchedAt = view.version;
+  const { status, data } = await api("GET", "/api/game/panel");
+  panelBusy = false;
+  if (status !== 200) return;
+  panelVersion = fetchedAt;
+  renderPanelBody(data.belief);
+  if (panelVersion !== view.version) maybeFetchPanel(); // moved again meanwhile
+}
+
+function formatPct(x) {
+  return `${(100 * x).toFixed(1)}%`;
+}
+
+function renderPanelBody(belief) {
+  const table = $("panel-table");
+  const chip = $("panel-chip");
+  const note = $("panel-note");
+  if (!belief) {
+    table.hidden = true;
+    chip.hidden = true;
+    note.textContent = "Nothing to show yet — the panel wakes up after the first " +
+      "round's declarations.";
+    note.hidden = false;
+    return;
+  }
+
+  const counts = Object.keys(belief.pNumBad);
+  chip.hidden = counts.length <= 1;
+  if (counts.length > 1) {
+    chip.textContent = "Bad guys: " + counts
+      .map((b) => `${b} (${formatPct(belief.pNumBad[b])})`)
+      .join(" · ");
+  }
+
+  const tbody = table.querySelector("tbody");
+  tbody.innerHTML = "";
+  view.playerNames.forEach((name, i) => {
+    const row = tbody.insertRow();
+    row.insertCell().textContent = name;
+    row.insertCell().textContent = formatPct(belief.pBad[i]);
+    if (!belief.panel) {
+      const cell = row.insertCell();
+      cell.colSpan = 3;
+      return;
+    }
+    const panelRow = belief.panel[i];
+    if (panelRow.noCards) {
+      const cell = row.insertCell();
+      cell.colSpan = 3;
+      cell.className = "no-cards";
+      cell.textContent = "no cards left";
+      return;
+    }
+    row.insertCell().textContent = formatPct(panelRow.pBomb);
+    row.insertCell().textContent = formatPct(panelRow.pSafe);
+    const info = row.insertCell();
+    info.textContent = (belief.approx ? "≈" : "") + panelRow.horizon.toFixed(3);
+    info.title = `1-ply: ${panelRow.onePly.toFixed(3)} — expected remaining role ` +
+      `entropy after cutting here; lower teaches the table more`;
+  });
+  table.hidden = false;
+
+  if (!belief.panel) {
+    note.textContent = "Between rounds — per-cut stats return with the next " +
+      "declarations.";
+    note.hidden = false;
+  } else if (belief.approx) {
+    note.textContent =
+      `Info stat is approximate (lookahead capped at depth ${belief.maxDepth}).`;
+    note.hidden = false;
+  } else {
+    note.hidden = true;
+  }
+}
+
+function initPanelDrawer() {
+  $("panel-toggle").addEventListener("click", () => {
+    panelOpen = !panelOpen;
+    renderPanelDrawer();
+  });
+  $("panel-close").addEventListener("click", () => {
+    panelOpen = false;
+    renderPanelDrawer();
+  });
+}
+
 /* ---------------- intents (T018 version flow) ---------------- */
 
 async function submitIntent(seat, kind, value, claim, errorEl) {
@@ -538,6 +642,7 @@ function initTheme() {
 initTheme();
 initSetup();
 initGameScreen();
+initPanelDrawer();
 // Page load re-locks all private views (FR-009: fresh eyes on the screen), then
 // rejoins the running game if there is one (FR-024) or shows setup on 404.
 api("POST", "/api/game/lock").finally(refresh);

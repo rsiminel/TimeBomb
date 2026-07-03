@@ -46,7 +46,11 @@
 
     <!-- Table screen (T017) -->
     <section id="game-screen" hidden>
-      <div id="status-bar"></div>
+      <div class="status-row">
+        <div id="status-bar"></div>
+        <!-- Only in games that opted in at setup (FR-020). -->
+        <button type="button" id="panel-toggle" hidden>📊 Stats</button>
+      </div>
       <div id="banner" hidden></div>
 
       <div id="table-wrap">
@@ -106,6 +110,23 @@
       </div>
     </section>
   </main>
+
+  <!-- Opt-in public-info stats drawer (FR-019/021): quantities, never the call. -->
+  <aside id="panel-drawer" hidden>
+    <div class="drawer-head">
+      <h2>Public-info stats</h2>
+      <button type="button" id="panel-close" aria-label="Close">✕</button>
+    </div>
+    <p class="note">Computed from public events only — the numbers, never the call.</p>
+    <div id="panel-chip" hidden></div>
+    <table id="panel-table" hidden>
+      <thead>
+        <tr><th>Player</th><th>P(bad)</th><th>P(bomb)</th><th>P(safe)</th><th>Info</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <p id="panel-note" class="note" hidden></p>
+  </aside>
 
   <!-- Full-viewport pass-the-device handoff (FR-009): masks the screen between
        humans; the private view appears only after the named player's explicit tap. -->

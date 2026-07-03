@@ -119,13 +119,13 @@ cut → rounds → winner, AI within latency budget, exhibition mode included.
 
 ### Tests
 
-- [ ] T025 [P] [US4] Parity test in `web/tests/test_panel_parity.py`: play a scripted game, feed the same public events to v1 `POST /api/panel` and to `GET /api/game/panel`, assert numeric identity at every step; assert 403 when not opted in (SC-008, FR-020)
+- [X] T025 [P] [US4] Parity test in `web/tests/test_panel_parity.py`: play a scripted game, feed the same public events to v1 `POST /api/panel` and to `GET /api/game/panel`, assert numeric identity at every step; assert 403 when not opted in (SC-008, FR-020)
 
 ### Implementation
 
-- [ ] T026 [US4] `web/panel_bridge.py`: hosted-game public events → 001 GameRecord (claims omitted) → `replay.replay_record` (research R4; zero probability code). NB result-vocabulary mapping: engine `wire`/`dud`/`bomb` → GameRecord `safe`/`nothing`/`bomb`
-- [ ] T027 [US4] `GET /api/game/panel` in `web/app.py` (403 unless the game opted in) and the `panel_allowed` setup field end to end (`GameSetup` → create → TableView)
-- [ ] T028 [US4] Collapsible side drawer in `web/static/play/`: toggle visible only when allowed, collapsed by default, four-stat table per seat, updates with the poll cycle, no recommendation styling (FR-021)
+- [X] T026 [US4] `web/panel_bridge.py`: hosted-game public events → 001 GameRecord (claims omitted) → `replay.replay_record` (research R4; zero probability code). NB result-vocabulary mapping: engine `wire`/`dud`/`bomb` → GameRecord `safe`/`nothing`/`bomb`
+- [X] T027 [US4] `GET /api/game/panel` in `web/app.py` (403 unless the game opted in) and the `panel_allowed` setup field end to end (`GameSetup` → create → TableView)
+- [X] T028 [US4] Collapsible side drawer in `web/static/play/`: toggle visible only when allowed, collapsed by default, four-stat table per seat, updates with the poll cycle, no recommendation styling (FR-021)
 
 **Checkpoint**: the signature assistant-at-the-table, gated per game
 

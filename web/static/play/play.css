@@ -291,6 +291,60 @@ button.selected {
   border-top: 1px solid var(--line);
 }
 
+/* --- Opt-in stats drawer (FR-019/020/021) --- */
+
+.status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+#panel-toggle { flex-shrink: 0; font-size: 0.85rem; padding: 0.35rem 0.7rem; }
+
+#panel-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5;                 /* below the handoff overlay: privacy wins */
+  width: min(22rem, 92vw);
+  overflow-y: auto;
+  background: var(--card);
+  border-left: 1px solid var(--line);
+  box-shadow: -4px 0 16px rgba(0, 0, 0, 0.15);
+  padding: 1rem;
+}
+#panel-drawer[hidden] { display: none; }
+.drawer-head { display: flex; align-items: center; justify-content: space-between; }
+.drawer-head h2 { margin: 0; }
+#panel-chip {
+  display: inline-block;
+  margin-top: 0.6rem;
+  padding: 0.25rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 0.9rem;
+  background: var(--paper);
+}
+#panel-table {
+  width: 100%;
+  margin-top: 0.8rem;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+#panel-table th, #panel-table td {
+  padding: 0.45rem 0.3rem;
+  text-align: right;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.88rem;
+}
+#panel-table th:first-child, #panel-table td:first-child {
+  text-align: left;
+  font-weight: 600;
+}
+#panel-table th { color: var(--muted); font-weight: 600; }
+.no-cards { color: var(--muted); font-style: italic; text-align: center; }
+
 /* --- Pass-the-device handoff (FR-009) --- */
 
 #handoff-overlay {

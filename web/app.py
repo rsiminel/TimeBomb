@@ -78,6 +78,11 @@ def delete_game():
   return "", 204
 
 
+@app.get("/api/game/panel")
+def game_panel():
+  return jsonify(game_service.panel()), 200
+
+
 @app.post("/api/game/unlock")
 def unlock_seat():
   body = request.get_json(silent=True)
