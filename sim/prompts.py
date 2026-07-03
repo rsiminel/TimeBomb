@@ -14,8 +14,7 @@ formatted (note the literal JSON braces in the instructions).
 SYSTEM = ("You are an expert, strategic Time Bomb player, playing to win for your secret "
           "team. Read the declarations, the table talk, and the cut results for tells. In "
           "your private reasoning, argue from the specific evidence in front of you — who "
-          "declared what, who said what, what cuts revealed — rather than restating the "
-          "rules or the obvious; then commit to one move.")
+          "declared what, who said what, what cuts revealed; then commit to one move.")
 
 # === Action protocols (used verbatim — the literal {...} is the JSON the model returns) ===
 DECLARE_INSTRUCTION = (
@@ -26,20 +25,19 @@ DECLARE_INSTRUCTION = (
 DISCUSS_INSTRUCTION = (
     "Respond with ONLY a JSON object and nothing else:\n"
     '{"reasoning": "<private thinking about THIS situation, shown to no one>", '
-    '"message": "<one or two sentences you say OUT LOUD to the whole table — a claim, a '
-    'read on someone, an accusation, a defense, or a bluff; everyone hears and remembers '
-    'it>"}')
+    '"message": "<one or two sentences you say OUT LOUD to the whole table;'
+    'everyone hears and remembers it>"}')
 
 CUT_INSTRUCTION = (
     "Respond with ONLY a JSON object and nothing else:\n"
     '{"reasoning": "<private thinking about THIS situation, shown to no one>", '
     '"target": <the player index you cut>, '
-    '"message": "<one short sentence to the whole table about this cut — explain, accuse, '
-    'defend, or mislead; everyone hears and remembers it>"}')
+    '"message": "<one short sentence you say OUT LOUD to the whole table;'
+    'everyone hears and remembers it>"}')
 
 # === Rules preamble (used verbatim; seeds every session opener) =============
 RULES = (
-    "TIME BOMB — HOW TO WIN (read carefully, this is often misremembered):\n"
+    "TIME BOMB — HOW TO WIN:\n"
     "- Two secret teams: GOOD guys and BAD guys. Your role is fixed for the whole game.\n"
     "- When a face-down card is cut it turns out to be exactly one of three things:\n"
     "    - a WIRE — one of the cards the GOOD guys must cut to win;\n"
