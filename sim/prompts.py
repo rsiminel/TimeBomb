@@ -29,7 +29,7 @@ DISCUSS_INSTRUCTION = (
     '{"reasoning": "<private thinking about THIS situation, 2-3 short sentences, '
     'shown to no one>", '
     '"message": "<one or two sentences you say OUT LOUD to the whole table; '
-    'everyone hears and remembers it>"}')
+    'everyone hears and remembers it. Or \\"\\" to stay silent>"}')
 
 CUT_INSTRUCTION = (
     "Respond with ONLY a JSON object and nothing else:\n"
@@ -81,11 +81,16 @@ BAD_COUNT_PLURAL = "there are exactly %d bad guys"           # (k)
 BAD_COUNT_UNCERTAIN = "the number of bad guys is uncertain: %s"   # (joined parts)
 BAD_COUNT_PART = "%d (%.0f%%)"                               # (k, percent)
 
-# === Section headers (the four labelled blocks of a full render) ===========
-HEADER_ROLE = "YOUR ROLE & HAND"
-HEADER_HISTORY = "GAME SO FAR (public record — what players CLAIMED, SAID, and what cuts REVEALED):"
-HEADER_NOW = "NOW"
-ASSISTANT_HEADER = "Assistant readout (computed from public info only):"
+# === Section tags (the four labelled blocks of a full render) ==============
+# XML-style tags rather than prose headers: Claude models are trained to respect
+# tag-delimited structure, which helps smaller models keep the sections straight.
+RULES_OPEN, RULES_CLOSE = "<rules>", "</rules>"
+ROLE_OPEN, ROLE_CLOSE = "<your_role_and_hand>", "</your_role_and_hand>"
+HISTORY_OPEN = "<public_record> (what players CLAIMED, SAID, and what cuts REVEALED)"
+HISTORY_CLOSE = "</public_record>"
+NOW_OPEN, NOW_CLOSE = "<decision>", "</decision>"
+ASSISTANT_OPEN = "<assistant_readout> (computed from public info only)"
+ASSISTANT_CLOSE = "</assistant_readout>"
 
 # === Per-round record (full render / session opener) =======================
 YOU_MARKER = " (you)"                                        # appended to your own name

@@ -24,20 +24,19 @@ One **run** (one `run.py` invocation) = one directory under `sim/logs/`:
 sim/logs/<label>/
   manifest.json              # run-level index (§2)
   run.log                    # the run's console output (run.py tees stdout here)
-  g000_s0_bad.jsonl          # game 0 event log (§3) — the canonical machine record
+  <label>-0.jsonl            # game 0 event log (§3) — the canonical machine record
   <label>-0.md               # game 0 transcript (§4) — the human read
-  g001_s1_good.jsonl
+  <label>-1.jsonl
   <label>-1.md
   ...
 ```
 
 - **`<label>`** — `--label`, or the default `<YYYYMMDD-HHMM>_<agent>` (e.g.
   `20260620-1745_llm`). One label per experiment; reruns get fresh labels.
-- **Event-log file stem** — `g<NNN>_s<seed>_<verdict>` where `NNN` is the zero-padded game
-  index, `<seed>` is the integer seed or `rand` (no seed), and `<verdict>` is `good` or
-  `bad` (which team won). The stem appears in `manifest.games[].file`.
-- **Transcript name** — `<label>-<game index>.md` (in `manifest.games[].transcript`), so
-  transcripts from different runs stay distinguishable when several are open at once.
+- **Game file stem** — `<label>-<game index>`, shared by the `.jsonl`/`.md` pair and
+  recorded in `manifest.games[].file`, so files from different runs stay distinguishable
+  when several are open at once. Seed and outcome live in the manifest (and in the files
+  themselves), not in the filename.
 
 Logs are git-ignored (`sim/logs/`); they are data, not source.
 

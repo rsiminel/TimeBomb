@@ -146,11 +146,13 @@ defaults, chosen to keep the first version debuggable:
   fall back to a legal default. At scale it *will* happen.
 - **Model tiering.** A fast model (`claude-haiku-4-5`) for bulk play; `claude-opus-4-8`
   reserved for a small high-quality qualitative deep-dive. Per-run token budget cap.
-- **Prompt scaffold:** four labelled sections, each fact stated once — `RULES` (the static
-  preamble, with a `wire`/`dud`/`bomb` glossary) · `YOUR ROLE & HAND` (role + win condition
-  + private hand) · `GAME SO FAR` (the public record per round: declarations *claimed*,
-  table talk *said*, cuts *revealed*) · `NOW` (the legal action ask) · (optionally) the
-  assistant readout (§7). Prompts must not steer strategy — only rules, state, and talk.
+- **Prompt scaffold:** four XML-tagged sections (Claude models respect tag-delimited
+  structure), each fact stated once — `<rules>` (the static preamble, with a
+  `wire`/`dud`/`bomb` glossary) · `<your_role_and_hand>` (role + win condition + private
+  hand) · `<public_record>` (per round: declarations *claimed*, table talk *said*, cuts
+  *revealed*) · `<decision>` (the legal action ask) · (optionally) the assistant readout
+  (§7). Prompts must not steer strategy — only rules, state, and talk; a discuss turn may
+  return `""` to stay silent (a rules-faithful affordance, not a nudge).
   All copy lives in `sim/prompts.py`; players are referred to by **name only** (a cut
   target is returned as a name and resolved back to a seat index by the agent).
 - **Context purity.** A player's context contains *nothing* but our persona system prompt

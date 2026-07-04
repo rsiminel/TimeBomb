@@ -110,13 +110,14 @@ def render_agent(view, decision):
   me, names = priv.my_index, pub.player_names
   bomb = P.BOMB_HELD if priv.i_hold_bomb else P.BOMB_NOT_HELD
 
-  out = [P.RULES, "", P.HEADER_ROLE]
+  out = [P.RULES_OPEN, P.RULES, P.RULES_CLOSE, "", P.ROLE_OPEN]
   out.append(_role_line(priv, names))
   out.append(P.HAND_LINE % (pub.hand_size, _wire_desc(priv.my_wires), bomb))
   roster = ", ".join(names[j] + _you(j, me) for j in range(pub.num_players))
   out.append(P.TABLE_LINE % (pub.num_players, roster, _bad_count_phrase(pub.num_bad_prior)))
+  out.append(P.ROLE_CLOSE)
   out.append("")
-  out.append(P.HEADER_HISTORY)
+  out.append(P.HISTORY_OPEN)
   for r in range(pub.round_index):
     decls = pub.declaration_history[r] if r < len(pub.declaration_history) else None
     _render_round(out, r, _round_hand_size(pub, r), decls, pub.cut_log, pub.discussion_log,
@@ -125,11 +126,12 @@ def render_agent(view, decision):
                 pub.discussion_log, names, me, current=True, decision=decision)
   out.append(P.SNAPSHOT_HIDDEN % pub.active_wires)
   out.append(P.SNAPSHOT_HANDS % _hands_snapshot(pub, me))
+  out.append(P.HISTORY_CLOSE)
 
   if view.assistant_panel is not None:
-    out += ["", P.ASSISTANT_HEADER, "  " + json.dumps(view.assistant_panel)]
+    out += ["", P.ASSISTANT_OPEN, "  " + json.dumps(view.assistant_panel), P.ASSISTANT_CLOSE]
 
-  out += ["", P.HEADER_NOW, _decision_ask(pub, me, decision)]
+  out += ["", P.NOW_OPEN, _decision_ask(pub, me, decision), P.NOW_CLOSE]
   return "\n".join(out)
 
 

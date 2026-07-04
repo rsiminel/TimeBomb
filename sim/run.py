@@ -1,10 +1,11 @@
 """Play full games and write logs grouped into a per-run directory.
 
 Each invocation writes to ``<out>/<label>/``:
-  * ``g000_s0_bad.md`` / ``.jsonl`` -- one transcript + event-log pair per game, the
-    filename carrying the game index, seed, and outcome so a run is skimmable at a glance.
+  * ``<label>-0.md`` / ``.jsonl`` -- one transcript + event-log pair per game, named after
+    the run so files from different runs stay distinguishable side by side.
   * ``manifest.json`` -- the run-level record: agent config, parameters, and every game's
     seed + outcome. The entry point for later analysis (see sim/analysis/).
+  * ``run.log`` -- the run's console output (stdout is teed here).
 
   $ python sim/run.py --games 1 --seed 0
   $ python sim/run.py --games 8 --concurrency 4 --label haiku-nothink-baseline
@@ -44,17 +45,14 @@ def play_one(idx, players, agent_name, run_dir, seed, agent_kwargs):
   agents = [AGENTS[agent_name](**kwargs) for _ in range(players)]
   outcome, log = Engine(num_players=players).play_game(agents, seed=seed)
 
-  verdict = "good" if outcome["good_guys_won"] else "bad"
-  stem = "g%03d_s%s_%s" % (idx, "rand" if seed is None else seed, verdict)
-  log.to_jsonl(os.path.join(run_dir, stem + ".jsonl"))
-  # The human-read transcript is named <label>-<game>.md so files from different runs
-  # stay distinguishable when several are open at once (the .jsonl keeps the g/seed/verdict
-  # stem -- it is machine-read, and the stem keeps runs skimmable in `ls`).
-  transcript = "%s-%d.md" % (os.path.basename(run_dir), idx)
-  write_markdown(log, os.path.join(run_dir, transcript))
+  # Both game files share the stem <label>-<game index>, so files from different runs stay
+  # distinguishable when several are open at once; seed and outcome live in the manifest.
+  stem = "%s-%d" % (os.path.basename(run_dir), idx)
+  base = os.path.join(run_dir, stem)
+  log.to_jsonl(base + ".jsonl")
+  write_markdown(log, base + ".md")
   return {"idx": idx, "seed": seed, "good_guys_won": outcome["good_guys_won"],
-          "reason": outcome["reason"], "file": stem, "transcript": transcript,
-          "usage": _sum_usage(agents)}
+          "reason": outcome["reason"], "file": stem, "usage": _sum_usage(agents)}
 
 
 def _sum_usage(agents):
