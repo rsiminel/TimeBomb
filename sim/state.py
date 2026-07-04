@@ -82,21 +82,35 @@ def _render_round(out, r, hand_size, decls, cut_log, discussion_log, names, me, 
              for j, d in enumerate(decls)]
     out.append(P.DECLS_LINE % ", ".join(parts))
   stmts = [s for s in discussion_log if s["round"] == r]
-  if stmts:
-    out.append(P.SAID_LINE % "; ".join(
-        P.STMT_PART % (names[s["speaker"]], _you(s["speaker"], me), s["message"]) for s in stmts))
   cuts = [c for c in cut_log if c["round"] == r]
-  if cuts:
-    rendered = []
-    for k, c in enumerate(cuts, 1):
-      line = P.CUT_PART % (k, names[c["cutter"]] + _you(c["cutter"], me),
-                           names[c["target"]] + _you(c["target"], me),
-                           P.RESULT_WORDS.get(c["result"], c["result"]))
-      if c.get("message"):                      # table talk the cutter said out loud
-        line += P.CUT_PART_SAID % c["message"]
-      rendered.append(line)
-    out.append(P.CUTS_LINE % "; ".join(rendered))
-  elif current:
+
+  def _said(after_cuts):
+    """One 'Said' line for the statements made after ``after_cuts`` cuts this round --
+    with talk interleaved between cuts there is one such chunk per pass."""
+    chunk = [s for s in stmts if s.get("cuts_before", 0) == after_cuts]
+    if chunk:
+      out.append(P.SAID_LINE % "; ".join(
+          P.STMT_PART % (names[s["speaker"]], _you(s["speaker"], me), s["message"])
+          for s in chunk))
+
+  _said(0)
+  pending = []                                  # consecutive cuts with no talk between them
+  def _flush():
+    if pending:
+      out.append(P.CUTS_LINE % "; ".join(pending))
+      del pending[:]
+  for k, c in enumerate(cuts, 1):
+    line = P.CUT_PART % (k, names[c["cutter"]] + _you(c["cutter"], me),
+                         names[c["target"]] + _you(c["target"], me),
+                         P.RESULT_WORDS.get(c["result"], c["result"]))
+    if c.get("message"):                        # table talk the cutter said out loud
+      line += P.CUT_PART_SAID % c["message"]
+    pending.append(line)
+    if any(s.get("cuts_before", 0) == k for s in stmts):
+      _flush()
+      _said(k)
+  _flush()
+  if not cuts and current:
     out.append(P.CUTS_NONE_YET)
 
 
@@ -139,7 +153,9 @@ def _decision_ask(pub, me, decision):
   if decision == "declare":
     return P.ASK_DECLARE % pub.hand_size
   if decision == "discuss":
-    return P.ASK_DISCUSS
+    cutter = pub.current_cutter
+    nxt = P.DISCUSS_NEXT_YOU if cutter == me else P.DISCUSS_NEXT % pub.player_names[cutter]
+    return P.ASK_DISCUSS % nxt
   return P.ASK_CUT % ", ".join(pub.player_names[t] for t in legal_targets(pub, me))
 
 
@@ -169,6 +185,45 @@ def cursor_after_opener(view, decision):
                          else pub.round_index - 1}
 
 
+def _delta_chunks(pub, cursor, names, me):
+  """The talk and cut lines for everything since ``cursor``, in true chronological order.
+
+  Statements carry ``cuts_before`` (how many cuts their round had seen when spoken) and a
+  round's k-th cut sits between the ``cuts_before == k-1`` and ``cuts_before == k`` talk,
+  so ``(round, position)`` sorts the merged stream; consecutive same-kind entries collapse
+  into one line. With talk only at round start (the original structure) this yields exactly
+  the old two lines: all new talk, then all new cuts."""
+  items = []
+  for s in pub.discussion_log[cursor["statements"]:]:
+    items.append((s["round"], s.get("cuts_before", 0), 1, "talk",
+                  P.STMT_PART % (names[s["speaker"]], _you(s["speaker"], me), s["message"])))
+  nth_in_round = {}                      # the k-th cut of round r has position k - 0.5
+  for j, c in enumerate(pub.cut_log):
+    k = nth_in_round[c["round"]] = nth_in_round.get(c["round"], 0) + 1
+    if j < cursor["cuts"]:
+      continue
+    line = P.DELTA_CUT_PART % (names[c["cutter"]] + _you(c["cutter"], me),
+                               names[c["target"]] + _you(c["target"], me),
+                               P.RESULT_WORDS.get(c["result"], c["result"]))
+    if c.get("message"):
+      line += P.CUT_PART_SAID % c["message"]
+    items.append((c["round"], k - 0.5, 0, "cut", line))
+  items.sort(key=lambda t: t[:3])
+
+  out = []
+  run_kind, run = None, []
+  def _flush():
+    if run:
+      out.append((P.DELTA_TALK if run_kind == "talk" else P.DELTA_CUTS) % "; ".join(run))
+  for _r, _pos, _tie, kind, line in items:
+    if kind != run_kind:
+      _flush()
+      run_kind, run = kind, []
+    run.append(line)
+  _flush()
+  return out
+
+
 def render_session_delta(view, decision, cursor):
   """Narrate only what changed since ``cursor`` and return ``(text, new_cursor)``. Covers a
   new round (re-deal + the player's fresh hand), this round's declarations the first time a
@@ -192,25 +247,9 @@ def render_session_delta(view, decision, cursor):
     out.append(P.DELTA_DECLS % ", ".join(parts))
     cur["decls_round"] = pub.round_index
 
-  new_stmts = pub.discussion_log[cur["statements"]:]
-  if new_stmts:
-    out.append(P.DELTA_TALK % "; ".join(
-        P.STMT_PART % (names[s["speaker"]], _you(s["speaker"], me), s["message"])
-        for s in new_stmts))
-    cur["statements"] = len(pub.discussion_log)
-
-  new_cuts = pub.cut_log[cur["cuts"]:]
-  if new_cuts:
-    rendered = []
-    for c in new_cuts:
-      line = P.DELTA_CUT_PART % (names[c["cutter"]] + _you(c["cutter"], me),
-                                 names[c["target"]] + _you(c["target"], me),
-                                 P.RESULT_WORDS.get(c["result"], c["result"]))
-      if c.get("message"):
-        line += P.CUT_PART_SAID % c["message"]
-      rendered.append(line)
-    out.append(P.DELTA_CUTS % "; ".join(rendered))
-    cur["cuts"] = len(pub.cut_log)
+  out.extend(_delta_chunks(pub, cur, names, me))
+  cur["statements"] = len(pub.discussion_log)
+  cur["cuts"] = len(pub.cut_log)
 
   out.append(P.DELTA_HIDDEN % pub.active_wires)
   out.append(P.DELTA_HANDS % _hands_snapshot(pub, me))

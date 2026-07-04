@@ -33,6 +33,7 @@ for _p in ("", "timebomb", "sim", os.path.join("sim", "agents")):
   sys.path.insert(0, os.path.join(_ROOT, _p))
 
 from engine import Engine
+from assistant import PanelAssistant
 from transcript import write_markdown, write_agent_session
 from llm import LLMAgent
 from programmatic import RandomAgent
@@ -80,6 +81,12 @@ def main():
   ap.add_argument("--thinking-tokens", type=int, default=0,
                   help="extended-thinking budget: 0 off (fast), >0 cap, <0 Claude Code default (on)")
   ap.add_argument("--timeout", type=int, default=None, help="per-call timeout seconds")
+  ap.add_argument("--talk-between-cuts", action=argparse.BooleanOptionalAction, default=True,
+                  help="a full discussion pass before every cut, ending with the cutter "
+                       "(--no-talk-between-cuts: one pass per round, after declarations)")
+  ap.add_argument("--assistant", action=argparse.BooleanOptionalAction, default=None,
+                  help="show every player the public-info stats readout "
+                       "(default: on for llm agents, off for programmatic ones)")
   args = ap.parse_args()
 
   agent_kwargs = {"thinking_tokens": args.thinking_tokens}
@@ -95,7 +102,11 @@ def main():
   os.makedirs(run_dir, exist_ok=True)
 
   agents = [AGENTS[args.agent](**kwargs) for _ in range(args.players)]
-  outcome, log = Engine(num_players=args.players).play_game(agents, seed=args.seed)
+  use_panel = args.assistant if args.assistant is not None else args.agent == "llm"
+  eng_kwargs = dict(num_players=args.players, talk_between_cuts=args.talk_between_cuts)
+  if use_panel:
+    eng_kwargs.update(assistant=PanelAssistant(), panel_for=range(args.players))
+  outcome, log = Engine(**eng_kwargs).play_game(agents, seed=args.seed)
 
   usage = _sum_usage(agents)
   base = os.path.join(run_dir, label)

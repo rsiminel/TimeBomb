@@ -161,13 +161,17 @@ defaults, chosen to keep the first version debuggable:
   (no CLAUDE.md auto-injection). ~166 fixed overhead tokens vs ~11.5k with the default
   Claude Code harness.
 
-**Table-talk is in scope (the discussion beat).** Each round runs declare → **discuss** →
-cut: after the (blind, simultaneous) declarations, every player makes one public statement
-in seating order — a claim, a read, an accusation, a defense, or a bluff — before any cut.
-The cutter also speaks at each cut. Talk is free-text (accusation accuracy is measured
-offline, §2); nothing forces a player to suspect anyone. The assistant still consumes only
-declarations + cut results, so the firewall is unchanged — table talk is extra public log,
-never fed to the assistant.
+**Table-talk is in scope (the discussion beat).** Each round runs declare →
+(**discuss** → cut)×N: after the (blind, simultaneous) declarations the table gets a full
+discussion pass before *every* cut — the first pass reacts to the declarations, later ones
+to the cut just made. A pass starts at the seat after the next cutter and ends with that
+cutter (the about-to-act player hears everyone and gets the last word; no seat is
+structurally first). Any turn may be a claim, a read, an accusation, a defense, a bluff —
+or silence (`""`), the encouraged default when a player has nothing to add, which is what
+keeps many passes affordable. The cutter also speaks at each cut. Talk is free-text
+(accusation accuracy is measured offline, §2); nothing forces a player to suspect anyone.
+The assistant still consumes only declarations + cut results, so the firewall is
+unchanged — table talk is extra public log, never fed to the assistant.
 
 ---
 
@@ -178,7 +182,11 @@ agent and watch what happens. When an agent is flagged to receive it, the engine
 the panel from `PublicState` only (firewall intact) and appends it to that agent's view.
 The agent class is written once; "uses the assistant" is just "reads `view.assistant_panel`
 when present." Whether to give it to good guys, bad guys, or everyone is a knob, not a
-fixed experimental arm.
+fixed experimental arm. The adapter is `sim/assistant.py` (`PanelAssistant`): P(bad) each
+turn plus, once a round's declarations are in, per-player next-cut P(wire)/P(bomb) —
+General.py outputs in the web assistant's replay pattern, minus the lookahead entropy
+stats (those feed a human's risk appetite; here they would only spend tokens). `run.py`
+shows it to every player by default in LLM games (`--no-assistant` to withhold).
 
 ---
 
@@ -226,9 +234,10 @@ The **default play configuration is the standard game: 6 players, 2 bad, 1 bomb*
 count is itself uncertain (model.md §3.5.1) — are supported but secondary.
 
 **Open decisions (record as ADRs when reached):** per-game vs. per-match memory; bulk-LLM
-model + token budget; cutter-passing rule fidelity (§ engine sketch); multi-pass discussion
-/ rebuttals (today: one statement per player per round). *(Done: table-talk channel — the
-discussion beat, §6; session memory, §6.)*
+model + token budget; cutter-passing rule fidelity (§ engine sketch). *(Done: table-talk
+channel — the discussion beat, §6; session memory, §6; conversation structure — a pass
+before every cut, ending with the cutter, silence encouraged, §6; the assistant readout as
+an input, §7.)*
 
 ---
 

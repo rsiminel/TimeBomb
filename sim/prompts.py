@@ -29,7 +29,8 @@ DISCUSS_INSTRUCTION = (
     '{"reasoning": "<private thinking about THIS situation, 2-3 short sentences, '
     'shown to no one>", '
     '"message": "<one or two sentences you say OUT LOUD to the whole table; '
-    'everyone hears and remembers it. Or \\"\\" to stay silent>"}')
+    'everyone hears and remembers it. Or \\"\\" to stay silent — the usual choice '
+    'when you have nothing new to add>"}')
 
 CUT_INSTRUCTION = (
     "Respond with ONLY a JSON object and nothing else:\n"
@@ -89,7 +90,9 @@ ROLE_OPEN, ROLE_CLOSE = "<your_role_and_hand>", "</your_role_and_hand>"
 HISTORY_OPEN = "<public_record> (what players CLAIMED, SAID, and what cuts REVEALED)"
 HISTORY_CLOSE = "</public_record>"
 NOW_OPEN, NOW_CLOSE = "<decision>", "</decision>"
-ASSISTANT_OPEN = "<assistant_readout> (computed from public info only)"
+ASSISTANT_OPEN = ("<assistant_readout> (Bayesian probabilities computed from the PUBLIC "
+                  "record only — declarations and cut results; it cannot see anyone's "
+                  "role or hand, not even yours)")
 ASSISTANT_CLOSE = "</assistant_readout>"
 
 # === Per-round record (full render / session opener) =======================
@@ -115,7 +118,10 @@ HAND_PART = "%s%s: %d found, %d face-down"                   # (name, you_marker
 # === Decision asks (the NOW block) =========================================
 ASK_DECLARE = ("YOUR TURN TO DECLARE. Announce a wire count from 0 to %d — the truth, "
                "or a bluff that serves your team.")          # (hand_size)
-ASK_DISCUSS = "YOUR TURN TO SPEAK to the whole table, before anyone cuts this round."
+ASK_DISCUSS = ("YOUR TURN TO SPEAK to the whole table — it gets a word before every cut. "
+               "%s. If you have nothing to add, stay silent.")   # (DISCUSS_NEXT[_YOU] phrase)
+DISCUSS_NEXT = "%s cuts next, once this pass ends"               # (next cutter's name)
+DISCUSS_NEXT_YOU = "YOU cut next, right after this pass"
 ASK_CUT = ("YOUR TURN TO CUT — you hold the wire-cutters. Cut one OTHER player's "
            "face-down card. You may cut: %s")                # (legal target names)
 

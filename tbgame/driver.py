@@ -28,13 +28,17 @@ class Engine:
   """One referee instance plays one or more games with a fixed roster and settings."""
 
   def __init__(self, num_players=6, initial_hand_size=5, player_names=None,
-               panel_for=(), assistant=None, max_workers=None):
+               panel_for=(), assistant=None, max_workers=None, talk_between_cuts=False):
     self.num_players = num_players
     self.initial_hand_size = initial_hand_size
     self.player_names = player_names or _default_names(num_players)
     self.panel_for = set(panel_for)        # indices shown the assistant panel
     self.assistant = assistant             # optional public-state -> panel adapter
     self.max_workers = max_workers or num_players   # concurrency for the declaration phase
+    # False: one discussion pass per round, after declarations (the original structure).
+    # True: a full pass before EVERY cut -- the first reacts to declarations, later ones to
+    # the previous cut -- each ordered to END with the next cutter (see the cut loop).
+    self.talk_between_cuts = talk_between_cuts
 
   # -- view construction (the firewall) -------------------------------------
 
@@ -49,6 +53,22 @@ class Engine:
   def _broadcast(self, agents, kind, **data):
     for a in agents:
       a.observe({"type": kind, **data})
+
+  def _talk_pass(self, agents, gt, pub, log, round_index, order, cuts_before):
+    """One sequential discussion pass in ``order``; each speaker's view already holds every
+    earlier statement. ``cuts_before`` -- how many cuts this round precede the pass -- is
+    recorded on each statement so renderers can interleave talk with cuts chronologically."""
+    for speaker in order:
+      view = self._build_view(gt, pub, speaker)
+      statement = agents[speaker].discuss(view)
+      if not statement:
+        continue
+      reasoning = getattr(agents[speaker], "last_reasoning", None)
+      log.append("statement", round=round_index, player=speaker, message=statement,
+                 reasoning=reasoning, cuts_before=cuts_before)
+      pub.discussion_log.append({"round": round_index, "speaker": speaker,
+                                 "message": statement, "cuts_before": cuts_before})
+      self._broadcast(agents, "statement", player=speaker, message=statement)
 
   # -- the game loop --------------------------------------------------------
 
@@ -69,6 +89,7 @@ class Engine:
     num_bom = 1
     log.append("game_start", schema_version=SCHEMA_VERSION, num_players=N, num_bad=num_bad,
                num_bom=num_bom, roles=roles, player_names=self.player_names, seed=seed,
+               talk_between_cuts=self.talk_between_cuts, panel_for=sorted(self.panel_for),
                agents=[a.describe() for a in agents])
 
     hand_size = self.initial_hand_size
@@ -110,28 +131,28 @@ class Engine:
       decl_history.append(list(pub.declarations))
 
       # -- discussion phase (sequential; each speaker hears those before it) --
-      # Declarations are public now; players speak in seating order before any cut, so a
-      # later speaker can react to (and accuse) earlier ones. Silent agents (default
-      # ``discuss`` -> None) simply add nothing. Rotating the start order is a future knob.
-      for speaker in range(N):
-        view = self._build_view(gt, pub, speaker)
-        statement = agents[speaker].discuss(view)
-        if not statement:
-          continue
-        reasoning = getattr(agents[speaker], "last_reasoning", None)
-        log.append("statement", round=round_index, player=speaker, message=statement,
-                   reasoning=reasoning)
-        pub.discussion_log.append({"round": round_index, "speaker": speaker,
-                                   "message": statement})
-        self._broadcast(agents, "statement", player=speaker, message=statement)
+      # Declarations are public now; players speak before any cut, so a later speaker can
+      # react to (and accuse) earlier ones. Silent agents (default ``discuss`` -> None)
+      # simply add nothing. With ``talk_between_cuts`` the table instead gets a word before
+      # every cut (inside the cut loop below); this standalone pass is the original
+      # one-pass-per-round structure, kept as the default.
+      if not self.talk_between_cuts:
+        self._talk_pass(agents, gt, pub, log, round_index, range(N), cuts_before=0)
 
       # -- cut phase (N cuts; the cut target takes the cutters next) ---------
-      for _ in range(N):
+      for cut_no in range(N):
         pub.current_cutter = current_cutter
         legal = legal_targets(pub, current_cutter)
         if not legal:                       # cutter has no legal target; skip
           log.append("cut_skipped", round=round_index, cutter=current_cutter)
           break
+        if self.talk_between_cuts:
+          # A full pass before this cut: the first reacts to the declarations, later ones
+          # to the cut just made. Speaking starts at the seat after the cutter and ends
+          # WITH the cutter -- the about-to-act player hears everyone, gets the last word,
+          # then cuts; no seat is structurally first, since the start rotates with play.
+          order = [(current_cutter + 1 + k) % N for k in range(N)]
+          self._talk_pass(agents, gt, pub, log, round_index, order, cuts_before=cut_no)
         view = self._build_view(gt, pub, current_cutter)
         raw = agents[current_cutter].choose_cut(view)
         reasoning = getattr(agents[current_cutter], "last_reasoning", None)
@@ -205,7 +226,8 @@ def log_cuts(log):
 
 
 def log_statements(log):
-  return [{"round": e["round"], "speaker": e["player"], "message": e["message"]}
+  return [{"round": e["round"], "speaker": e["player"], "message": e["message"],
+           "cuts_before": e.get("cuts_before", 0)}
           for e in log.events if e["type"] == "statement"]
 
 

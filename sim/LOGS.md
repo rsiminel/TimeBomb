@@ -69,6 +69,8 @@ Event types and their additional fields:
 | `roles` | int[N] | `roles[p]==1` iff player p is a bad guy (fixed all game). |
 | `player_names` | str[N] | Display names, indexed by player. |
 | `seed` | int \| null | RNG seed (deal + cut resolution). |
+| `talk_between_cuts` | bool | Discussion structure: a full pass before **every** cut (true) or one pass per round after declarations (false). Absent in pre-2026-07-04 logs (= false). |
+| `panel_for` | int[] | Players shown the `<assistant_readout>` stats panel ([] = nobody). Absent in older logs (= []). |
 | `agents` | object[N] | Each player's agent config (§5), indexed by player. |
 
 ### `round_start`
@@ -90,15 +92,19 @@ Event types and their additional fields:
 | `reasoning` | str \| null | The agent's private reasoning (LLM); null for non-LLM agents. |
 
 ### `statement` (table talk)
-Emitted in the **discussion phase** — after all declarations, before any cut — once per
-speaking player, in seating order (a later speaker has heard earlier ones this round). Silent
-agents (e.g. `RandomAgent`) emit none. Round flow: `declaration`s → `statement`s → `cut`s.
+Emitted in a **discussion pass** — with `talk_between_cuts` the table gets a full pass
+before *every* cut (the first reacts to the declarations, later ones to the cut just made;
+each pass starts at the seat after the next cutter and ends with that cutter). Without it,
+one pass per round after declarations, in seating order. A later speaker has always heard
+the earlier statements. Silent agents (e.g. `RandomAgent`, or an LLM returning `""`) emit
+none. Round flow: `declaration`s → (`statement`s → `cut`)×N.
 
 | Field | Type | Meaning |
 | ----- | ---- | ------- |
 | `round` | int | Round index. |
 | `player` | int | The speaking player. |
 | `message` | str | The **public** statement said to the whole table (claim/read/accusation/defense/bluff). |
+| `cuts_before` | int | Cuts already made this round when spoken (0 = the opening pass). Renderers use it to interleave talk with cuts. Absent in older logs (= 0). |
 | `reasoning` | str \| null | The speaker's **private** reasoning (LLM); null otherwise. |
 
 ### `cut`
