@@ -6,7 +6,7 @@ re-exports them so existing imports (``from state import GroundTruth, ...``) kee
 working unchanged, and keeps the renderer and prompt assembly here -- those are
 arena/LLM presentation concerns, not shared rules state.
 
-sim's own on-disk log/manifest schema version is pinned here, independent of
+sim's own on-disk log schema version is pinned here, independent of
 ``tbgame.state.SCHEMA_VERSION`` (bumped separately for the web game's log format,
 sim/LOGS.md is untouched).
 """
@@ -18,7 +18,7 @@ from tbgame.state import (GroundTruth, PublicState, PrivateView, AgentView, Even
 
 import prompts as P   # all agent-facing copy lives in prompts.py; this module only assembles it
 
-# Bumped only on a breaking change to the on-disk log / manifest format. See sim/LOGS.md.
+# Bumped only on a breaking change to the on-disk log format. See sim/LOGS.md.
 # Independent of tbgame.state.SCHEMA_VERSION -- do not conflate the two (CLAUDE.md).
 SCHEMA_VERSION = 1
 
