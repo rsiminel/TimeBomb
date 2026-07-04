@@ -46,11 +46,15 @@ def play_one(idx, players, agent_name, run_dir, seed, agent_kwargs):
 
   verdict = "good" if outcome["good_guys_won"] else "bad"
   stem = "g%03d_s%s_%s" % (idx, "rand" if seed is None else seed, verdict)
-  base = os.path.join(run_dir, stem)
-  log.to_jsonl(base + ".jsonl")
-  write_markdown(log, base + ".md")
+  log.to_jsonl(os.path.join(run_dir, stem + ".jsonl"))
+  # The human-read transcript is named <label>-<game>.md so files from different runs
+  # stay distinguishable when several are open at once (the .jsonl keeps the g/seed/verdict
+  # stem -- it is machine-read, and the stem keeps runs skimmable in `ls`).
+  transcript = "%s-%d.md" % (os.path.basename(run_dir), idx)
+  write_markdown(log, os.path.join(run_dir, transcript))
   return {"idx": idx, "seed": seed, "good_guys_won": outcome["good_guys_won"],
-          "reason": outcome["reason"], "file": stem, "usage": _sum_usage(agents)}
+          "reason": outcome["reason"], "file": stem, "transcript": transcript,
+          "usage": _sum_usage(agents)}
 
 
 def _sum_usage(agents):
