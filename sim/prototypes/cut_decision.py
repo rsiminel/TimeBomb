@@ -29,8 +29,9 @@ import sys
 import tempfile
 
 # -- path bootstrap (repo convention; packaging is a separate TODO) -----------
+# "" = the repo root itself, needed since the shims import the promoted `tbgame` package.
 _ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-for _p in ("timebomb", "sim", os.path.join("sim", "agents")):
+for _p in ("", "timebomb", "sim", os.path.join("sim", "agents")):
   sys.path.insert(0, os.path.join(_ROOT, _p))
 
 from state import (GroundTruth, PublicState, PrivateView, AgentView,

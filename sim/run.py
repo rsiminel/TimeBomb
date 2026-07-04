@@ -23,8 +23,9 @@ import sys
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
 # -- path bootstrap (repo convention; packaging is a separate TODO) -----------
+# "" = the repo root itself, needed since the shims import the promoted `tbgame` package.
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-for _p in ("timebomb", "sim", os.path.join("sim", "agents")):
+for _p in ("", "timebomb", "sim", os.path.join("sim", "agents")):
   sys.path.insert(0, os.path.join(_ROOT, _p))
 
 from engine import Engine
@@ -67,6 +68,22 @@ def _sum_usage_dicts(dicts):
   return total
 
 
+class _Tee:
+  """Mirror everything printed to ``<run_dir>/run.log`` so a run's console record travels
+  with its logs (no shell redirection needed for background runs)."""
+
+  def __init__(self, stream, path):
+    self._s, self._f = stream, open(path, "a", buffering=1)   # line-buffered: tail-able live
+
+  def write(self, data):
+    self._s.write(data)
+    self._f.write(data)
+
+  def flush(self):
+    self._s.flush()
+    self._f.flush()
+
+
 def main():
   ap = argparse.ArgumentParser()
   ap.add_argument("--games", type=int, default=1)
@@ -93,6 +110,7 @@ def main():
   label = args.label or "%s_%s" % (now.strftime("%Y%m%d-%H%M"), args.agent)
   run_dir = os.path.join(args.out, label)
   os.makedirs(run_dir, exist_ok=True)
+  sys.stdout = _Tee(sys.stdout, os.path.join(run_dir, "run.log"))
 
   def seed_for(g):
     return None if args.seed is None else args.seed + g
