@@ -75,6 +75,11 @@ class LLMAgent(Agent):
     self.last_statement = None                # this agent's last discussion-phase statement
     self.last_error = None
     self.memory = []                         # this agent's own past decisions + reasoning
+    # Full raw session log for the post-game per-agent transcript (sim/transcript.py):
+    # the persona (``self.system``) plus, per committed turn, the exact prompt sent and the
+    # reply the model returned. Only committed turns are recorded -- a failed-parse retry is
+    # re-narrated by the next turn and is not part of the session's logical history.
+    self.transcript = []
     # One persistent `claude -p` session per agent (session mode). ``session_id`` is None
     # until the first successful call seeds it; ``cursor`` tracks how far the session has
     # been narrated so each later turn sends only the delta.
@@ -161,6 +166,7 @@ class LLMAgent(Agent):
         if sid:
           self.session_id = sid                # capture/refresh the session to resume next turn
         self.cursor = pending                  # commit the narration cursor only on success
+        self.transcript.append({"decision": decision, "prompt": prompt, "reply": text.strip()})
         return value, obj.get("reasoning", ""), obj
       except (ValueError, KeyError):
         self.last_error = "parse failure: %r" % text[:200]

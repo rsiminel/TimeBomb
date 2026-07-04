@@ -4,7 +4,8 @@ alongside (this is a post-game analysis artifact, not something an agent ever se
 firewall is about in-game views, SPEC.md §3/§8).
 
 The JSONL log is the machine-readable replay; this is the human read. ``run.py`` writes
-both per game.
+both, plus one per-agent *session* transcript (``render_agent_session``) -- the raw
+`claude -p` conversation each player saw, prompts and replies verbatim.
 """
 
 import json
@@ -49,7 +50,22 @@ def _render_agents(out, names, agents):
       out.append("  - declare/cut instructions and full config are in the .jsonl `game_start` event")
 
 
-def render_markdown(log):
+def _run_line(run_meta):
+  """The optional run-level header line: token/cost usage and any free-text note. This is
+  the durable home for what the retired manifest.json used to hold (one game per run now,
+  so run-level and game-level metadata are the same thing)."""
+  bits = []
+  u = (run_meta or {}).get("usage")
+  if u:
+    bits.append("%d calls · %d in / %d out tok · $%.4f"
+                % (u.get("calls", 0), u.get("input_tokens", 0),
+                   u.get("output_tokens", 0), u.get("cost_usd", 0.0)))
+  if (run_meta or {}).get("notes"):
+    bits.append(run_meta["notes"])
+  return "**Run:** " + "  ·  ".join(bits) if bits else None
+
+
+def render_markdown(log, run_meta=None):
   events = log.events
   meta = next(e for e in events if e["type"] == "game_start")
   names, roles = meta["player_names"], meta["roles"]
@@ -65,6 +81,9 @@ def render_markdown(log):
   if end:
     who = "🟢 Good guys WIN" if end["good_guys_won"] else "🔴 Bad guys win"
     out.append("**Result:** %s — %s" % (who, end["reason"]))
+  run_line = _run_line(run_meta)
+  if run_line:
+    out.append(run_line)
   out.append("")
   _render_agents(out, names, meta.get("agents"))
   out.append("")
@@ -127,6 +146,35 @@ def render_markdown(log):
   return "\n".join(out)
 
 
-def write_markdown(log, path):
+def write_markdown(log, path, run_meta=None):
   with open(path, "w") as f:
-    f.write(render_markdown(log))
+    f.write(render_markdown(log, run_meta))
+
+
+def render_agent_session(name, role, descriptor, turns):
+  """Render one player's raw `claude -p` session as Markdown: the persona system prompt,
+  then every committed turn's exact prompt and the reply the model returned, verbatim. This
+  is the game from that one seat's perspective -- what it was told and what it answered -- so
+  a move can be traced to the precise context behind it. Post-game artifact; an agent never
+  sees another's session (nor its own rendered like this).
+
+  ``descriptor`` is the agent's ``describe()`` dict (for the model + persona); ``turns`` is
+  the agent's ``transcript`` list of ``{decision, prompt, reply}`` (committed turns only)."""
+  model = descriptor.get("model", "?")
+  out = ["# Time Bomb — %s's session  ·  %s  ·  model=%s" % (name, role, model), ""]
+  out.append("_The exact conversation %s's `claude -p` session saw: the persona, then each "
+             "turn's prompt and the reply it returned (verbatim; committed turns only). "
+             "Post-game artifact — no agent ever sees this._" % name)
+  if descriptor.get("system"):
+    out += ["", "## Persona (system prompt)", "", "```", descriptor["system"], "```"]
+  for n, turn in enumerate(turns, 1):
+    out += ["", "## Turn %d — %s" % (n, turn["decision"]), "",
+            "**Prompt sent:**", "", "```", turn["prompt"], "```", "",
+            "**Reply:**", "", "```json", turn["reply"], "```"]
+  out.append("")
+  return "\n".join(out)
+
+
+def write_agent_session(name, role, descriptor, turns, path):
+  with open(path, "w") as f:
+    f.write(render_agent_session(name, role, descriptor, turns))

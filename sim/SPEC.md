@@ -190,11 +190,14 @@ each player), and LLM reasoning string. **Every** question in §2 is answered of
 this log; the live loop computes no statistics. This is what makes the project a sandbox
 rather than a fixed experiment — add a metric, re-read old logs.
 
-**On-disk layout.** One run = one directory `sim/logs/<label>/`, holding a `manifest.json`
-index plus a `g<NNN>_s<seed>_<good|bad>.{jsonl,md}` pair per game. The complete, versioned,
-analysis-oriented contract — directory layout, manifest schema, every event type and field,
-the agent-config object, and the extensibility/migration rules — is **[LOGS.md](LOGS.md)**.
-It is stable and stamped with `SCHEMA_VERSION`; old logs are migrated, never deleted.
+**On-disk layout.** One run = one game = one directory `sim/logs/<label>/`, holding the
+`<label>.{jsonl,md}` pair plus one `<label>.<Name>.md` per LLM player (that seat's raw
+session — persona, prompts, and replies verbatim). Running several games means several runs,
+so a run needs no index (the retired `manifest.json`); token/cost usage lives in the
+transcript's `**Run:**` header line. The complete, versioned, analysis-oriented contract —
+directory layout, every event type and field, the agent-config object, and the
+extensibility/migration rules — is **[LOGS.md](LOGS.md)**. It is stable and stamped with
+`SCHEMA_VERSION`; old logs are kept, never deleted.
 
 ---
 

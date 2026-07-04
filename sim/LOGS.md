@@ -11,57 +11,40 @@ hidden ground truth attached, so any metric is derivable offline).
 > artifacts*, never shown to an agent. The firewall is about in-game `AgentView`s
 > (SPEC.md §3), not about what we record afterwards.
 
-`SCHEMA_VERSION` lives in `sim/state.py` and is stamped into both the manifest and every
-game's `game_start` event.
+`SCHEMA_VERSION` lives in `sim/state.py` and is stamped into every game's `game_start`
+event. (It survived the retirement of the run manifest unchanged — no `.jsonl` event field
+changed meaning, so any reader of the event log is unaffected.)
 
 ---
 
 ## 1. Directory layout
 
-One **run** (one `run.py` invocation) = one directory under `sim/logs/`:
+**One run (one `run.py` invocation) = one game.** Running several games means several
+invocations, so each run is self-contained — there is no run-level index to keep in sync.
+A run is a directory under `sim/logs/`:
 
 ```
 sim/logs/<label>/
-  manifest.json              # run-level index (§2)
-  run.log                    # the run's console output (run.py tees stdout here)
-  <label>-0.jsonl            # game 0 event log (§3) — the canonical machine record
-  <label>-0.md               # game 0 transcript (§4) — the human read
-  <label>-1.jsonl
-  <label>-1.md
+  <label>.jsonl              # the game event log (§3) — the canonical machine record
+  <label>.md                # the game transcript (§4) — the human read
+  <label>.<Name>.md         # one per LLM player — that seat's raw session (§4b)
   ...
 ```
 
 - **`<label>`** — `--label`, or the default `<YYYYMMDD-HHMM>_<agent>` (e.g.
-  `20260620-1745_llm`). One label per experiment; reruns get fresh labels.
-- **Game file stem** — `<label>-<game index>`, shared by the `.jsonl`/`.md` pair and
-  recorded in `manifest.games[].file`, so files from different runs stay distinguishable
-  when several are open at once. Seed and outcome live in the manifest (and in the files
-  themselves), not in the filename.
+  `20260620-1745_llm`). One label per run; reruns get fresh labels. It is both the
+  directory name and the stem of every file in it, so files from different runs stay
+  distinguishable when several are open at once.
+- The **seed** and **outcome** are not in the filenames; they live in the files themselves
+  (`game_start.seed`, `game_end`, and the transcript's `**Run:**` / result lines).
+
+**Retired:** earlier runs also wrote a `manifest.json` (a run-level index over multiple
+games) and a `run.log` (a tee of stdout). Both are gone now that a run is a single game:
+the token/cost usage the manifest carried lives in the transcript's `**Run:**` header line,
+and everything else it held is already in the `.jsonl` (`game_start`/`game_end`). Old runs
+that still have those files are left as-is (§7).
 
 Logs are git-ignored (`sim/logs/`); they are data, not source.
-
----
-
-## 2. `manifest.json` — the run index
-
-The entry point for analysis: read this first, then open the games it points to.
-
-| Field | Type | Meaning |
-| ----- | ---- | ------- |
-| `schema_version` | int | Format version (see header). |
-| `label` | str | Run directory name. |
-| `created` | str | ISO-8601 local timestamp. |
-| `notes` | str \| null | Free-text run note (`--notes`); the place to add run-level context. |
-| `params` | object | `{players, agent, games, base_seed}` — the invocation parameters. |
-| `agent_config` | object | The agent roster's config (§5). Homogeneous rosters today, so one object. |
-| `games` | array | One entry per game: `{idx, seed, good_guys_won, reason, file}`. |
-
-`reason` ∈ `{"all wires cut", "bomb detonated", "out of time"}`. `file` is the stem (§1),
-no extension.
-
-**Extensibility:** add new run-level keys at the top level (e.g. a future `roster` array
-for heterogeneous agents) or inside `params`/`notes`. Never repurpose an existing key;
-bump `schema_version` only if an existing key's meaning or presence guarantee changes.
 
 ---
 
@@ -146,16 +129,25 @@ round; the `cut` that ended it is the second-to-last event, before `game_end`.
 
 ---
 
-## 4. `*.md` — the transcript (human read)
+## 4. `<label>.md` — the transcript (human read)
 
 A rendered, chronological Markdown view of the same events: a header (players, revealed
-roles, result, and the **agent roster**, §5), then per round the hidden deal, each
-declaration with its reasoning and true count, and each numbered cut with its reasoning and
-result. Derived from the `.jsonl`; never the source of truth for analysis.
+roles, result, a `**Run:**` line with token/cost usage + any `--notes`, and the **agent
+roster**, §5), then per round the hidden deal, each declaration with its reasoning and true
+count, the discussion, and each numbered cut with its reasoning and result. Derived from the
+`.jsonl`; never the source of truth for analysis.
+
+## 4b. `<label>.<Name>.md` — per-agent session (human read)
+
+One file per LLM player: that seat's **raw `claude -p` session**, verbatim — the persona
+system prompt, then every committed turn's exact prompt and the reply the model returned.
+It is the game from one player's perspective (what it was told, what it answered), so a move
+traces back to the precise context behind it. Rendered from the agent's in-memory
+`transcript`, not the `.jsonl`; non-LLM agents keep no session and write no such file.
 
 ---
 
-## 5. Agent config object (`agent_config` / `game_start.agents[]`)
+## 5. Agent config object (`game_start.agents[]`)
 
 Produced by `Agent.describe()`. Always present:
 
@@ -175,11 +167,12 @@ reproduced/understood later. New agent types extend `describe()` with their own 
 
 ## 6. Using the logs for statistics
 
-The format is designed so any metric is a fold over events. Recommended derived tables
-(see `sim/analysis/analyze.py`, which builds these and exports CSVs):
+The format is designed so any metric is a fold over events. `sim/analysis/analyze.py` reads
+`.jsonl` files directly (globbing a directory recursively — point it at one run or at
+`sim/logs/` to aggregate many), never the retired manifest. Recommended derived tables:
 
-- **Per game** — `{label, idx, seed, num_players, num_bad, good_guys_won, reason}`. For
-  win-rate, broken down by `num_bad` or agent config.
+- **Per game** — `{seed, num_players, num_bad, good_guys_won, reason}` (all in
+  `game_start`/`game_end`). For win-rate, broken down by `num_bad` or agent config.
 - **Per declaration** — `{role := roles[player], held_bomb := bombs[round][player],
   declared, true_wires, delta := declared − true_wires}`. For bluffing behaviour by hidden
   role (incl. good-with-bomb).
