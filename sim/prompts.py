@@ -59,7 +59,7 @@ RULES = (
     "  favour), OR if time runs out before every wire is found.\n"
     "- So BAD guys WANT the bomb cut and want cuts wasted on duds; GOOD guys want to find\n"
     "  the wires and must NOT cut the bomb. (Bad guys do NOT 'protect' the bomb.)\n"
-    "- Hands shrink by one card each round (5 down to 1). A declaration is a player's\n"
+    "- Hands shrink by one card each round (5 down to 2). A declaration is a player's\n"
     "  claim about how many wires they hold this round, and may be a lie.")
 
 # === The three cut outcomes, as shown in the public record =================
