@@ -14,25 +14,29 @@ formatted (note the literal JSON braces in the instructions).
 SYSTEM = ("You are an expert, strategic Time Bomb player, playing to win for your secret "
           "team. Read the declarations, the table talk, and the cut results for tells. In "
           "your private reasoning, argue from the specific evidence in front of you — who "
-          "declared what, who said what, what cuts revealed; then commit to one move.")
+          "declared what, who said what, what cuts revealed; then commit to one move. Keep "
+          "your reasoning brief and concrete: never restate the rules or the visible record.")
 
 # === Action protocols (used verbatim — the literal {...} is the JSON the model returns) ===
 DECLARE_INSTRUCTION = (
     "Respond with ONLY a JSON object and nothing else:\n"
-    '{"reasoning": "<private thinking about THIS situation, shown to no one>", '
+    '{"reasoning": "<private thinking about THIS situation, 2-3 short sentences, '
+    'shown to no one>", '
     '"declaration": <the wire count you announce>}')
 
 DISCUSS_INSTRUCTION = (
     "Respond with ONLY a JSON object and nothing else:\n"
-    '{"reasoning": "<private thinking about THIS situation, shown to no one>", '
-    '"message": "<one or two sentences you say OUT LOUD to the whole table;'
+    '{"reasoning": "<private thinking about THIS situation, 2-3 short sentences, '
+    'shown to no one>", '
+    '"message": "<one or two sentences you say OUT LOUD to the whole table; '
     'everyone hears and remembers it>"}')
 
 CUT_INSTRUCTION = (
     "Respond with ONLY a JSON object and nothing else:\n"
-    '{"reasoning": "<private thinking about THIS situation, shown to no one>", '
-    '"target": <the player index you cut>, '
-    '"message": "<one short sentence you say OUT LOUD to the whole table;'
+    '{"reasoning": "<private thinking about THIS situation, 2-3 short sentences, '
+    'shown to no one>", '
+    '"target": "<the name of the player whose card you cut>", '
+    '"message": "<one short sentence you say OUT LOUD to the whole table; '
     'everyone hears and remembers it>"}')
 
 # === Rules preamble (used verbatim; seeds every session opener) =============
@@ -49,9 +53,10 @@ RULES = (
     "  one round to the next.\n"
     "- On a turn, whoever holds the wire-cutters cuts one OTHER player's face-down card,\n"
     "  revealing a wire, a dud, or the bomb. Whoever is cut takes the cutters next.\n"
-    "- GOOD guys WIN by cutting ALL the wires before time runs out.\n"
-    "- BAD guys WIN if the BOMB is ever cut (game ends INSTANTLY in their favour), OR if\n"
-    "  time runs out before every wire is found.\n"
+    "- GOOD guys WIN by cutting ALL the wires before time runs out — that DEFUSES the\n"
+    "  bomb.\n"
+    "- BAD guys WIN if the BOMB is ever cut (it explodes; the game ends INSTANTLY in their\n"
+    "  favour), OR if time runs out before every wire is found.\n"
     "- So BAD guys WANT the bomb cut and want cuts wasted on duds; GOOD guys want to find\n"
     "  the wires and must NOT cut the bomb. (Bad guys do NOT 'protect' the bomb.)\n"
     "- Hands shrink by one card each round (5 down to 1). A declaration is a player's\n"
@@ -61,16 +66,16 @@ RULES = (
 RESULT_WORDS = {"wire": "a WIRE", "dud": "a dud", "bomb": "THE BOMB"}
 
 # === Role & hand block =====================================================
-ROLE_GOOD = ("You are Player %d (%s) — a GOOD GUY. You win when every WIRE is cut, and you "
-             "must never cut the bomb.")                     # (index, name)
-ROLE_BAD = ("You are Player %d (%s) — a BAD GUY. You win if the BOMB is cut, or if time "
-            "runs out with wires still hidden.")             # (index, name)
+ROLE_GOOD = ("You are %s — a GOOD GUY. You win when every WIRE is cut (the bomb is then "
+             "defused), and you must never cut the bomb.")   # (name)
+ROLE_BAD = ("You are %s — a BAD GUY. You win if the BOMB is cut, or if time runs out "
+            "with wires still hidden.")                      # (name)
 WIRE_DESC_ONE = "1 of them is a WIRE"
 WIRE_DESC_MANY = "%d of them are WIRES"                       # (count)
 BOMB_HELD = "You ARE holding the bomb this round."
 BOMB_NOT_HELD = "You are NOT holding the bomb this round."
 HAND_LINE = "Your hand this round: %d cards, %s. %s"          # (hand_size, wire_desc, bomb_line)
-TABLE_LINE = "Table: %d players; %s."                        # (num_players, bad_count_phrase)
+TABLE_LINE = "Table: %d players — %s; %s."                   # (num_players, roster, bad_count_phrase)
 BAD_COUNT_SINGULAR = "there is exactly %d bad guy"           # (k)  -- k == 1
 BAD_COUNT_PLURAL = "there are exactly %d bad guys"           # (k)
 BAD_COUNT_UNCERTAIN = "the number of bad guys is uncertain: %s"   # (joined parts)
@@ -97,14 +102,17 @@ CUT_PART = "%d. %s cut %s → %s"                              # (n, cutter, tar
 CUT_PART_SAID = ' — said: "%s"'                             # (message)  appended to a CUT_PART
 CUTS_NONE_YET = "  Cuts so far this round: none yet."
 SNAPSHOT_HIDDEN = "  Wires still hidden across all hands: %d."        # (n)
-SNAPSHOT_FACEDOWN = "  Face-down cards left per player this round: %s"  # (counts list)
+# Per-hand public bookkeeping (wires already found in that hand vs cards still face-down)
+# -- pure arithmetic over the record above, tallied so no player has to re-derive it.
+SNAPSHOT_HANDS = "  Hands now — %s"                          # (joined HAND_PART)
+HAND_PART = "%s%s: %d found, %d face-down"                   # (name, you_marker_or_blank, found, left)
 
 # === Decision asks (the NOW block) =========================================
 ASK_DECLARE = ("YOUR TURN TO DECLARE. Announce a wire count from 0 to %d — the truth, "
                "or a bluff that serves your team.")          # (hand_size)
 ASK_DISCUSS = "YOUR TURN TO SPEAK to the whole table, before anyone cuts this round."
 ASK_CUT = ("YOUR TURN TO CUT — you hold the wire-cutters. Cut one OTHER player's "
-           "face-down card. Legal targets (player indices): %s")   # (legal targets list)
+           "face-down card. You may cut: %s")                # (legal target names)
 
 # === Session delta (incremental, resumed turns) ============================
 ROUND_BANNER = ("--- Round %d begins (hand size %d). All cards were collected, reshuffled, "
@@ -115,5 +123,5 @@ DELTA_TALK = "Table talk since your last turn — %s"          # (joined STMT_PA
 DELTA_CUTS = "Cuts since your last turn — %s"                # (joined DELTA_CUT_PART [+ CUT_PART_SAID])
 DELTA_CUT_PART = "%s cut %s → %s"                            # (cutter, target, result_word)
 DELTA_HIDDEN = "Wires still hidden across all hands: %d."    # (n)
-DELTA_FACEDOWN = "Face-down cards left per player: %s"       # (counts list)
+DELTA_HANDS = "Hands now — %s"                               # (joined HAND_PART)
 DELTA_ASSISTANT = "Assistant readout (public info only): %s"  # (panel json)

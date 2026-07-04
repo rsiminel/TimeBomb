@@ -44,8 +44,16 @@ def _you(i, me):
 def _role_line(priv, names):
   """One line that fixes the agent's identity and win condition -- folds the old separate
   role line + goal block so the win condition isn't restated (it is already in RULES)."""
-  me = priv.my_index
-  return (P.ROLE_BAD if priv.my_role == 1 else P.ROLE_GOOD) % (me, names[me])
+  return (P.ROLE_BAD if priv.my_role == 1 else P.ROLE_GOOD) % names[priv.my_index]
+
+
+def _hands_snapshot(pub, me):
+  """Per-hand public bookkeeping, by name: wires already found in each hand this round vs
+  cards still face-down. Pure arithmetic over the public record (no hidden info)."""
+  names = pub.player_names
+  return "; ".join(P.HAND_PART % (names[j], _you(j, me), pub.found[j],
+                                  pub.hand_size - pub.revealed[j])
+                   for j in range(pub.num_players))
 
 
 def _bad_count_phrase(prior):
@@ -105,7 +113,8 @@ def render_agent(view, decision):
   out = [P.RULES, "", P.HEADER_ROLE]
   out.append(_role_line(priv, names))
   out.append(P.HAND_LINE % (pub.hand_size, _wire_desc(priv.my_wires), bomb))
-  out.append(P.TABLE_LINE % (pub.num_players, _bad_count_phrase(pub.num_bad_prior)))
+  roster = ", ".join(names[j] + _you(j, me) for j in range(pub.num_players))
+  out.append(P.TABLE_LINE % (pub.num_players, roster, _bad_count_phrase(pub.num_bad_prior)))
   out.append("")
   out.append(P.HEADER_HISTORY)
   for r in range(pub.round_index):
@@ -115,8 +124,7 @@ def render_agent(view, decision):
   _render_round(out, pub.round_index, pub.hand_size, pub.declarations, pub.cut_log,
                 pub.discussion_log, names, me, current=True, decision=decision)
   out.append(P.SNAPSHOT_HIDDEN % pub.active_wires)
-  out.append(P.SNAPSHOT_FACEDOWN
-             % [pub.hand_size - pub.revealed[j] for j in range(pub.num_players)])
+  out.append(P.SNAPSHOT_HANDS % _hands_snapshot(pub, me))
 
   if view.assistant_panel is not None:
     out += ["", P.ASSISTANT_HEADER, "  " + json.dumps(view.assistant_panel)]
@@ -130,7 +138,7 @@ def _decision_ask(pub, me, decision):
     return P.ASK_DECLARE % pub.hand_size
   if decision == "discuss":
     return P.ASK_DISCUSS
-  return P.ASK_CUT % legal_targets(pub, me)
+  return P.ASK_CUT % ", ".join(pub.player_names[t] for t in legal_targets(pub, me))
 
 
 # ---------------------------------------------------------------------------
@@ -203,7 +211,7 @@ def render_session_delta(view, decision, cursor):
     cur["cuts"] = len(pub.cut_log)
 
   out.append(P.DELTA_HIDDEN % pub.active_wires)
-  out.append(P.DELTA_FACEDOWN % [pub.hand_size - pub.revealed[j] for j in range(pub.num_players)])
+  out.append(P.DELTA_HANDS % _hands_snapshot(pub, me))
   if view.assistant_panel is not None:
     out.append(P.DELTA_ASSISTANT % json.dumps(view.assistant_panel))
   out.append(_decision_ask(pub, me, decision))

@@ -45,6 +45,22 @@ MODEL = "claude-haiku-4-5"   # fast model for play; reserve opus for deep-dives
 _NEUTRAL_CWD = tempfile.mkdtemp(prefix="tb_agent_")
 
 
+def _name_to_index(view):
+  """Cast for a cut target: the prompt names players (CUT_INSTRUCTION asks for a name), so
+  resolve a returned name back to its seat index -- case-insensitively, tolerating a bare
+  index too. Raises ``ValueError`` on anything else, so ``_decide`` retries."""
+  names = [n.lower() for n in view.public.player_names]
+
+  def cast(v):
+    s = str(v).strip()
+    if s.lstrip("-").isdigit():
+      return int(s)
+    if s.lower() in names:
+      return names.index(s.lower())
+    raise ValueError("unknown player name %r" % (v,))
+  return cast
+
+
 class LLMAgent(Agent):
   name = "llm"
 
@@ -87,7 +103,8 @@ class LLMAgent(Agent):
     return value
 
   def choose_cut(self, view):
-    value, self.last_reasoning, obj = self._decide(view, "cut", "target", CUT_INSTRUCTION)
+    value, self.last_reasoning, obj = self._decide(view, "cut", "target", CUT_INSTRUCTION,
+                                                   cast=_name_to_index(view))
     self.last_message = obj.get("message") if value is not None else None
     if value is not None:
       who = view.public.player_names[value] if 0 <= value < view.public.num_players else value
@@ -174,7 +191,12 @@ class LLMAgent(Agent):
     pass ``--resume <id>`` instead -- the session already carries the persona and history."""
     cmd = ["claude", "-p", "--output-format", "json",
            "--model", self.model,
-           "--strict-mcp-config"]               # no --mcp-config => skip MCP startup
+           "--strict-mcp-config",               # no --mcp-config => skip MCP startup
+           "--tools", "",                       # no built-in tools: a player only answers
+           "--setting-sources", ""]             # no user/project settings leak into a player
+    # The three flags above keep a player's context PURE: nothing but our persona, our
+    # rendered game state, and one SDK identity line (~166 tokens vs ~11.5k with the
+    # default Claude Code harness prompt + tool definitions).
     if self.session_id is None:
       cmd += ["--system-prompt", self.system]
     else:

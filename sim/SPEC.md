@@ -151,6 +151,13 @@ defaults, chosen to keep the first version debuggable:
   + private hand) · `GAME SO FAR` (the public record per round: declarations *claimed*,
   table talk *said*, cuts *revealed*) · `NOW` (the legal action ask) · (optionally) the
   assistant readout (§7). Prompts must not steer strategy — only rules, state, and talk.
+  All copy lives in `sim/prompts.py`; players are referred to by **name only** (a cut
+  target is returned as a name and resolved back to a seat index by the agent).
+- **Context purity.** A player's context contains *nothing* but our persona system prompt
+  and the rendered game state: `--tools ""` (no built-in tools), `--setting-sources ""`
+  (no user/project settings), `--strict-mcp-config` (no MCP servers), and a neutral cwd
+  (no CLAUDE.md auto-injection). ~166 fixed overhead tokens vs ~11.5k with the default
+  Claude Code harness.
 
 **Table-talk is in scope (the discussion beat).** Each round runs declare → **discuss** →
 cut: after the (blind, simultaneous) declarations, every player makes one public statement

@@ -23,6 +23,7 @@ One **run** (one `run.py` invocation) = one directory under `sim/logs/`:
 ```
 sim/logs/<label>/
   manifest.json              # run-level index (§2)
+  run.log                    # the run's console output (run.py tees stdout here)
   g000_s0_bad.jsonl          # game 0 event log (§3) — the canonical machine record
   g000_s0_bad.md             # game 0 transcript (§4) — the human read
   g001_s1_good.jsonl
