@@ -167,8 +167,12 @@ discussion pass before *every* cut — the first pass reacts to the declarations
 to the cut just made. A pass starts at the seat after the next cutter and ends with that
 cutter (the about-to-act player hears everyone and gets the last word; no seat is
 structurally first). Any turn may be a claim, a read, an accusation, a defense, a bluff —
-or silence (`""`), the encouraged default when a player has nothing to add, which is what
-keeps many passes affordable. The cutter also speaks at each cut. Talk is free-text
+or silence (`""`), the encouraged default when a player has nothing to add. What actually
+keeps many passes affordable is the **urgency bid**: every reply (declaration, statement,
+cut) piggybacks an `urgency` 0–9 field, and a pass calls only the `talk_top_k` highest
+current bidders — a skipped player costs *zero* calls. The next cutter holds no reserved
+seat (the cut reply's own `message` field is their mic), and discuss replies are
+message-only (no private `reasoning`), halving their output tokens. Talk is free-text
 (accusation accuracy is measured offline, §2); nothing forces a player to suspect anyone.
 The assistant still consumes only declarations + cut results, so the firewall is
 unchanged — table talk is extra public log, never fed to the assistant.
@@ -237,7 +241,8 @@ count is itself uncertain (model.md §3.5.1) — are supported but secondary.
 model + token budget; cutter-passing rule fidelity (§ engine sketch). *(Done: table-talk
 channel — the discussion beat, §6; session memory, §6; conversation structure — a pass
 before every cut, ending with the cutter, silence encouraged, §6; the assistant readout as
-an input, §7.)*
+an input, §7; talk rationing — urgency bids + `talk_top_k`, reasoning-free discuss
+replies, §6.)*
 
 ---
 

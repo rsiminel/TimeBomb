@@ -45,6 +45,14 @@ MODEL = "claude-haiku-4-5"   # fast model for play; reserve opus for deep-dives
 _NEUTRAL_CWD = tempfile.mkdtemp(prefix="tb_agent_")
 
 
+def _clamp_urgency(u):
+  """The reply's piggybacked speak-bid, as a clamped int in [0, 9]; None if absent/junk."""
+  try:
+    return max(0, min(9, int(u)))
+  except (TypeError, ValueError):
+    return None
+
+
 def _name_to_index(view):
   """Cast for a cut target: the prompt names players (CUT_INSTRUCTION asks for a name), so
   resolve a returned name back to its seat index -- case-insensitively, tolerating a bare
@@ -73,6 +81,7 @@ class LLMAgent(Agent):
     self.last_reasoning = None
     self.last_message = None                  # the cutter's public table-talk for its last cut
     self.last_statement = None                # this agent's last discussion-phase statement
+    self.last_urgency = None                  # the last reply's speak-bid (engine rations turns)
     self.last_error = None
     self.memory = []                         # this agent's own past decisions + reasoning
     # Full raw session log for the post-game per-agent transcript (sim/transcript.py):
@@ -118,8 +127,11 @@ class LLMAgent(Agent):
     return value
 
   def discuss(self, view):
-    msg, self.last_reasoning, _ = self._decide(view, "discuss", "message",
-                                               DISCUSS_INSTRUCTION, cast=str)
+    # Discuss replies carry no "reasoning" field (public words only), so the reasoning
+    # slot holds "" on success and the failure diagnostic otherwise — keep only the latter.
+    msg, reasoning, _ = self._decide(view, "discuss", "message",
+                                     DISCUSS_INSTRUCTION, cast=str)
+    self.last_reasoning = reasoning or None
     self.last_statement = msg or None
     if self.last_statement:
       self._remember(view.public.round_index, 'said to the table: "%s"' % self.last_statement)
@@ -163,6 +175,7 @@ class LLMAgent(Agent):
         s, e = text.find("{"), text.rfind("}")
         obj = json.loads(text[s:e + 1])
         value = cast(obj[key])
+        self.last_urgency = _clamp_urgency(obj.get("urgency"))
         if sid:
           self.session_id = sid                # capture/refresh the session to resume next turn
         self.cursor = pending                  # commit the narration cursor only on success

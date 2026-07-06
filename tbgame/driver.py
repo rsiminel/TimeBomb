@@ -28,7 +28,8 @@ class Engine:
   """One referee instance plays one or more games with a fixed roster and settings."""
 
   def __init__(self, num_players=6, initial_hand_size=5, player_names=None,
-               panel_for=(), assistant=None, max_workers=None, talk_between_cuts=False):
+               panel_for=(), assistant=None, max_workers=None, talk_between_cuts=False,
+               talk_top_k=None):
     self.num_players = num_players
     self.initial_hand_size = initial_hand_size
     self.player_names = player_names or _default_names(num_players)
@@ -39,6 +40,11 @@ class Engine:
     # True: a full pass before EVERY cut -- the first reacts to declarations, later ones to
     # the previous cut -- each ordered to END with the next cutter (see the cut loop).
     self.talk_between_cuts = talk_between_cuts
+    # None: every player gets a discuss call each pass. k: turns are rationed -- only the k
+    # highest urgency bidders (each reply's piggybacked "urgency" field) are called at all,
+    # so a silence-inclined player costs zero calls. No reserved seat for the next cutter:
+    # the cut reply's own "message" field is their mic.
+    self.talk_top_k = talk_top_k
 
   # -- view construction (the firewall) -------------------------------------
 
@@ -54,18 +60,32 @@ class Engine:
     for a in agents:
       a.observe({"type": kind, **data})
 
-  def _talk_pass(self, agents, gt, pub, log, round_index, order, cuts_before):
+  def _bid(self, agents, i, bids):
+    """Fold player ``i``'s piggybacked speak-bid (its last reply's clamped "urgency" field)
+    into ``bids``; an absent/unparsed bid keeps the previous one. Returns the raw read."""
+    u = getattr(agents[i], "last_urgency", None)
+    if u is not None:
+      bids[i] = u
+    return u
+
+  def _talk_pass(self, agents, gt, pub, log, round_index, order, cuts_before, bids=None):
     """One sequential discussion pass in ``order``; each speaker's view already holds every
     earlier statement. ``cuts_before`` -- how many cuts this round precede the pass -- is
-    recorded on each statement so renderers can interleave talk with cuts chronologically."""
+    recorded on each statement so renderers can interleave talk with cuts chronologically.
+    With ``talk_top_k`` set, only the k highest bidders in ``order`` are called (ties keep
+    pass order); everyone else is skipped without a call and re-bids on its next reply."""
+    if self.talk_top_k is not None and bids is not None:
+      eager = sorted(order, key=lambda p: -bids[p])[:self.talk_top_k]
+      order = [p for p in order if p in eager]
     for speaker in order:
       view = self._build_view(gt, pub, speaker)
       statement = agents[speaker].discuss(view)
+      urgency = self._bid(agents, speaker, bids) if bids is not None else None
       if not statement:
         continue
       reasoning = getattr(agents[speaker], "last_reasoning", None)
       log.append("statement", round=round_index, player=speaker, message=statement,
-                 reasoning=reasoning, cuts_before=cuts_before)
+                 reasoning=reasoning, cuts_before=cuts_before, urgency=urgency)
       pub.discussion_log.append({"round": round_index, "speaker": speaker,
                                  "message": statement, "cuts_before": cuts_before})
       self._broadcast(agents, "statement", player=speaker, message=statement)
@@ -89,13 +109,14 @@ class Engine:
     num_bom = 1
     log.append("game_start", schema_version=SCHEMA_VERSION, num_players=N, num_bad=num_bad,
                num_bom=num_bom, roles=roles, player_names=self.player_names, seed=seed,
-               talk_between_cuts=self.talk_between_cuts, panel_for=sorted(self.panel_for),
-               agents=[a.describe() for a in agents])
+               talk_between_cuts=self.talk_between_cuts, talk_top_k=self.talk_top_k,
+               panel_for=sorted(self.panel_for), agents=[a.describe() for a in agents])
 
     hand_size = self.initial_hand_size
     active_wires = N
     current_cutter = 0
     decl_history = []
+    bids = [0] * N        # each player's latest speak-bid; refreshed by every reply
 
     while hand_size > 1:
       round_index = self.initial_hand_size - hand_size
@@ -126,7 +147,8 @@ class Engine:
         d = _validate_declaration(raws[i], hand_size, fallback=wires[i])
         pub.declarations[i] = d
         log.append("declaration", round=round_index, player=i, declared=d,
-                   true_wires=wires[i], reasoning=reasoning)
+                   true_wires=wires[i], reasoning=reasoning,
+                   urgency=self._bid(agents, i, bids))
         self._broadcast(agents, "declaration", player=i, declared=d)
       decl_history.append(list(pub.declarations))
 
@@ -137,7 +159,7 @@ class Engine:
       # every cut (inside the cut loop below); this standalone pass is the original
       # one-pass-per-round structure, kept as the default.
       if not self.talk_between_cuts:
-        self._talk_pass(agents, gt, pub, log, round_index, range(N), cuts_before=0)
+        self._talk_pass(agents, gt, pub, log, round_index, range(N), cuts_before=0, bids=bids)
 
       # -- cut phase (N cuts; the cut target takes the cutters next) ---------
       for cut_no in range(N):
@@ -152,7 +174,8 @@ class Engine:
           # WITH the cutter -- the about-to-act player hears everyone, gets the last word,
           # then cuts; no seat is structurally first, since the start rotates with play.
           order = [(current_cutter + 1 + k) % N for k in range(N)]
-          self._talk_pass(agents, gt, pub, log, round_index, order, cuts_before=cut_no)
+          self._talk_pass(agents, gt, pub, log, round_index, order, cuts_before=cut_no,
+                          bids=bids)
         view = self._build_view(gt, pub, current_cutter)
         raw = agents[current_cutter].choose_cut(view)
         reasoning = getattr(agents[current_cutter], "last_reasoning", None)
@@ -161,7 +184,8 @@ class Engine:
         result = _resolve_cut_draw(gt, pub, target, random)
         pub.revealed[target] += 1
         log.append("cut", round=round_index, cutter=current_cutter, target=target,
-                   result=result, reasoning=reasoning, message=message)
+                   result=result, reasoning=reasoning, message=message,
+                   urgency=self._bid(agents, current_cutter, bids))
         # Keep pub.cut_log live so the NEXT cutter's view shows this cut (it must agree
         # with pub.revealed, which is already updated). Refreshing only at round end left
         # mid-round views incoherent: face-down counts changed while "cuts this round"

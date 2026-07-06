@@ -84,6 +84,9 @@ def main():
   ap.add_argument("--talk-between-cuts", action=argparse.BooleanOptionalAction, default=True,
                   help="a full discussion pass before every cut, ending with the cutter "
                        "(--no-talk-between-cuts: one pass per round, after declarations)")
+  ap.add_argument("--talk-top-k", type=int, default=2,
+                  help="discuss calls per pass: only the k highest urgency bidders speak; "
+                       "a skipped player costs no call (negative: everyone is called)")
   ap.add_argument("--assistant", action=argparse.BooleanOptionalAction, default=None,
                   help="show every player the public-info stats readout "
                        "(default: on for llm agents, off for programmatic ones)")
@@ -103,7 +106,8 @@ def main():
 
   agents = [AGENTS[args.agent](**kwargs) for _ in range(args.players)]
   use_panel = args.assistant if args.assistant is not None else args.agent == "llm"
-  eng_kwargs = dict(num_players=args.players, talk_between_cuts=args.talk_between_cuts)
+  eng_kwargs = dict(num_players=args.players, talk_between_cuts=args.talk_between_cuts,
+                    talk_top_k=args.talk_top_k if args.talk_top_k >= 0 else None)
   if use_panel:
     eng_kwargs.update(assistant=PanelAssistant(), panel_for=range(args.players))
   outcome, log = Engine(**eng_kwargs).play_game(agents, seed=args.seed)

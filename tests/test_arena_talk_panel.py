@@ -257,5 +257,89 @@ def test_render_shows_assistant_readout_when_present():
     assert "<assistant_readout>" not in render_agent(bare, "cut")
 
 
+# ---------------------------------------------------------------------------
+# Urgency bids: talk_top_k rations discuss calls to the highest bidders
+# ---------------------------------------------------------------------------
+
+class Bidder(Talker):
+    """Talker whose every reply carries the same fixed urgency bid."""
+
+    def __init__(self, urgency):
+        super().__init__()
+        self.last_urgency = urgency
+
+
+def _pass_stmts(stmts, cuts, cut):
+    """The statements of the discussion pass immediately preceding ``cut``."""
+    before = len([c for c in cuts if c["round"] == cut["round"] and c["i"] < cut["i"]])
+    return [s for s in stmts
+            if s["round"] == cut["round"] and s["i"] < cut["i"]
+            and s["cuts_before"] == before]
+
+
+def test_top_k_pass_calls_only_the_highest_bidders():
+    bids = (3, 9, 0, 5)
+    eng = Engine(num_players=4, talk_between_cuts=True, talk_top_k=2)
+    _, log = eng.play_game([Bidder(u) for u in bids], seed=11)
+    assert log.events[0]["talk_top_k"] == 2
+    cuts, stmts = _events(log, "cut"), _events(log, "statement")
+    assert cuts
+    for cut in cuts:
+        ps = _pass_stmts(stmts, cuts, cut)
+        assert sorted(s["player"] for s in ps) == [1, 3]      # the two highest bids
+        # pass order is preserved among the selected — no reserved seat for the cutter
+        expect = [p for p in [(cut["cutter"] + 1 + k) % 4 for k in range(4)] if p in (1, 3)]
+        assert [s["player"] for s in ps] == expect
+
+
+def test_top_k_ties_resolve_in_pass_order():
+    eng = Engine(num_players=4, talk_between_cuts=True, talk_top_k=2)
+    _, log = eng.play_game([Bidder(5) for _ in range(4)], seed=3)
+    cuts, stmts = _events(log, "cut"), _events(log, "statement")
+    for cut in cuts:
+        expect = [(cut["cutter"] + 1 + k) % 4 for k in range(2)]   # first seats after cutter
+        assert [s["player"] for s in _pass_stmts(stmts, cuts, cut)] == expect
+
+
+def test_no_ration_by_default_even_at_bid_zero():
+    _, log = Engine(num_players=4, talk_between_cuts=True).play_game(
+        [Bidder(0) for _ in range(4)], seed=2)
+    assert log.events[0]["talk_top_k"] is None
+    cuts, stmts = _events(log, "cut"), _events(log, "statement")
+    assert all(len(_pass_stmts(stmts, cuts, cut)) == 4 for cut in cuts)
+
+
+def test_bids_are_logged_on_every_reply_event():
+    bids = (3, 9, 0, 5)
+    eng = Engine(num_players=4, talk_between_cuts=True, talk_top_k=2)
+    _, log = eng.play_game([Bidder(u) for u in bids], seed=11)
+    for e in _events(log, "declaration") + _events(log, "statement"):
+        assert e["urgency"] == bids[e["player"]]
+    for e in _events(log, "cut"):
+        assert e["urgency"] == bids[e["cutter"]]
+
+
+def test_llm_discuss_reply_is_message_only_with_a_bid():
+    from llm import LLMAgent
+    a = LLMAgent()
+    a._call = lambda prompt: ('{"message": "I trust B", "urgency": 7}', "sid")
+    view = AgentView(public=_pub(), private=PrivateView(0, 0, 1, False))
+    assert a.discuss(view) == "I trust B"
+    assert a.last_urgency == 7
+    assert a.last_reasoning is None          # discuss replies carry no private reasoning
+
+
+def test_llm_urgency_is_clamped_and_junk_reads_as_no_bid():
+    from llm import LLMAgent
+    view = AgentView(public=_pub(), private=PrivateView(0, 0, 1, False))
+    a = LLMAgent()
+    a._call = lambda prompt: ('{"reasoning": "r", "declaration": 1, "urgency": 15}', "sid")
+    assert a.declare(view) == 1
+    assert a.last_urgency == 9               # clamped into [0, 9]
+    a._call = lambda prompt: ('{"message": "", "urgency": "loud"}', "sid")
+    assert a.discuss(view) is None           # "" is silence
+    assert a.last_urgency is None            # junk bid -> engine keeps the previous one
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-q"]))

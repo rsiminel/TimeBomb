@@ -70,6 +70,7 @@ Event types and their additional fields:
 | `player_names` | str[N] | Display names, indexed by player. |
 | `seed` | int \| null | RNG seed (deal + cut resolution). |
 | `talk_between_cuts` | bool | Discussion structure: a full pass before **every** cut (true) or one pass per round after declarations (false). Absent in pre-2026-07-04 logs (= false). |
+| `talk_top_k` | int \| null | Speak-bid ration: only the k highest urgency bidders get a discuss call each pass (null = everyone is called). Absent in pre-2026-07-06 logs (= null). |
 | `panel_for` | int[] | Players shown the `<assistant_readout>` stats panel ([] = nobody). Absent in older logs (= []). |
 | `agents` | object[N] | Each player's agent config (§5), indexed by player. |
 
@@ -90,14 +91,19 @@ Event types and their additional fields:
 | `declared` | int | The wire count announced (in `[0, hand_size]`; may be a bluff). |
 | `true_wires` | int | **Truth:** that player's real wire count this round. |
 | `reasoning` | str \| null | The agent's private reasoning (LLM); null for non-LLM agents. |
+| `urgency` | int \| null | The reply's piggybacked speak-bid, 0–9 (see `statement`); null if absent. Absent in pre-2026-07-06 logs. |
 
 ### `statement` (table talk)
-Emitted in a **discussion pass** — with `talk_between_cuts` the table gets a full pass
-before *every* cut (the first reacts to the declarations, later ones to the cut just made;
-each pass starts at the seat after the next cutter and ends with that cutter). Without it,
-one pass per round after declarations, in seating order. A later speaker has always heard
-the earlier statements. Silent agents (e.g. `RandomAgent`, or an LLM returning `""`) emit
-none. Round flow: `declaration`s → (`statement`s → `cut`)×N.
+Emitted in a **discussion pass** — with `talk_between_cuts` the table gets a pass before
+*every* cut (the first reacts to the declarations, later ones to the cut just made; each
+pass starts at the seat after the next cutter and ends with that cutter). Without it, one
+pass per round after declarations, in seating order. With `talk_top_k` set, a pass calls
+only the k players with the highest current speak-bid — every reply (declaration, statement,
+cut) carries an `urgency` 0–9 field that stands until the player's next reply; skipped
+players get no call at all, and the next cutter holds no reserved seat (the cut's own
+`message` is their mic). A later speaker has always heard the earlier statements. Silent
+agents (e.g. `RandomAgent`, or an LLM returning `""`) emit none. Round flow:
+`declaration`s → (`statement`s → `cut`)×N.
 
 | Field | Type | Meaning |
 | ----- | ---- | ------- |
@@ -105,7 +111,8 @@ none. Round flow: `declaration`s → (`statement`s → `cut`)×N.
 | `player` | int | The speaking player. |
 | `message` | str | The **public** statement said to the whole table (claim/read/accusation/defense/bluff). |
 | `cuts_before` | int | Cuts already made this round when spoken (0 = the opening pass). Renderers use it to interleave talk with cuts. Absent in older logs (= 0). |
-| `reasoning` | str \| null | The speaker's **private** reasoning (LLM); null otherwise. |
+| `urgency` | int \| null | The reply's piggybacked speak-bid, 0–9; null if the reply had none. Absent in pre-2026-07-06 logs. |
+| `reasoning` | str \| null | The speaker's **private** reasoning; null otherwise — including LLM statements from 2026-07-06 on, whose replies are message-only. |
 
 ### `cut`
 | Field | Type | Meaning |
@@ -116,6 +123,7 @@ none. Round flow: `declaration`s → (`statement`s → `cut`)×N.
 | `result` | str | `"wire"`, `"dud"`, or `"bomb"`. (Pre-rename logs used `"active wire"`/`"blank/inactive"`/`"BOMB"` — see §7.) |
 | `reasoning` | str \| null | The cutter's **private** reasoning (LLM); null otherwise. |
 | `message` | str \| null | The cutter's **public** table-talk — one short line said to everyone, shown in every later context. Null for non-speaking agents. |
+| `urgency` | int \| null | The reply's piggybacked speak-bid, 0–9 (see `statement`); null if absent. Absent in pre-2026-07-06 logs. |
 
 ### `cut_skipped` (rare)
 `{round, cutter}` — the cutter had no legal target; no card was cut.

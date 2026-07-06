@@ -18,19 +18,25 @@ SYSTEM = ("You are an expert, strategic Time Bomb player, playing to win for you
           "your reasoning brief and concrete: never restate the rules or the visible record.")
 
 # === Action protocols (used verbatim — the literal {...} is the JSON the model returns) ===
+# Every reply carries an "urgency" bid: speaking turns are rationed, so each discussion
+# pass calls only the highest recent bidders. (No reserved seat for the next cutter — the
+# cut reply's own "message" field is their mic.) A skipped player spends no turn at all.
+_URGENCY_FIELD = (
+    '"urgency": <0-9 — your bid to speak in the next table-talk pass; only the '
+    'highest bidders get a turn>')
+
 DECLARE_INSTRUCTION = (
     "Respond with ONLY a JSON object and nothing else:\n"
     '{"reasoning": "<private thinking about THIS situation, 2-3 short sentences, '
     'shown to no one>", '
-    '"declaration": <the wire count you announce>}')
+    '"declaration": <the wire count you announce>, ' + _URGENCY_FIELD + "}")
 
+# A discuss turn is public words only — no private reasoning field, half the output tokens.
 DISCUSS_INSTRUCTION = (
     "Respond with ONLY a JSON object and nothing else:\n"
-    '{"reasoning": "<private thinking about THIS situation, 2-3 short sentences, '
-    'shown to no one>", '
-    '"message": "<one or two sentences you say OUT LOUD to the whole table; '
+    '{"message": "<one or two sentences you say OUT LOUD to the whole table; '
     'everyone hears and remembers it. Or \\"\\" to stay silent — the usual choice '
-    'when you have nothing new to add>"}')
+    'when you have nothing new to add>", ' + _URGENCY_FIELD + "}")
 
 CUT_INSTRUCTION = (
     "Respond with ONLY a JSON object and nothing else:\n"
@@ -38,7 +44,7 @@ CUT_INSTRUCTION = (
     'shown to no one>", '
     '"target": "<the name of the player whose card you cut>", '
     '"message": "<one short sentence you say OUT LOUD to the whole table; '
-    'everyone hears and remembers it>"}')
+    'everyone hears and remembers it>", ' + _URGENCY_FIELD + "}")
 
 # === Rules preamble (used verbatim; seeds every session opener) =============
 RULES = (
