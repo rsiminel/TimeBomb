@@ -8,6 +8,9 @@ by default, so every existing agent is unaffected. Hosts that use structured cla
 
 class Agent:
   name = "agent"
+  last_call_failed = False   # True right after a decision that exhausted its retries
+                              # (LLMAgent); distinct from returning malformed-but-present
+                              # output, which the engine's own fallback already handles.
 
   def declare(self, view):
     """Return a wire count in [0, view.public.hand_size]. Free to bluff."""
@@ -42,3 +45,12 @@ class Agent:
     you can always recover which model / instructions produced a transcript. Subclasses
     extend it with their own knobs."""
     return {"type": type(self).__name__, "name": getattr(self, "name", "agent")}
+
+  def to_state(self):
+    """A JSON-able snapshot of whatever this agent needs to resume mid-game (e.g. a live
+    session id). No-op by default; only stateful agents override it."""
+    return {}
+
+  def load_state(self, state):
+    """Restore a snapshot produced by ``to_state()``. No-op by default."""
+    pass

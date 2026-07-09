@@ -41,7 +41,13 @@ from prompts import SYSTEM, DECLARE_INSTRUCTION, DISCUSS_INSTRUCTION, CUT_INSTRU
 
 MODEL = "claude-haiku-4-5"   # fast model for play; reserve opus for deep-dives
 
-# Neutral cwd shared by all agents, so no CLAUDE.md is auto-discovered into a player.
+# Default neutral cwd shared by agents that don't ask for their own, so no CLAUDE.md is
+# auto-discovered into a player. A resumed `claude -p --resume <id>` session is looked up
+# by the CLI relative to the cwd it was opened from -- a random-per-process directory
+# (the old behavior here) means a session can never be found again from a later process,
+# which is exactly what resume needs. sim/run.py passes each LLM seat a ``cwd`` that's
+# stable across a run's lifetime (derived from the run directory) so resume can find it;
+# this module-level default only matters for callers that never resume (tests, ad hoc use).
 _NEUTRAL_CWD = tempfile.mkdtemp(prefix="tb_agent_")
 
 
@@ -72,12 +78,17 @@ def _name_to_index(view):
 class LLMAgent(Agent):
   name = "llm"
 
-  def __init__(self, model=MODEL, system=SYSTEM, timeout=60, retries=3, thinking_tokens=0):
+  def __init__(self, model=MODEL, system=SYSTEM, timeout=60, retries=3, thinking_tokens=0,
+              cwd=None):
     self.model = model
     self.system = system
     self.timeout = timeout
     self.retries = retries
     self.thinking_tokens = thinking_tokens   # 0 disables extended thinking (the big speedup)
+    # A stable cwd (see the module docstring) lets a resumed process's --resume find this
+    # seat's session again; None falls back to the shared random-per-process default.
+    self.cwd = cwd or _NEUTRAL_CWD
+    os.makedirs(self.cwd, exist_ok=True)
     self.last_reasoning = None
     self.last_message = None                  # the cutter's public table-talk for its last cut
     self.last_statement = None                # this agent's last discussion-phase statement
@@ -108,6 +119,19 @@ class LLMAgent(Agent):
              declare_instruction=DECLARE_INSTRUCTION, discuss_instruction=DISCUSS_INSTRUCTION,
              cut_instruction=CUT_INSTRUCTION)
     return d
+
+  def to_state(self):
+    """Everything needed to resume this seat's live session on a fresh process: the
+    `claude -p` session id, the narration cursor, the raw per-turn transcript (so the
+    final session file still covers the whole game), and the running usage tally."""
+    return {"session_id": self.session_id, "cursor": self.cursor,
+            "transcript": self.transcript, "usage": self.usage}
+
+  def load_state(self, state):
+    self.session_id = state["session_id"]
+    self.cursor = state["cursor"]
+    self.transcript = state["transcript"]
+    self.usage = state["usage"]
 
   def declare(self, view):
     value, self.last_reasoning, _ = self._decide(view, "declare", "declaration",
@@ -159,7 +183,10 @@ class LLMAgent(Agent):
     advanced only on success, so a failed turn's events are re-narrated by the next one.
     ``cast`` coerces the action field (``int`` for a declaration/target, ``str`` for a
     table-talk message). ``value`` is ``None`` after all retries fail, so the engine falls
-    back to a legal move (or, for a statement, to silence)."""
+    back to a legal move (or, for a statement, to silence) -- unless ``halt_on_failure``
+    is set, in which case ``last_call_failed`` (reset here, set on the exhausted-retries
+    return below) tells the engine to stop instead."""
+    self.last_call_failed = False
     if self.session_id is None:
       body, pending = render_agent(view, decision), st.cursor_after_opener(view, decision)
     else:
@@ -183,6 +210,7 @@ class LLMAgent(Agent):
         return value, obj.get("reasoning", ""), obj
       except (ValueError, KeyError):
         self.last_error = "parse failure: %r" % text[:200]
+    self.last_call_failed = True
     return None, "(model call failed after %d attempts: %s)" % (self.retries, self.last_error), {}
 
   def _account(self, env):
@@ -225,7 +253,7 @@ class LLMAgent(Agent):
     cmd += ["--", prompt]
     try:
       proc = subprocess.run(
-          cmd, cwd=_NEUTRAL_CWD, stdin=subprocess.DEVNULL, env=self._env(),
+          cmd, cwd=self.cwd, stdin=subprocess.DEVNULL, env=self._env(),
           capture_output=True, text=True, timeout=self.timeout)
     except subprocess.TimeoutExpired:
       self.last_error = "timeout after %ss" % self.timeout

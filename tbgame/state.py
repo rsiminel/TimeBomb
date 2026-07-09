@@ -94,14 +94,21 @@ class AgentView:
 class EventLog:
   """Append-only structured log of one game. All analysis reads from this; the live
   loop computes no statistics. May contain ground truth -- it is for offline analysis
-  and resume, never handed to an agent."""
+  and resume, never handed to an agent.
 
-  def __init__(self, events=None):
+  ``sink``, if given, is called with every newly appended event -- the arena's
+  incremental on-disk persistence hooks in here (sim/run.py); games that never set it
+  (TableGame, tests) are unaffected."""
+
+  def __init__(self, events=None, sink=None):
     self.events = events if events is not None else []
+    self.sink = sink
 
   def append(self, event_type, **data):
     event = {"i": len(self.events), "type": event_type, **data}
     self.events.append(event)
+    if self.sink is not None:
+      self.sink(event)
     return event
 
   def to_jsonl(self, path):

@@ -7,5 +7,5 @@ imports (``from engine import Engine, WIRE, BLANK, BOMB, ...``) keep working unc
 promotion -- imports through this shim and must pass unmodified.
 """
 
-from tbgame.driver import (Engine, WIRE, BLANK, BOMB, _validate_declaration,
+from tbgame.driver import (Engine, EngineHalted, WIRE, BLANK, BOMB, _validate_declaration,
                            _validate_target, log_cuts, log_statements)
