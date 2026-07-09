@@ -388,6 +388,42 @@ cross-round product (§3.1). For the fixed-`B` counts (one candidate `B`) this c
 exactly to the single-`B` pipeline. See [decisions/0008](decisions/0008-joint-num-bad-inference.md);
 its prerequisite, the absolute likelihood, is [decisions/0007](decisions/0007-declaration-lie-count-factor.md).
 
+#### 3.5.2 The player-perspective belief
+
+Everything above uses only the public record, so it is the same table every player could
+compute. A seated player `v` knows strictly more: their **own role**, and — each round —
+their **own hand** (true wire count `w_v`, and whether they hold the bomb). Conditioning
+on that private knowledge yields the exact posterior given a superset of the public
+evidence, over a smaller configuration space. Two changes, applied uniformly to every
+formula of §3.3–§3.5:
+
+- **Config restriction.** Only configurations consistent with the viewer survive:
+  `v ∈ S` iff `v` is bad, and `h = v` iff `v` holds the bomb this round.
+- **The viewer's hand is pinned to `w_v`** — never free, even when `v` is bad or holds
+  the bomb. The free set becomes `F′ = (S ∪ {h}) \ {v}`; the viewer's hand contributes
+  its own exact cut likelihood (the §3.2 must-not-draw atom when they hold the bomb);
+  and every wire total subtracts their known wires:
+  `t_free = A − w_v − Σ_{truthful j ≠ v} decls[j]`. When the viewer holds the bomb,
+  every free hand is bomb-free and the §3.4.1 collapse covers the whole split.
+
+The viewer's own declaration and deal term are constant across the surviving
+configurations (their liar status is known), so they cancel; the dropped constants are
+also `B`-independent, so the per-round weights stay absolute and the §3.5.1 joint
+machinery applies **unchanged** — `−inf` at the inconsistent sets plus the `1/C(N,B)`
+subset prior is exactly the Bayes update `P(B | v's role) ∝ P(B) · P(v's role | B)`.
+The viewer's own readouts become certain: `P(bad = v)` and `P(bomb = v)` are 0/1, and
+`P_wire[v] = (w_v − found[v]) / (H − revealed[v])` exactly. For a good, bomb-free viewer
+the perspective belief equals the public posterior masked to the consistent
+configurations and renormalised (the pinning coincides with the truthful pinning,
+`decls[v] = w_v`); when the viewer is bad or holds the bomb it is strictly sharper —
+their own lie is explained away exactly.
+
+Implementation: `General.Viewer` (per-round `wires`/`has_bomb`, game-long
+`idx`/`is_bad`) with `PerspectiveProbDeclaration` / `PerspectiveProbCut` /
+`PerspectiveP_wire` / `PerspectiveRoundLogU`, plus `viewer=` on the panel stack
+(`CutPanel`, `NextHBad`, `RoundHorizonH`, `H_Min`). As everywhere, `P(bomb)` stays
+per-round; role evidence accumulates across rounds exactly as in §3.5.1.
+
 ### 3.6 Open modelling gaps
 
 The declaration prior (§3.3), the wire-split (§3.4.1), the bomb sub-model (§3.2/§3.3/§3.4),

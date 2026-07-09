@@ -45,6 +45,12 @@ hardcoded variant is its `(num_bad, num_bom)` projection.
       per-player `ProbCut` sweep in stats 3–4; a beam/analytic `H_Min` approximation
       is the backend follow-up, see "Deferred modelling refinements").
 
+### C1b — fold the player-perspective belief into the consumers
+- [ ] The backend now computes the §3.5.2 player-perspective belief (`General.Viewer`,
+      the `Perspective*` functions, `viewer=` on the panel stack). Candidate consumers:
+      a per-seat `<assistant_readout>` in the arena (`sim/assistant.py` currently serves
+      the public panel to every seat) and a "my seat" mode in the web assistant.
+
 ### C2 — `AI.py` — create the AI
 - [ ] Retrain / benchmark the REINFORCE cut agent against the cleaned analytic strategies
       (`CutRandom`, the info-greedy lookahead); use it as the empirical yardstick for the

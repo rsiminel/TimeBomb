@@ -15,6 +15,10 @@ forms here are the corrected ones — the declaration prior carries the lie-coun
 ``(H+1)^{-|F|}`` (ADR 0007), which is what makes per-configuration weights absolute and
 comparable across different bad counts (needed for joint ``num_bad`` inference).
 
+A player-perspective layer (model.md §3.5.2) runs the same pipeline conditioned on a
+seated player's private knowledge — own role, own hand each round: ``Viewer``, the
+``Perspective*`` functions, and ``viewer=`` on the panel stack.
+
 Vectorisation: the iteration over configurations is an ``itertools.combinations`` loop
 (there is no numpy primitive that sums over all ``B``-subsets with a per-subset free
 set), but the per-hand likelihoods, the §3.4.1 bad-group collapse, and the tensor
@@ -23,6 +27,7 @@ assembly/normalisation inside it are numpy/array operations.
 
 # Imports
 import itertools
+from collections import namedtuple
 import numpy as np
 from random import randint, sample, randrange
 import UsefulFunctions as uf
@@ -290,6 +295,200 @@ def P_wire(decls, probs, revealed, found, hand_size, active_wires, num_bad, num_
   return p_wire
 
 
+# --- player-perspective belief (model.md §3.5.2) --------------------------------
+
+Viewer = namedtuple("Viewer", ["idx", "is_bad", "wires", "has_bomb"])
+Viewer.__doc__ = """A seated player's private knowledge for one round (model.md §3.5.2):
+their seat ``idx``, their fixed role ``is_bad``, and this round's hand — true wire count
+``wires`` and whether they hold the bomb ``has_bomb`` (both re-dealt every round)."""
+
+
+def _viewer_ok(bad_set, bom_set, viewer):
+  """Is config ``(bad_set, bom_set)`` consistent with the viewer's private knowledge —
+  their own role and, when a bomb is in play, whether they hold it this round?"""
+  if (viewer.idx in bad_set) != bool(viewer.is_bad):
+    return False
+  return not bom_set or (bom_set[0] == viewer.idx) == bool(viewer.has_bomb)
+
+
+def _persp_decl_weights(decls, hand_size, active_wires, num_bad, num_bom, viewer):
+  """``_decl_weights`` from the viewer's seat (model.md §3.5.2): unnormalised absolute
+  config weights with the inconsistent configs zeroed and the viewer's hand pinned to
+  its **true** wire count. The viewer never joins the free set — their own hand is
+  known even when they are bad or hold the bomb — so ``F' = (S ∪ {h}) \\ {v}`` and
+
+    w(config) = (H+1)^{-|F'|} · C(free_slots, t_free) / Π_{g in F'} C(H, decls[g])
+
+  with ``t_free = A − viewer.wires − Σ_{truthful j≠v} decls[j]``. The dropped constants
+  (the viewer's own lie factor and deal term, ``Π_{j≠v} C(H, decls[j])``,
+  ``C(N·H−M, A)``) are B-independent, so these stay cross-B comparable (ADR 0008)."""
+  num_players = decls.shape[0]
+  H = int(hand_size)
+  decls = decls.astype(int)
+  v = viewer.idx
+  total = int(np.sum(decls)) - int(decls[v])
+  probs = np.zeros([num_players] * (num_bad + num_bom))
+  for bad_set in itertools.combinations(range(num_players), num_bad):
+    for bom_set in itertools.combinations(range(num_players), num_bom):
+      if not _viewer_ok(bad_set, bom_set, viewer):
+        continue
+      free = (set(bad_set) | set(bom_set)) - {v}
+      t_free = (int(active_wires) - int(viewer.wires)
+                - (total - sum(int(decls[g]) for g in free)))
+      free_slots = sum(H - (1 if g in bom_set else 0) for g in free)
+      if not (0 <= t_free <= free_slots):
+        continue
+      denom = 1.0
+      for g in free:
+        denom *= uf.C(int(decls[g]), H)
+      if denom == 0:
+        continue
+      probs[bad_set + bom_set] = (H + 1.0) ** (-len(free)) * uf.C(t_free, free_slots) / denom
+  return probs
+
+
+def PerspectiveProbDeclaration(decls, hand_size, active_wires, num_bad, num_bom, viewer):
+  """Prior over configurations from the viewer's seat (model.md §3.5.2): the §3.3 prior
+  with the viewer's private knowledge folded in — config space restricted to their
+  role/bomb knowledge, their hand pinned to ``viewer.wires``. Falls back to uniform over
+  the **consistent** configs on a fully degenerate observation. Returns a
+  ``[N]*(num_bad+num_bom)`` tensor summing to 1, zero on every ruled-out config."""
+  probs = _persp_decl_weights(decls, hand_size, active_wires, num_bad, num_bom, viewer)
+  total_mass = np.sum(probs)
+  if total_mass == 0:  # degeneracy: uniform over the viewer-consistent configs (§3.3)
+    num_players = decls.shape[0]
+    for bad_set in itertools.combinations(range(num_players), num_bad):
+      for bom_set in itertools.combinations(range(num_players), num_bom):
+        if _viewer_ok(bad_set, bom_set, viewer):
+          probs[bad_set + bom_set] = 1.0
+    return probs / np.sum(probs)
+  return probs / total_mass
+
+
+def _persp_L_config(decls, revealed, found, hand_size, active_wires, bad_set, bom_set,
+                    viewer):
+  """``L_config`` from the viewer's seat: the viewer's hand contributes its own pinned
+  likelihood (the must-not-draw atom when they hold the bomb) and stays out of the free
+  split. When the viewer holds the bomb every free hand is bomb-free and the §3.4.1
+  collapse covers the whole split; otherwise the bomb hand splits explicitly as in
+  ``L_config``."""
+  num_players = decls.size
+  H = int(hand_size)
+  v = viewer.idx
+  free = (set(bad_set) | set(bom_set)) - {v}
+  like = (L_bomb_hand(int(found[v]), int(revealed[v]), int(viewer.wires), H)
+          if viewer.has_bomb
+          else uf.Lklhd(H, int(viewer.wires), int(revealed[v]), int(found[v])))
+  for j in range(num_players):
+    if j != v and j not in free:
+      like *= uf.Lklhd(H, int(decls[j]), int(revealed[j]), int(found[j]))
+  truthful = sum(int(decls[j]) for j in range(num_players) if j != v and j not in free)
+  t_free = int(active_wires) + int(np.sum(found)) - truthful - int(viewer.wires)
+  if len(bom_set) == 0 or bom_set[0] == v:  # every free hand bomb-free: full collapse
+    if not (0 <= t_free <= len(free) * H):
+      return 0.0
+    return like * L_bad(H, t_free, revealed, found, sorted(free))
+  h = bom_set[0]
+  group = [g for g in free if g != h]  # bomb-free bad hands
+  group_slots = len(group) * H
+  free_slots = group_slots + (H - 1)
+  if not (0 <= t_free <= free_slots):
+    return 0.0
+  denom = uf.C(t_free, free_slots)
+  if denom == 0:
+    return 0.0
+  split = 0.0
+  for w_bomb in range(t_free + 1):
+    w_grp = t_free - w_bomb
+    place = uf.C(w_grp, group_slots) * uf.C(w_bomb, H - 1)  # 0 when out of range
+    if place == 0:
+      continue
+    split += (place * L_bad(H, w_grp, revealed, found, group)
+              * L_bomb_hand(int(found[h]), int(revealed[h]), w_bomb, H))
+  return like * split / denom
+
+
+def PerspectiveProbCut(decls, prior, revealed, found, hand_size, active_wires,
+                       num_bad, num_bom, viewer):
+  """§3.4 Bayes from the viewer's seat. ``prior`` must already be viewer-consistent
+  (from ``PerspectiveProbDeclaration`` or this function). Same conventions as
+  ``ProbCut``: post-cut ``active_wires``, prior returned unchanged on a zero marginal
+  or once a configuration is certain."""
+  num_players = decls.size
+  decls = decls.astype(int)
+  lklhd = np.zeros([num_players] * (num_bad + num_bom))
+  marginal = 0.0
+  for bad_set in itertools.combinations(range(num_players), num_bad):
+    for bom_set in itertools.combinations(range(num_players), num_bom):
+      if not _viewer_ok(bad_set, bom_set, viewer):
+        continue
+      idx = bad_set + bom_set
+      if prior[idx] == 1:  # configuration already certain; nothing to update
+        return prior
+      lklhd[idx] = _persp_L_config(decls, revealed, found, hand_size, active_wires,
+                                   bad_set, bom_set, viewer)
+      marginal += prior[idx] * lklhd[idx]
+  if marginal == 0:  # observation impossible under every config: keep the prior
+    return prior
+  return prior * lklhd / marginal
+
+
+def PerspectiveP_wire(decls, probs, revealed, found, hand_size, active_wires,
+                      num_bad, num_bom, viewer):
+  """``P_wire`` from the viewer's seat (§3.5 with the viewer's hand pinned). The
+  viewer's own row is exact — ``(viewer.wires − found[v]) / (H − revealed[v])`` — and
+  every §3.4.1 split runs over the *other* free hands only."""
+  num_players = decls.size
+  H = int(hand_size)
+  decls = decls.astype(int)
+  v = viewer.idx
+  sum_found = int(np.sum(found))
+  p_wire = np.zeros(num_players)
+  for bad_set in itertools.combinations(range(num_players), num_bad):
+    for bom_set in itertools.combinations(range(num_players), num_bom):
+      p = probs[bad_set + bom_set]
+      if p == 0 or not _viewer_ok(bad_set, bom_set, viewer):
+        continue
+      free = sorted((set(bad_set) | set(bom_set)) - {v})
+      bomb = bom_set[0] if num_bom else None  # may be v itself, then not in `free`
+      slots = {g: H - (1 if g == bomb else 0) for g in free}
+      free_slots = sum(slots.values())
+      truthful = sum(int(decls[j]) for j in range(num_players)
+                     if j != v and j not in free)
+      t_free = int(active_wires) + sum_found - truthful - int(viewer.wires)
+      remaining = np.full(num_players, np.nan)  # nan = skip this hand for this config
+      for j in range(num_players):
+        if j not in free:
+          remaining[j] = decls[j] - found[j]
+      remaining[v] = viewer.wires - found[v]  # the viewer's own hand is known exactly
+      sums = {g: 0.0 for g in free}
+      norm = 0.0
+      if 0 <= t_free <= free_slots:
+        for split in _free_splits(free, t_free, slots):
+          place = 1.0
+          obs = 1.0
+          for g in free:
+            wg = split[g]
+            place *= uf.C(wg, slots[g])
+            obs *= (L_bomb_hand(int(found[g]), int(revealed[g]), wg, H) if g == bomb
+                    else uf.Lklhd(H, wg, int(revealed[g]), int(found[g])))
+          weight = place * obs
+          if weight == 0:
+            continue
+          for g in free:
+            sums[g] += weight * (split[g] - found[g])
+          norm += weight
+      if norm > 0:
+        for g in free:
+          remaining[g] = sums[g] / norm
+      for i in range(num_players):
+        cards_left = H - revealed[i]
+        r = remaining[i]
+        if cards_left > 0 and not np.isnan(r) and 0 <= r <= cards_left:
+          p_wire[i] += p * r / cards_left
+  return p_wire
+
+
 # --- marginals (model.md §3.5) -------------------------------------------------
 
 def Separate(probabilities, num_bad, num_bom):
@@ -387,7 +586,17 @@ def EntropyBad(probabilities, num_bad, num_bom):
   return H(prob_bad[_badset_mask(prob_bad.shape)])
 
 
-def NextHBad(decls, probs, revealed, found, hand_size, active_wires, num_bad, num_bom):
+def _belief_ops(viewer):
+  """The ``(ProbCut, P_wire)`` pair the panel stats update with: the public pair, or
+  the viewer-pinned perspective pair when a ``Viewer`` is given (model.md §3.5.2)."""
+  if viewer is None:
+    return ProbCut, P_wire
+  return (lambda *a: PerspectiveProbCut(*a, viewer),
+          lambda *a: PerspectiveP_wire(*a, viewer))
+
+
+def NextHBad(decls, probs, revealed, found, hand_size, active_wires, num_bad, num_bom,
+             viewer=None):
   """Stat 3 — the 1-ply expected post-cut role entropy (model.md §3.5, ADR 0006).
 
   For each player with a face-down card, average ``EntropyBad`` over the two
@@ -396,10 +605,12 @@ def NextHBad(decls, probs, revealed, found, hand_size, active_wires, num_bad, nu
   ``1 - P_wire``). Both branches use the bomb-aware ``ProbCut`` conditioned on "no bomb
   cut yet", so detonation is excluded — the information stats ignore bomb risk by design
   (ADR 0006). Lower = the cut teaches more about the fixed roles. Players with no
-  face-down card left are ``np.nan``.
+  face-down card left are ``np.nan``. ``viewer`` runs every belief update in the
+  player-perspective model (§3.5.2).
   """
   num_players = decls.size
-  p_wire = P_wire(decls, probs, revealed, found, hand_size, active_wires, num_bad, num_bom)
+  pcut, pwire = _belief_ops(viewer)
+  p_wire = pwire(decls, probs, revealed, found, hand_size, active_wires, num_bad, num_bom)
   exp_h = np.full(num_players, np.nan)
   for cutee in range(num_players):
     if revealed[cutee] >= hand_size:
@@ -408,29 +619,32 @@ def NextHBad(decls, probs, revealed, found, hand_size, active_wires, num_bad, nu
     reveal[cutee] = 1
     h_wire = h_dud = 0.0
     if p_wire[cutee] > 1e-9 and active_wires > 0:
-      probs_wire = ProbCut(decls, probs, revealed + reveal, found + reveal,
-                           hand_size, active_wires - 1, num_bad, num_bom)
+      probs_wire = pcut(decls, probs, revealed + reveal, found + reveal,
+                        hand_size, active_wires - 1, num_bad, num_bom)
       h_wire = EntropyBad(probs_wire, num_bad, num_bom)
     if p_wire[cutee] < 1 - 1e-9:
-      probs_dud = ProbCut(decls, probs, revealed + reveal, found,
-                          hand_size, active_wires, num_bad, num_bom)
+      probs_dud = pcut(decls, probs, revealed + reveal, found,
+                       hand_size, active_wires, num_bad, num_bom)
       h_dud = EntropyBad(probs_dud, num_bad, num_bom)
     exp_h[cutee] = p_wire[cutee] * h_wire + (1 - p_wire[cutee]) * h_dud
   return exp_h
 
 
-def H_Min(decls, probs, revealed, found, hand_size, active_wires, stop, num_bad, num_bom):
+def H_Min(decls, probs, revealed, found, hand_size, active_wires, stop, num_bad, num_bom,
+          viewer=None):
   """Information-greedy min-entropy lookahead over the role posterior (model.md §3.5):
   the minimum expected ``EntropyBad`` reachable in ``stop`` maximally-informative cuts.
   Each cut branches into a wire (weight ``P_wire``; safe-wire total -1) and a dud, both
   via the bomb-aware ``ProbCut`` (ignores bomb risk, ADR 0006). Cost is ``O((2N)^stop)``
   ``ProbCut`` calls, so callers cap the depth for large N (a beam/analytic approximation
   is the follow-up). Returns ``EntropyBad`` when ``stop <= 0`` or nothing is cuttable.
+  ``viewer`` runs every belief update in the player-perspective model (§3.5.2).
   """
   if stop <= 0:
     return EntropyBad(probs, num_bad, num_bom)
   num_players = decls.size
-  p_wire = P_wire(decls, probs, revealed, found, hand_size, active_wires, num_bad, num_bom)
+  pcut, pwire = _belief_ops(viewer)
+  p_wire = pwire(decls, probs, revealed, found, hand_size, active_wires, num_bad, num_bom)
   best = None
   for cutee in range(num_players):
     if revealed[cutee] >= hand_size:
@@ -439,15 +653,15 @@ def H_Min(decls, probs, revealed, found, hand_size, active_wires, stop, num_bad,
     reveal[cutee] = 1
     h_wire = h_dud = 0.0
     if p_wire[cutee] > 1e-9 and active_wires > 0:
-      probs_wire = ProbCut(decls, probs, revealed + reveal, found + reveal,
-                           hand_size, active_wires - 1, num_bad, num_bom)
+      probs_wire = pcut(decls, probs, revealed + reveal, found + reveal,
+                        hand_size, active_wires - 1, num_bad, num_bom)
       h_wire = H_Min(decls, probs_wire, revealed + reveal, found + reveal,
-                     hand_size, active_wires - 1, stop - 1, num_bad, num_bom)
+                     hand_size, active_wires - 1, stop - 1, num_bad, num_bom, viewer)
     if p_wire[cutee] < 1 - 1e-9:
-      probs_dud = ProbCut(decls, probs, revealed + reveal, found,
-                          hand_size, active_wires, num_bad, num_bom)
+      probs_dud = pcut(decls, probs, revealed + reveal, found,
+                       hand_size, active_wires, num_bad, num_bom)
       h_dud = H_Min(decls, probs_dud, revealed + reveal, found,
-                    hand_size, active_wires, stop - 1, num_bad, num_bom)
+                    hand_size, active_wires, stop - 1, num_bad, num_bom, viewer)
     expected = p_wire[cutee] * h_wire + (1 - p_wire[cutee]) * h_dud
     if best is None or expected < best:
       best = expected
@@ -455,7 +669,7 @@ def H_Min(decls, probs, revealed, found, hand_size, active_wires, stop, num_bad,
 
 
 def RoundHorizonH(decls, probs, revealed, found, hand_size, active_wires,
-                  num_bad, num_bom, max_depth=None):
+                  num_bad, num_bom, max_depth=None, viewer=None):
   """Stat 4 — the round-horizon expected role entropy under info-greedy continuation
   (model.md §3.5, ADR 0006). For each player with a face-down card, value opening with
   a cut there (its wire/dud outcomes) then ``H_Min`` for the rest of the round. A round
@@ -463,11 +677,13 @@ def RoundHorizonH(decls, probs, revealed, found, hand_size, active_wires,
   for a responsive display. Lower = the cut best opens an information-gathering line.
   Ships with two caveats (ADR 0006): it is an information *potential*, and the rollout
   ignores bomb risk — always read beside stat 2. Players with no card left are ``nan``.
+  ``viewer`` runs every belief update in the player-perspective model (§3.5.2).
   """
   num_players = decls.size
   cuts_left = num_players - int(np.sum(revealed))
   depth = cuts_left if max_depth is None else min(cuts_left, max_depth)
-  p_wire = P_wire(decls, probs, revealed, found, hand_size, active_wires, num_bad, num_bom)
+  pcut, pwire = _belief_ops(viewer)
+  p_wire = pwire(decls, probs, revealed, found, hand_size, active_wires, num_bad, num_bom)
   round_h = np.full(num_players, np.nan)
   for cutee in range(num_players):
     if revealed[cutee] >= hand_size:
@@ -476,21 +692,21 @@ def RoundHorizonH(decls, probs, revealed, found, hand_size, active_wires,
     reveal[cutee] = 1
     h_wire = h_dud = 0.0
     if p_wire[cutee] > 1e-9 and active_wires > 0:
-      probs_wire = ProbCut(decls, probs, revealed + reveal, found + reveal,
-                           hand_size, active_wires - 1, num_bad, num_bom)
+      probs_wire = pcut(decls, probs, revealed + reveal, found + reveal,
+                        hand_size, active_wires - 1, num_bad, num_bom)
       h_wire = H_Min(decls, probs_wire, revealed + reveal, found + reveal,
-                     hand_size, active_wires - 1, depth - 1, num_bad, num_bom)
+                     hand_size, active_wires - 1, depth - 1, num_bad, num_bom, viewer)
     if p_wire[cutee] < 1 - 1e-9:
-      probs_dud = ProbCut(decls, probs, revealed + reveal, found,
-                          hand_size, active_wires, num_bad, num_bom)
+      probs_dud = pcut(decls, probs, revealed + reveal, found,
+                       hand_size, active_wires, num_bad, num_bom)
       h_dud = H_Min(decls, probs_dud, revealed + reveal, found,
-                    hand_size, active_wires, depth - 1, num_bad, num_bom)
+                    hand_size, active_wires, depth - 1, num_bad, num_bom, viewer)
     round_h[cutee] = p_wire[cutee] * h_wire + (1 - p_wire[cutee]) * h_dud
   return round_h
 
 
 def CutPanel(decls, probs, revealed, found, hand_size, active_wires,
-             num_bad, num_bom, max_depth=None):
+             num_bad, num_bom, max_depth=None, viewer=None):
   """Assemble the quantities-only four-stat cut panel (model.md §3.5, ADR 0006).
 
   Returns an ``N x 4`` array whose row i (for a player with a face-down card) is
@@ -498,17 +714,21 @@ def CutPanel(decls, probs, revealed, found, hand_size, active_wires,
   immediate role-info, strategic role-info. Rows for players with no card left are all
   ``np.nan``. The stats are deliberately *not* combined into one score: the
   explore/exploit/risk tradeoff needs a risk appetite that belongs to the human.
+  With ``viewer``, ``probs`` must be the perspective posterior and every stat is
+  computed in the player-perspective model (§3.5.2) — the viewer's own row is exact.
   """
   num_players = decls.size
-  p_safe = P_wire(decls, probs, revealed, found, hand_size, active_wires, num_bad, num_bom)
+  _, pwire = _belief_ops(viewer)
+  p_safe = pwire(decls, probs, revealed, found, hand_size, active_wires, num_bad, num_bom)
   if num_bom:
     _, prob_bom = Separate(probs, num_bad, num_bom)
     p_bomb = np.asarray(prob_bom).reshape(-1)[:num_players] if num_bom == 1 else np.zeros(num_players)
   else:
     p_bomb = np.zeros(num_players)
-  one_ply = NextHBad(decls, probs, revealed, found, hand_size, active_wires, num_bad, num_bom)
+  one_ply = NextHBad(decls, probs, revealed, found, hand_size, active_wires,
+                     num_bad, num_bom, viewer)
   horizon = RoundHorizonH(decls, probs, revealed, found, hand_size, active_wires,
-                          num_bad, num_bom, max_depth)
+                          num_bad, num_bom, max_depth, viewer)
   panel = np.full((num_players, 4), np.nan)
   for i in range(num_players):
     if revealed[i] >= hand_size:
@@ -573,6 +793,31 @@ def RoundLogU(decls, revealed, found, hand_size, total_active, active_wires, num
   """
   decl_w = _decl_weights(decls, hand_size, total_active, num_bad, num_bom)
   cut_lk = _cut_likelihoods(decls, revealed, found, hand_size, active_wires, num_bad, num_bom)
+  u_bad, _ = Separate(decl_w * cut_lk, num_bad, num_bom)  # sum over the bomb axis
+  mask = _badset_mask(u_bad.shape)
+  log_u = np.full(u_bad.shape, -np.inf)
+  pos = mask & (u_bad > 0)
+  log_u[pos] = np.log(u_bad[pos])
+  return log_u
+
+
+def PerspectiveRoundLogU(decls, revealed, found, hand_size, total_active, active_wires,
+                         num_bad, num_bom, viewer):
+  """``RoundLogU`` from the viewer's seat (model.md §3.5.2): the same absolute per-round
+  evidence with the viewer's private knowledge for **that round** folded in
+  (``viewer.wires``/``viewer.has_bomb`` are per-round facts; ``idx``/``is_bad`` are
+  game-long). Bad sets inconsistent with the viewer's role are ``-inf`` in every round,
+  and ``JointBadBelief`` consumes these unchanged — restricting its ``1/C(N,B)`` subset
+  prior to the consistent sets is exactly the update ``P(B|v's role) ∝ P(B)·P(v's role|B)``.
+  """
+  decl_w = _persp_decl_weights(decls, hand_size, total_active, num_bad, num_bom, viewer)
+  num_players = decls.size
+  cut_lk = np.zeros_like(decl_w)
+  for bad_set in itertools.combinations(range(num_players), num_bad):
+    for bom_set in itertools.combinations(range(num_players), num_bom):
+      if _viewer_ok(bad_set, bom_set, viewer):
+        cut_lk[bad_set + bom_set] = _persp_L_config(decls, revealed, found, hand_size,
+                                                    active_wires, bad_set, bom_set, viewer)
   u_bad, _ = Separate(decl_w * cut_lk, num_bad, num_bom)  # sum over the bomb axis
   mask = _badset_mask(u_bad.shape)
   log_u = np.full(u_bad.shape, -np.inf)
